@@ -433,7 +433,12 @@ const postToolHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(p
 }
 
 func nativeAmpPluginBody() string {
-	body := `  registerDelegatedAgents(amp);
+	body := `  try {
+    registerDelegatedAgents(amp);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    console.error(%%BT%%[loaf] delegate registration failed; hook enforcement is still active. ${detail}%%BT%%);
+  }
 
   amp.on('tool.call', async (event: AmpToolCallEvent) => {
     const toolName = normalizeAmpToolName(event.tool);

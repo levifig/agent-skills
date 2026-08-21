@@ -368,10 +368,21 @@ func TestRunnerBuildTargetAmpRegistersDelegatedAgents(t *testing.T) {
 		"name: 'delegate_luna_review'",
 		"name: 'sol-oracle-agent'",
 		"name: 'consult_oracle'",
+		"registerDelegatedAgents(amp)",
+		"hook enforcement is still active",
+		"ORCHESTRATOR_TOOLS",
+		"'mcp__*'",
+		"`delegate_grok_implementation`",
+		"`consult_oracle`",
+		"hook enforcement is still active",
 	} {
 		if !strings.Contains(plugin, want) {
 			t.Fatalf("amp plugin missing %q", want)
 		}
+	}
+	startup := extractAmpDelegateBlock(t, plugin, "export default function (amp: PluginAPI)", "amp.on('tool.call'")
+	if !strings.Contains(startup, "try {") || !strings.Contains(startup, "registerDelegatedAgents(amp)") || !strings.Contains(startup, "hook enforcement is still active") {
+		t.Fatalf("amp plugin must isolate delegate registration from hook listeners, got %q", startup)
 	}
 	for _, banned := range []string{
 		`// @amp-agent-mode {"key":"grok-impl","label":"Grok Implement"}`,
@@ -403,6 +414,18 @@ func TestRunnerBuildTargetAmpConstrainsDelegatedAgents(t *testing.T) {
 		if strings.Contains(plugin, banned) {
 			t.Fatalf("amp plugin contains banned capability expansion %q", banned)
 		}
+	}
+	orchBlock := extractAmpDelegateBlock(t, plugin, "const ORCHESTRATOR_TOOLS = [", "const IMPLEMENT_INSTRUCTIONS")
+	for _, want := range []string{"'Read'", "...ULTRA_TOOL_NAMES", "'delegate_grok_implementation'", "'delegate_luna_review'", "'consult_oracle'"} {
+		if !strings.Contains(orchBlock, want) {
+			t.Fatalf("orchestrator tools missing %q in %q", want, orchBlock)
+		}
+	}
+	if !strings.Contains(plugin, "'mcp__*'") {
+		t.Fatal("orchestrator Ultra tool set must include mcp__*")
+	}
+	if !strings.Contains(plugin, "role === 'loaf-medium' || role === 'loaf-ultra'") || !strings.Contains(plugin, "tool !== 'mcp__*'") {
+		t.Fatal("orchestrator allowlist must permit mcp__* without using the worker helper as-is")
 	}
 	for _, forbidden := range []string{"web_search", "read_web_page", "librarian", "skill", "oracle", "Task", "mcp__"} {
 		for _, tools := range [][]string{grokTools, lunaTools} {
@@ -485,6 +508,7 @@ func TestAmpDelegateGuidanceCoversIsolationSnapshotsPreflightAndMigration(t *tes
 		"delegate_luna_review",
 		"consult_oracle",
 		"not selectable picker modes",
+		"Hook enforcement still loads",
 		"~/.config/amp/plugins/delegated-agents.ts",
 		"Loaf must never overwrite or delete",
 		"no silent fallback",
@@ -492,6 +516,20 @@ func TestAmpDelegateGuidanceCoversIsolationSnapshotsPreflightAndMigration(t *tes
 		if !strings.Contains(guidance, want) {
 			t.Fatalf("amp delegate guidance missing %q", want)
 		}
+	}
+}
+
+func TestAmpPluginKeepsHooksWhenDelegateRegistrationFails(t *testing.T) {
+	plugin := buildAmpPluginForDelegateTests(t)
+	result := runAmpDelegateHarness(t, plugin, map[string]any{
+		"case": "duplicate-registration",
+	})
+	if result.OK {
+		t.Fatalf("duplicate registration succeeded: %#v", result)
+	}
+	assertAmpDelegateCompatibilityFailure(t, result.Error, "already registered")
+	if !result.HooksRegistered {
+		t.Fatal("hook listeners must register even when delegate registration fails")
 	}
 }
 
@@ -2818,10 +2856,11 @@ type ampDelegateHarnessAgent struct {
 }
 
 type ampDelegateHarnessResult struct {
-	OK    bool                    `json:"ok"`
-	Error string                  `json:"error"`
-	Grok  ampDelegateHarnessAgent `json:"grok"`
-	Luna  ampDelegateHarnessAgent `json:"luna"`
+	OK              bool                    `json:"ok"`
+	Error           string                  `json:"error"`
+	Grok            ampDelegateHarnessAgent `json:"grok"`
+	Luna            ampDelegateHarnessAgent `json:"luna"`
+	HooksRegistered bool                    `json:"hooksRegistered"`
 }
 
 func assertAmpDelegateCompatibilityFailure(t *testing.T, got string, cause string) {
@@ -3061,6 +3100,10 @@ function createStub(kind) {
         if (state.tools.has(definition.name)) throw new Error('already registered tool ' + definition.name);
         state.tools.set(definition.name, definition);
       },
+      on(event) {
+        state.hooks = state.hooks || [];
+        state.hooks.push(event);
+      },
     },
     state,
   };
@@ -3069,20 +3112,47 @@ function createStub(kind) {
 const { amp, state } = createStub(payload.case);
 const ctx = { thread: { id: 'T-parent' } };
 try {
-  registerDelegatedAgents(amp);
+  try {
+    registerDelegatedAgents(amp);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    console.error('[loaf] delegate registration failed; hook enforcement is still active. ' + detail);
+    state.delegateError = detail;
+  }
+  amp.on('tool.call');
+  amp.on('tool.result');
+  if (state.delegateError && (payload.case === 'duplicate-registration' || payload.case === 'create-failure')) {
+    console.log(JSON.stringify({
+      ok: false,
+      error: state.delegateError,
+      grok: state.grok,
+      luna: state.luna,
+      hooksRegistered: Array.isArray(state.hooks) && state.hooks.includes('tool.call') && state.hooks.includes('tool.result'),
+    }));
+    process.exit(0);
+  }
   if (payload.case === 'happy' || payload.case === 'run-failure' || payload.case === 'invalid-prompt' || payload.case === 'invalid-workdir') {
     await state.tools.get('delegate_grok_implementation').execute({ workdir: payload.workdir, prompt: payload.prompt }, ctx);
   }
   if (payload.case === 'happy' || payload.case === 'missing-diff') {
     await state.tools.get('delegate_luna_review').execute({ workdir: payload.workdir, prompt: payload.prompt, diff: payload.diff }, ctx);
   }
-  console.log(JSON.stringify({ ok: true, error: '', grok: state.grok, luna: state.luna }));
+  amp.on('tool.call');
+  amp.on('tool.result');
+  console.log(JSON.stringify({
+    ok: true,
+    error: '',
+    grok: state.grok,
+    luna: state.luna,
+    hooksRegistered: Array.isArray(state.hooks) && state.hooks.includes('tool.call') && state.hooks.includes('tool.result'),
+  }));
 } catch (error) {
   console.log(JSON.stringify({
     ok: false,
     error: error instanceof Error ? error.message : String(error),
     grok: state.grok,
     luna: state.luna,
+    hooksRegistered: Array.isArray(state.hooks) && state.hooks.includes('tool.call') && state.hooks.includes('tool.result'),
   }));
 }
 `

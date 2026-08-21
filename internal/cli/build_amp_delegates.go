@@ -167,7 +167,16 @@ function assertFiniteAllowlist(tools: readonly string[], role: string): void {
     throw new Error(%%BT%%${role} requires a finite local tool allowlist%%BT%%);
   }
   for (const tool of tools) {
-    if (tool === 'all' || tool.includes('*') || tool.startsWith('mcp' + '__')) {
+    if (tool === 'all') {
+      throw new Error(%%BT%%${role} must not expand capabilities to ${tool}%%BT%%);
+    }
+    if (role === 'loaf-medium' || role === 'loaf-ultra') {
+      if (tool.includes('*') && tool !== 'mcp__*') {
+        throw new Error(%%BT%%${role} must not expand capabilities to ${tool}%%BT%%);
+      }
+      continue;
+    }
+    if (tool.includes('*') || tool.startsWith('mcp' + '__')) {
       throw new Error(%%BT%%${role} must not expand capabilities to ${tool}%%BT%%);
     }
   }
@@ -244,6 +253,8 @@ function registerDelegatedAgents(amp: PluginAPI): void {
   assertDelegateCompatibility('grok-impl', GROK_MODEL, GROK_IMPL_TOOLS);
   assertDelegateCompatibility('luna-review', LUNA_MODEL, LUNA_REVIEW_TOOLS);
   assertDelegateCompatibility('sol-oracle', SOL_MODEL, SOL_ORACLE_TOOLS);
+  assertDelegateCompatibility('loaf-medium', SOL_MODEL, ORCHESTRATOR_TOOLS);
+  assertDelegateCompatibility('loaf-ultra', SOL_MODEL, ORCHESTRATOR_TOOLS);
 
   const grokImplementer = createPinnedAgent(amp, 'grok-impl', GROK_MODEL, GROK_IMPL_TOOLS, {
     name: 'grok-implementation-agent',
@@ -273,7 +284,7 @@ function registerDelegatedAgents(amp: PluginAPI): void {
     display: { label: 'Sol Oracle', color: '#f59e0b' },
   });
 
-  const mediumOrch = createPinnedAgent(amp, 'loaf-medium', SOL_MODEL, ['Read'], {
+  const mediumOrch = createPinnedAgent(amp, 'loaf-medium', SOL_MODEL, ORCHESTRATOR_TOOLS, {
     name: 'loaf-medium',
     model: 'openai/gpt-5.6-sol',
     reasoningEffort: 'medium',
@@ -282,7 +293,7 @@ function registerDelegatedAgents(amp: PluginAPI): void {
     display: { label: 'Loaf Medium', color: '#eab308' },
   });
 
-  const ultraOrch = createPinnedAgent(amp, 'loaf-ultra', SOL_MODEL, ['Read'], {
+  const ultraOrch = createPinnedAgent(amp, 'loaf-ultra', SOL_MODEL, ORCHESTRATOR_TOOLS, {
     name: 'loaf-ultra',
     model: 'openai/gpt-5.6-sol',
     reasoningEffort: 'xhigh',
@@ -291,7 +302,7 @@ function registerDelegatedAgents(amp: PluginAPI): void {
     display: { label: 'Loaf Ultra', color: '#ea580c' },
   });
 
-  registerPinnedAgentMode(amp, 'loaf-medium', SOL_MODEL, ['Read'], {
+  registerPinnedAgentMode(amp, 'loaf-medium', SOL_MODEL, ORCHESTRATOR_TOOLS, {
     key: 'loaf-medium',
     label: 'Loaf Medium',
     description: 'Loaf Medium orchestrator: GPT-5.6 Sol medium plans and decides; Grok 4.6 high+fast implements; Luna xhigh reviews; pinned Sol-high oracle.',
@@ -299,7 +310,7 @@ function registerDelegatedAgents(amp: PluginAPI): void {
     agent: mediumOrch.definition,
   });
 
-  registerPinnedAgentMode(amp, 'loaf-ultra', SOL_MODEL, ['Read'], {
+  registerPinnedAgentMode(amp, 'loaf-ultra', SOL_MODEL, ORCHESTRATOR_TOOLS, {
     key: 'loaf-ultra',
     label: 'Loaf Ultra',
     description: 'Loaf Ultra orchestrator: Ultra harness, GPT-5.6 Sol xhigh plans and decides; Grok implements; Luna reviews; pinned Sol-high oracle.',
