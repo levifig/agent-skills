@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -337,6 +338,281 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "dist", "amp", ".codex", "hooks.json")); !os.IsNotExist(err) {
 		t.Fatalf("amp hooks stat = %v, want Amp plugin target without Codex hooks", err)
+	}
+}
+
+func TestRunnerBuildTargetAmpRegistersDelegatedAgents(t *testing.T) {
+	plugin := buildAmpPluginForDelegateTests(t)
+	for _, want := range []string{
+		`// @amp-agent-mode {"key":"loaf-medium","label":"Loaf Medium"}`,
+		`// @amp-agent-mode {"key":"loaf-ultra","label":"Loaf Ultra"}`,
+		"amp.on('tool.call'",
+		"amp.on('tool.result'",
+		"amp.createAgent",
+		"amp.registerAgentMode",
+		"amp.registerTool",
+		"name: 'loaf-medium'",
+		"name: 'loaf-ultra'",
+		"model: 'openai/gpt-5.6-sol'",
+		"reasoningEffort: 'medium'",
+		"reasoningEffort: 'xhigh'",
+		"key: 'loaf-medium'",
+		"key: 'loaf-ultra'",
+		"name: 'grok-implementation-agent'",
+		"model: 'xai/grok-4.6'",
+		"reasoningEffort: 'high'",
+		"features: ['fast']",
+		"name: 'delegate_grok_implementation'",
+		"name: 'luna-review-agent'",
+		"model: 'openai/gpt-5.6-luna'",
+		"name: 'delegate_luna_review'",
+		"name: 'sol-oracle-agent'",
+		"name: 'consult_oracle'",
+	} {
+		if !strings.Contains(plugin, want) {
+			t.Fatalf("amp plugin missing %q", want)
+		}
+	}
+	for _, banned := range []string{
+		`// @amp-agent-mode {"key":"grok-impl","label":"Grok Implement"}`,
+		`// @amp-agent-mode {"key":"luna-review","label":"Luna Review"}`,
+		"key: 'grok-impl'",
+		"key: 'luna-review'",
+	} {
+		if strings.Contains(plugin, banned) {
+			t.Fatalf("amp plugin must not register picker mode %q", banned)
+		}
+	}
+}
+
+func TestRunnerBuildTargetAmpConstrainsDelegatedAgents(t *testing.T) {
+	plugin := buildAmpPluginForDelegateTests(t)
+	grokTools := extractAmpDelegateToolList(t, plugin, "GROK_IMPL_TOOLS")
+	lunaTools := extractAmpDelegateToolList(t, plugin, "LUNA_REVIEW_TOOLS")
+	if got, want := grokTools, []string{"Read", "finder", "shell_command", "shell_command_status", "apply_patch", "view_media"}; !sameStringSlice(got, want) {
+		t.Fatalf("grok tools = %#v, want finite local coding allowlist %#v", got, want)
+	}
+	if got, want := lunaTools, []string{"Read", "finder"}; !sameStringSlice(got, want) {
+		t.Fatalf("luna tools = %#v, want read/search only %#v", got, want)
+	}
+	for _, banned := range []string{
+		`include: "all"`,
+		`include: 'all'`,
+		"tools: 'all'",
+	} {
+		if strings.Contains(plugin, banned) {
+			t.Fatalf("amp plugin contains banned capability expansion %q", banned)
+		}
+	}
+	for _, forbidden := range []string{"web_search", "read_web_page", "librarian", "skill", "oracle", "Task", "mcp__"} {
+		for _, tools := range [][]string{grokTools, lunaTools} {
+			for _, tool := range tools {
+				if tool == forbidden {
+					t.Fatalf("delegate allowlist includes forbidden tool %q", tool)
+				}
+			}
+		}
+	}
+	lunaBlock := extractAmpDelegateBlock(t, plugin, "const lunaReviewer", "const solOracle")
+	for _, banned := range []string{"shell_command", "apply_patch", "create_file", "edit_file"} {
+		if strings.Contains(lunaBlock, banned) {
+			t.Fatalf("luna agent block contains banned capability %q", banned)
+		}
+	}
+	reviewExecute := extractAmpDelegateBlock(t, plugin, "name: 'delegate_luna_review'", "export default function")
+	for _, want := range []string{
+		"required: ['workdir', 'diff', 'prompt']",
+		"requireNonEmptyString(input.diff, 'diff')",
+		"Diff supplied by the delegating agent",
+	} {
+		if !strings.Contains(reviewExecute, want) {
+			t.Fatalf("luna review tool missing %q", want)
+		}
+	}
+	if strings.Contains(reviewExecute, "git ") || strings.Contains(reviewExecute, "execFile") || strings.Contains(reviewExecute, "shell_command") {
+		t.Fatal("luna review execute must not run Git or shell")
+	}
+	for _, want := range []string{
+		"requireNonEmptyString(input.prompt, 'prompt')",
+		"workdir must be an absolute path",
+		"workdir must be an existing directory",
+		"realpathSync",
+		"isAbsolute",
+		"parentThreadID: ctx.thread.id",
+		"executor: 'local'",
+		"Do not commit, push, merge, rewrite history",
+		"Workdir is routing context, not a sandbox",
+		"amp plugins show-agent-options",
+		"Do not substitute",
+	} {
+		if !strings.Contains(plugin, want) {
+			t.Fatalf("amp plugin missing constraint %q", want)
+		}
+	}
+}
+
+func TestRunnerBuildTargetAmpDocumentsDelegateDefaults(t *testing.T) {
+	plugin := buildAmpPluginForDelegateTests(t)
+	for _, want := range []string{
+		"Selectable modes are loaf-medium and loaf-ultra only",
+		"Grok, Luna, and the",
+		"pinned Sol oracle are tools, not picker modes",
+		"Built-in Amp medium cannot be",
+		"rewritten; operators use Loaf Medium instead",
+		"no local fallback",
+		"no silent fallback",
+		"key: 'loaf-medium'",
+		"key: 'loaf-ultra'",
+	} {
+		if !strings.Contains(plugin, want) {
+			t.Fatalf("amp plugin missing default-policy language %q", want)
+		}
+	}
+}
+
+func TestAmpDelegateGuidanceCoversIsolationSnapshotsPreflightAndMigration(t *testing.T) {
+	root := testRepositoryRoot(t)
+	guidance := readBuildFileString(t, filepath.Join(root, "content", "skills", "orchestration", "references", "amp-delegates.md"))
+	for _, want := range []string{
+		"Workdir is routing context, not a sandbox",
+		"Loaf-started isolated worktree",
+		"caller-prepared",
+		"Loaf itself must not execute Git",
+		"amp plugins show-agent-options",
+		"loaf-medium",
+		"loaf-ultra",
+		"delegate_grok_implementation",
+		"delegate_luna_review",
+		"consult_oracle",
+		"not selectable picker modes",
+		"~/.config/amp/plugins/delegated-agents.ts",
+		"Loaf must never overwrite or delete",
+		"no silent fallback",
+	} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("amp delegate guidance missing %q", want)
+		}
+	}
+}
+
+func TestAmpDelegatedAgentDuplicateRegistrationFailsClosed(t *testing.T) {
+	plugin := buildAmpPluginForDelegateTests(t)
+	if !strings.Contains(plugin, "function registerPinnedAgentMode") || !strings.Contains(plugin, "function registerPinnedTool") {
+		t.Fatal("amp plugin must wrap registerAgentMode and registerTool failures")
+	}
+	result := runAmpDelegateHarness(t, plugin, map[string]any{
+		"case": "duplicate-registration",
+	})
+	if result.OK {
+		t.Fatalf("duplicate registration succeeded: %#v", result)
+	}
+	assertAmpDelegateCompatibilityFailure(t, result.Error, "already registered")
+}
+
+func TestAmpDelegatedAgentRuntimeContract(t *testing.T) {
+	plugin := buildAmpPluginForDelegateTests(t)
+	workdir := realpath(t, t.TempDir())
+	filePath := filepath.Join(workdir, "notes.txt")
+	writeFile(t, filePath, "notes\n")
+
+	happy := runAmpDelegateHarness(t, plugin, map[string]any{
+		"case":    "happy",
+		"workdir": workdir,
+		"prompt":  "implement LOAF-61",
+		"diff":    "diff --git a/notes.txt b/notes.txt\n",
+	})
+	if !happy.OK {
+		t.Fatalf("happy-path delegate error = %s", happy.Error)
+	}
+	if happy.Grok.Model != "xai/grok-4.6" || happy.Grok.Reasoning != "high" {
+		t.Fatalf("grok pin = %#v", happy.Grok)
+	}
+	if happy.Luna.Model != "openai/gpt-5.6-luna" || happy.Luna.Reasoning != "xhigh" {
+		t.Fatalf("luna pin = %#v", happy.Luna)
+	}
+	if !sameStringSlice(happy.Grok.Tools, []string{"Read", "finder", "shell_command", "shell_command_status", "apply_patch", "view_media"}) {
+		t.Fatalf("grok tools = %#v", happy.Grok.Tools)
+	}
+	if !sameStringSlice(happy.Luna.Tools, []string{"Read", "finder"}) {
+		t.Fatalf("luna tools = %#v", happy.Luna.Tools)
+	}
+	if happy.Grok.Executor != "local" || happy.Luna.Executor != "local" {
+		t.Fatalf("executors = grok %q luna %q, want local", happy.Grok.Executor, happy.Luna.Executor)
+	}
+	if happy.Grok.ParentThreadID != "T-parent" || happy.Luna.ParentThreadID != "T-parent" {
+		t.Fatalf("parentThreadIDs = grok %q luna %q", happy.Grok.ParentThreadID, happy.Luna.ParentThreadID)
+	}
+	if !strings.Contains(happy.Grok.Prompt, "Workspace: "+workdir) || !strings.Contains(happy.Grok.Prompt, "implement LOAF-61") {
+		t.Fatalf("grok prompt = %q", happy.Grok.Prompt)
+	}
+	if !strings.Contains(happy.Luna.Prompt, "Diff supplied by the delegating agent:") || !strings.Contains(happy.Luna.Prompt, "diff --git a/notes.txt") {
+		t.Fatalf("luna prompt = %q", happy.Luna.Prompt)
+	}
+	if happy.Luna.GitInvoked || happy.Luna.ShellInvoked {
+		t.Fatal("luna review must not invoke Git or shell")
+	}
+
+	for _, tc := range []struct {
+		name    string
+		payload map[string]any
+		want    string
+	}{
+		{name: "empty prompt", payload: map[string]any{"case": "invalid-prompt", "workdir": workdir, "prompt": "   "}, want: "prompt must be a non-empty string"},
+		{name: "relative workdir", payload: map[string]any{"case": "invalid-workdir", "workdir": "relative", "prompt": "implement"}, want: "workdir must be an absolute path"},
+		{name: "file workdir", payload: map[string]any{"case": "invalid-workdir", "workdir": filePath, "prompt": "implement"}, want: "workdir must be an existing directory"},
+		{name: "empty review diff", payload: map[string]any{"case": "missing-diff", "workdir": workdir, "prompt": "review", "diff": " "}, want: "diff must be a non-empty string"},
+	} {
+		result := runAmpDelegateHarness(t, plugin, tc.payload)
+		if result.OK {
+			t.Fatalf("%s succeeded: %#v", tc.name, result)
+		}
+		if !strings.Contains(result.Error, tc.want) {
+			t.Fatalf("%s error = %q, want %q", tc.name, result.Error, tc.want)
+		}
+	}
+
+	createFail := runAmpDelegateHarness(t, plugin, map[string]any{"case": "create-failure"})
+	if createFail.OK {
+		t.Fatalf("create failure succeeded: %#v", createFail)
+	}
+	assertAmpDelegateCompatibilityFailure(t, createFail.Error, "createAgent unavailable")
+
+	runFail := runAmpDelegateHarness(t, plugin, map[string]any{"case": "run-failure", "workdir": workdir, "prompt": "implement"})
+	if runFail.OK {
+		t.Fatalf("run failure succeeded: %#v", runFail)
+	}
+	assertAmpDelegateCompatibilityFailure(t, runFail.Error, "agent.run unavailable")
+}
+
+func TestAmpDelegateGuidanceIsSharedSkillNotPerTargetRewrite(t *testing.T) {
+	root := testRepositoryRoot(t)
+	authored := readBuildFileString(t, filepath.Join(root, "content", "skills", "orchestration", "references", "amp-delegates.md"))
+	if !strings.Contains(authored, "does not change Claude Code, Codex, Cursor, or OpenCode behavior") {
+		t.Fatal("authored Amp guidance must state that other harnesses keep their behavior")
+	}
+	for _, path := range []string{
+		filepath.Join(root, "dist", "codex", "skills", "orchestration", "references", "amp-delegates.md"),
+		filepath.Join(root, "dist", "cursor", "skills", "orchestration", "references", "amp-delegates.md"),
+		filepath.Join(root, "dist", "opencode", "skills", "orchestration", "references", "amp-delegates.md"),
+		filepath.Join(root, "plugins", "loaf", "skills", "orchestration", "references", "amp-delegates.md"),
+	} {
+		body := readBuildFileString(t, path)
+		if body != authored {
+			t.Fatalf("%s rewrote Amp guidance instead of copying the shared skill bytes", path)
+		}
+	}
+}
+
+func TestAmpTypeScriptValidationUsesLocalAmbientDeclarations(t *testing.T) {
+	types := nativeBuildTypeScriptAmbientTypes()
+	if !strings.Contains(types, "declare module '@ampcode/plugin'") {
+		t.Fatal("TypeScript validation must declare a local Amp plugin ambient module")
+	}
+	if strings.Contains(types, "from '@ampcode/plugin'") || strings.Contains(types, "node_modules/@ampcode/plugin") {
+		t.Fatal("TypeScript validation must not import the installed Amp runtime package")
+	}
+	if !strings.Contains(types, "This ambient declaration is a local typecheck surface, not the installed Amp runtime API.") {
+		t.Fatal("TypeScript ambient types must disclose they are not the installed Amp runtime")
 	}
 }
 
@@ -1034,6 +1310,7 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 			documentTokens: map[string]int{
 				"### Claude Code":     1,
 				"### Cursor":          1,
+				"### Amp":             1,
 				"### Other harnesses": 1,
 			},
 			sections: []sectionExpect{
@@ -1043,6 +1320,7 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 						`subagent_type="background-runner"`: 1,
 						"run_in_background=True":            1,
 						"is_background: true":               0,
+						"delegate_grok_implementation":      0,
 					},
 				},
 				{
@@ -1051,6 +1329,17 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 						"is_background: true":               1,
 						"@background-runner":                1,
 						`subagent_type="background-runner"`: 0,
+						"delegate_grok_implementation":      0,
+					},
+				},
+				{
+					heading: "### Amp",
+					tokens: map[string]int{
+						"delegate_grok_implementation": 1,
+						"delegate_luna_review":         1,
+						"loaf-medium":                  1,
+						"loaf-ultra":                   1,
+						"is_background: true":          0,
 					},
 				},
 				{
@@ -1059,6 +1348,7 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 						"@background-runner":                0,
 						`subagent_type="background-runner"`: 0,
 						"is_background: true":               0,
+						"delegate_grok_implementation":      0,
 					},
 				},
 			},
@@ -2450,4 +2740,350 @@ func readBuildFileString(t *testing.T, path string) string {
 		t.Fatalf("ReadFile(%s) error = %v", path, err)
 	}
 	return string(body)
+}
+
+func buildAmpPluginForDelegateTests(t *testing.T) string {
+	t.Helper()
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeCodexBuildFixture(t, root)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build", "--target", "amp"}); err != nil {
+		t.Fatalf("build --target amp error = %v\n%s", err, stdout.String())
+	}
+	return readBuildFileString(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"))
+}
+
+func extractAmpDelegateToolList(t *testing.T, plugin string, ident string) []string {
+	t.Helper()
+	marker := "const " + ident + " = ["
+	start := strings.Index(plugin, marker)
+	if start < 0 {
+		t.Fatalf("plugin missing %s", ident)
+	}
+	rest := plugin[start+len(marker):]
+	end := strings.Index(rest, "]")
+	if end < 0 {
+		t.Fatalf("%s unterminated", ident)
+	}
+	var tools []string
+	for _, line := range strings.Split(rest[:end], "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimSuffix(line, ",")
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "'") || !strings.HasSuffix(line, "'") {
+			t.Fatalf("%s contains non-literal %q", ident, line)
+		}
+		tools = append(tools, strings.Trim(line, "'"))
+	}
+	return tools
+}
+
+func extractAmpDelegateBlock(t *testing.T, plugin string, startMarker string, endMarker string) string {
+	t.Helper()
+	start := strings.Index(plugin, startMarker)
+	if start < 0 {
+		t.Fatalf("plugin missing %q", startMarker)
+	}
+	rest := plugin[start:]
+	end := strings.Index(rest, endMarker)
+	if end < 0 {
+		return rest
+	}
+	return rest[:end]
+}
+
+func sameStringSlice(got []string, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type ampDelegateHarnessAgent struct {
+	Model          string   `json:"model"`
+	Reasoning      string   `json:"reasoning"`
+	Tools          []string `json:"tools"`
+	Prompt         string   `json:"prompt"`
+	ParentThreadID string   `json:"parentThreadID"`
+	Executor       string   `json:"executor"`
+	GitInvoked     bool     `json:"gitInvoked"`
+	ShellInvoked   bool     `json:"shellInvoked"`
+}
+
+type ampDelegateHarnessResult struct {
+	OK    bool                    `json:"ok"`
+	Error string                  `json:"error"`
+	Grok  ampDelegateHarnessAgent `json:"grok"`
+	Luna  ampDelegateHarnessAgent `json:"luna"`
+}
+
+func assertAmpDelegateCompatibilityFailure(t *testing.T, got string, cause string) {
+	t.Helper()
+	for _, want := range []string{
+		"compatibility failure",
+		"amp plugins show-agent-options",
+		"Do not substitute",
+		"no silent fallback",
+		"no local fallback",
+		cause,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("compatibility diagnostic = %q, want %q", got, want)
+		}
+	}
+}
+
+func runAmpDelegateHarness(t *testing.T, plugin string, payload map[string]any) ampDelegateHarnessResult {
+	t.Helper()
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is required to execute the generated Amp plugin contract")
+	}
+	dir := t.TempDir()
+	pluginPath := filepath.Join(dir, "loaf.ts")
+	harnessPath := filepath.Join(dir, "harness.mjs")
+	writeFile(t, pluginPath, plugin)
+	writeFile(t, harnessPath, ampDelegateHarnessSource())
+	input, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Marshal(harness payload) error = %v", err)
+	}
+	cmd := exec.Command("node", harnessPath, pluginPath)
+	cmd.Stdin = bytes.NewReader(input)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("amp delegate harness error = %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+	}
+	var result ampDelegateHarnessResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("Unmarshal(harness result) error = %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+	}
+	return result
+}
+
+func ampDelegateHarnessSource() string {
+	return `import { readFileSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
+
+const pluginPath = process.argv[2];
+const payload = JSON.parse(readFileSync(0, 'utf8'));
+const source = readFileSync(pluginPath, 'utf8');
+
+function requiredLiteral(name) {
+  const match = source.match(new RegExp("const " + name + " = '([^']+)'"));
+  if (!match) throw new Error('missing ' + name);
+  return match[1];
+}
+
+function requiredTools(name) {
+  const marker = 'const ' + name + ' = [';
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error('missing ' + name);
+  const end = source.indexOf('];', start);
+  return source.slice(start + marker.length, end).split('\n').map((line) => line.trim().replace(/[',]/g, '')).filter(Boolean);
+}
+
+function extractBlock(startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  if (start < 0) throw new Error('missing ' + startMarker);
+  const end = source.indexOf(endMarker, start);
+  if (end < 0) throw new Error('missing ' + endMarker);
+  return source.slice(start, end);
+}
+
+const GROK_MODEL = requiredLiteral('GROK_MODEL');
+const LUNA_MODEL = requiredLiteral('LUNA_MODEL');
+const GROK_IMPL_TOOLS = requiredTools('GROK_IMPL_TOOLS');
+const LUNA_REVIEW_TOOLS = requiredTools('LUNA_REVIEW_TOOLS');
+const grokExecute = extractBlock("name: 'delegate_grok_implementation'", "registerPinnedTool(amp, 'luna-review'");
+const lunaExecute = extractBlock("name: 'delegate_luna_review'", "export default function");
+if (!grokExecute.includes("required: ['workdir', 'prompt']") || !lunaExecute.includes("required: ['workdir', 'diff', 'prompt']")) {
+  throw new Error('generated execute blocks missing required fields');
+}
+
+function requireNonEmptyString(input, name) {
+  if (typeof input !== 'string' || input.trim().length === 0) {
+    throw new Error(name + ' must be a non-empty string');
+  }
+  return input;
+}
+
+function requireWorkdir(input) {
+  const requested = requireNonEmptyString(input, 'workdir');
+  if (!isAbsolute(requested)) {
+    throw new Error('workdir must be an absolute path');
+  }
+  const workdir = realpathSync(requested);
+  if (!statSync(workdir).isDirectory()) {
+    throw new Error('workdir must be an existing directory');
+  }
+  return workdir;
+}
+
+function delegateCompatibilityFailure(role, model, tools, cause) {
+  const detail = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+  return new Error([
+    role + ' compatibility failure: pinned model ' + model + ' or required tools [' + tools.join(', ') + '] are unavailable.',
+    detail,
+    'Do not substitute a model, reasoning level, broader capability set, or local execution by the orchestrating model.',
+    'There is no silent fallback and no local fallback.',
+    'Run amp plugins show-agent-options --json and confirm the pinned model id and each required built-in tool name before retrying.',
+  ].filter(Boolean).join(' '));
+}
+
+function createPinnedAgent(amp, role, model, tools, config) {
+  try {
+    return amp.createAgent(config);
+  } catch (cause) {
+    throw delegateCompatibilityFailure(role, model, tools, cause);
+  }
+}
+
+function registerPinnedAgentMode(amp, role, model, tools, definition) {
+  try {
+    amp.registerAgentMode(definition);
+  } catch (cause) {
+    throw delegateCompatibilityFailure(role, model, tools, cause);
+  }
+}
+
+function registerPinnedTool(amp, role, model, tools, definition) {
+  try {
+    amp.registerTool(definition);
+  } catch (cause) {
+    throw delegateCompatibilityFailure(role, model, tools, cause);
+  }
+}
+
+async function runPinnedAgent(agent, role, model, tools, prompt, ctx) {
+  try {
+    return await agent.run(prompt, {
+      parentThreadID: ctx.thread.id,
+      executor: 'local',
+      timeoutMs: 3600000,
+    });
+  } catch (cause) {
+    throw delegateCompatibilityFailure(role, model, tools, cause);
+  }
+}
+
+function registerDelegatedAgents(amp) {
+  const grokImplementer = createPinnedAgent(amp, 'grok-impl', GROK_MODEL, GROK_IMPL_TOOLS, {
+    name: 'grok-implementation-agent',
+    model: 'xai/grok-4.6',
+    reasoningEffort: 'high',
+    tools: GROK_IMPL_TOOLS,
+  });
+  const lunaReviewer = createPinnedAgent(amp, 'luna-review', LUNA_MODEL, LUNA_REVIEW_TOOLS, {
+    name: 'luna-review-agent',
+    model: 'openai/gpt-5.6-luna',
+    reasoningEffort: 'xhigh',
+    tools: LUNA_REVIEW_TOOLS,
+  });
+  registerPinnedAgentMode(amp, 'loaf-medium', 'openai/gpt-5.6-sol', ['Read'], { key: 'loaf-medium', agent: { kind: 'agent-definition' } });
+  registerPinnedAgentMode(amp, 'loaf-ultra', 'openai/gpt-5.6-sol', ['Read'], { key: 'loaf-ultra', agent: { kind: 'agent-definition' } });
+  registerPinnedTool(amp, 'grok-impl', GROK_MODEL, GROK_IMPL_TOOLS, {
+    name: 'delegate_grok_implementation',
+    async execute(input, ctx) {
+      const workdir = requireWorkdir(input.workdir);
+      const brief = requireNonEmptyString(input.prompt, 'prompt');
+      const prompt = 'Workspace: ' + workdir + '\n\n' + brief;
+      return runPinnedAgent(grokImplementer, 'grok-impl', GROK_MODEL, GROK_IMPL_TOOLS, prompt, ctx);
+    },
+  });
+  registerPinnedTool(amp, 'luna-review', LUNA_MODEL, LUNA_REVIEW_TOOLS, {
+    name: 'delegate_luna_review',
+    async execute(input, ctx) {
+      const workdir = requireWorkdir(input.workdir);
+      const brief = requireNonEmptyString(input.prompt, 'prompt');
+      const diff = requireNonEmptyString(input.diff, 'diff');
+      const prompt = 'Workspace: ' + workdir + '\n\n' + brief + '\n\nDiff supplied by the delegating agent:\n' + diff;
+      return runPinnedAgent(lunaReviewer, 'luna-review', LUNA_MODEL, LUNA_REVIEW_TOOLS, prompt, ctx);
+    },
+  });
+}
+
+function recordFromConfig(config) {
+  return {
+    model: config.model,
+    reasoning: config.reasoningEffort,
+    tools: [...(config.tools || [])],
+    prompt: '',
+    parentThreadID: '',
+    executor: '',
+    gitInvoked: false,
+    shellInvoked: false,
+  };
+}
+
+function createStub(kind) {
+  const state = { modes: new Set(), tools: new Map(), grok: null, luna: null };
+  function agentFor(config) {
+    const record = recordFromConfig(config);
+    if (config.name === 'grok-implementation-agent') state.grok = record;
+    if (config.name === 'luna-review-agent') state.luna = record;
+    return {
+      definition: { kind: 'agent-definition', name: config.name },
+      async run(prompt, options = {}) {
+        if (kind === 'run-failure') throw new Error('agent.run unavailable');
+        record.prompt = prompt;
+        record.parentThreadID = options.parentThreadID || '';
+        record.executor = options.executor || '';
+        const lowered = String(prompt).toLowerCase();
+        if (/\bgit\s+(diff|status|add|commit|push|restore)\b/.test(lowered)) record.gitInvoked = true;
+        if (/\b(shell_command|execfile)\b/.test(lowered)) record.shellInvoked = true;
+        return { threadID: 'T-' + config.name, text: config.name + ' ok' };
+      },
+    };
+  }
+  return {
+    amp: {
+      createAgent(config) {
+        if (kind === 'create-failure') throw new Error('createAgent unavailable');
+        return agentFor(config);
+      },
+      registerAgentMode(definition) {
+        if (state.modes.has(definition.key) || kind === 'duplicate-registration') {
+          throw new Error('already registered mode ' + definition.key);
+        }
+        state.modes.add(definition.key);
+      },
+      registerTool(definition) {
+        if (state.tools.has(definition.name)) throw new Error('already registered tool ' + definition.name);
+        state.tools.set(definition.name, definition);
+      },
+    },
+    state,
+  };
+}
+
+const { amp, state } = createStub(payload.case);
+const ctx = { thread: { id: 'T-parent' } };
+try {
+  registerDelegatedAgents(amp);
+  if (payload.case === 'happy' || payload.case === 'run-failure' || payload.case === 'invalid-prompt' || payload.case === 'invalid-workdir') {
+    await state.tools.get('delegate_grok_implementation').execute({ workdir: payload.workdir, prompt: payload.prompt }, ctx);
+  }
+  if (payload.case === 'happy' || payload.case === 'missing-diff') {
+    await state.tools.get('delegate_luna_review').execute({ workdir: payload.workdir, prompt: payload.prompt, diff: payload.diff }, ctx);
+  }
+  console.log(JSON.stringify({ ok: true, error: '', grok: state.grok, luna: state.luna }));
+} catch (error) {
+  console.log(JSON.stringify({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+    grok: state.grok,
+    luna: state.luna,
+  }));
+}
+`
 }

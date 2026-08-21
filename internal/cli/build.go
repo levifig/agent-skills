@@ -309,7 +309,9 @@ func writeNativeBuildTypeScriptAmbientTypes() (string, func(), error) {
 }
 
 func nativeBuildTypeScriptAmbientTypes() string {
-	return `declare const process: {
+	return `// This ambient declaration is a local typecheck surface, not the installed Amp runtime API.
+// Passing tsc against it does not prove Amp createAgent/registerAgentMode/registerTool compatibility.
+declare const process: {
   env: Record<string, string | undefined>;
   cwd(): string;
 };
@@ -361,6 +363,15 @@ declare module 'url' {
   export function fileURLToPath(url: string | { href: string }): string;
 }
 
+declare module 'node:fs' {
+  export function realpathSync(path: string): string;
+  export function statSync(path: string): { isDirectory(): boolean };
+}
+
+declare module 'node:path' {
+  export function isAbsolute(path: string): boolean;
+}
+
 declare module '@ampcode/plugin' {
   export interface ToolCallEvent {
     toolUseID: string;
@@ -384,12 +395,69 @@ declare module '@ampcode/plugin' {
     | { action: 'allow' }
     | { action: 'reject-and-continue'; message: string };
 
+  export type AgentReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  export type PluginAgentModel = string;
+  export type AgentToolSelection = readonly string[];
+  export type ThreadID = string;
+
+  export interface CreateAgentConfig {
+    name?: string;
+    model: PluginAgentModel;
+    instructions: string;
+    tools?: AgentToolSelection;
+    reasoningEffort?: AgentReasoningEffort;
+    features?: readonly string[];
+    display?: { label: string; color?: string };
+  }
+
+  export interface AgentDefinition {
+    readonly kind: string;
+  }
+
+  export interface AgentRunResult {
+    threadID: ThreadID;
+    text: string;
+  }
+
+  export interface Agent {
+    readonly definition: AgentDefinition;
+    run(message: string, options?: { parentThreadID?: ThreadID; executor?: 'local' | 'orb'; timeoutMs?: number }): Promise<AgentRunResult>;
+  }
+
+  export interface PluginAgentModeDefinition {
+    key: string;
+    label?: string;
+    description?: string;
+    color?: string;
+    agent: AgentDefinition;
+  }
+
+  export interface PluginToolContext {
+    thread: { id: ThreadID };
+  }
+
+  export interface PluginToolDefinition {
+    name: string;
+    title?: string;
+    description: string;
+    inputSchema: {
+      type: 'object';
+      properties?: Record<string, object>;
+      required?: string[];
+      [key: string]: unknown;
+    };
+    execute: (input: Record<string, unknown>, ctx: PluginToolContext) => Promise<string | void>;
+  }
+
   export interface PluginAPI {
     helpers: {
       shellCommandFromToolCall(event: ToolCallEvent): ShellCommand | null;
     };
     on(event: 'tool.call', handler: (event: ToolCallEvent) => ToolCallResult | Promise<ToolCallResult>): void;
     on(event: 'tool.result', handler: (event: ToolResultEvent) => void | Promise<void>): void;
+    createAgent(config: CreateAgentConfig): Agent;
+    registerAgentMode(definition: PluginAgentModeDefinition): unknown;
+    registerTool(definition: PluginToolDefinition): unknown;
   }
 }
 `

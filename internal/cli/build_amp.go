@@ -108,6 +108,7 @@ func renderNativeAmpPlugin(hooks []nativeBuildHook, version string) string {
 		nativeAmpCoreFunctions() + "\n\n" +
 		nativeAmpToolHelpers() + "\n\n" +
 		nativeAmpHookDataWithoutSession(hooks) + "\n\n" +
+		nativeAmpDelegatedAgents() + "\n\n" +
 		"export default function (amp: PluginAPI) {\n" + nativeAmpPluginBody() + "\n}"
 }
 
@@ -118,11 +119,16 @@ func nativeAmpHeader(version string) string {
  * @version ` + version + `
  */
 
+// @amp-agent-mode {"key":"loaf-medium","label":"Loaf Medium"}
+// @amp-agent-mode {"key":"loaf-ultra","label":"Loaf Ultra"}
+
 import type { PluginAPI } from '@ampcode/plugin';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { realpathSync, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const execFileAsync = promisify(execFile);`
@@ -427,7 +433,9 @@ const postToolHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(p
 }
 
 func nativeAmpPluginBody() string {
-	body := `  amp.on('tool.call', async (event: AmpToolCallEvent) => {
+	body := `  registerDelegatedAgents(amp);
+
+  amp.on('tool.call', async (event: AmpToolCallEvent) => {
     const toolName = normalizeAmpToolName(event.tool);
     const toolInput = normalizeAmpToolInput(amp, event);
     const hookPayload = serializeHookPayload(toolName, toolInput, event);

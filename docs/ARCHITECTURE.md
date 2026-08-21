@@ -104,6 +104,10 @@ There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent
 
 `agent.end` is turn-end, not session-end, so Loaf does not map session lifecycle behavior onto it.
 
+The generated Amp plugin keeps the hook runner and also registers selectable `loaf-medium` and `loaf-ultra` orchestrators plus callable `delegate_grok_implementation`, `delegate_luna_review`, and `consult_oracle` tools. Those are Amp-only. Grok and Luna are not picker modes. Built-in Amp medium cannot be rewritten, so operators use Loaf Medium. Once invoked, the plugin pins exact models, reasoning, features, and finite local tools with no substitution and no fallback to the orchestrating model. Workdir is routing context, not an OS sandbox; Luna consumes a nonempty caller-prepared `diff` and does not run Git. After install or upgrade, preflight modes, models, and tools, then the operator may remove leftover user-owned prototypes such as `~/.config/amp/plugins/delegated-agents.ts` to prevent duplicate tool names. Loaf never edits or deletes that file or unrelated Amp plugins.
+
+Amp operating guidance lives in the shared `orchestration` skill as a labeled harness section. Loaf copies one authored skill body to every target; it does not rewrite non-Amp skill bytes. Other harnesses keep their existing spawn behavior. Local TypeScript validation of `loaf.ts` uses an in-repo Amp ambient declaration, not the installed `@ampcode/plugin` package, so a green `tsc` run is not real-runtime compatibility.
+
 ### Prompt Overlay Consolidation (ADR-020, superseding ADR-010)
 
 The managed fenced section is written once to the standards-native root `AGENTS.md`. `.agents/` remains Loaf's project state and configuration directory; Claude Code retains its native compatibility path as a symlink to the root file.

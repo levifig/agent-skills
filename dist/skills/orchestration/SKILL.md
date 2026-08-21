@@ -75,6 +75,7 @@ Use the `linear` skill for MCP selection, reads and mutations, update formatting
 | Decomposition | [../shape/SKILL.md](../shape/SKILL.md) | Promoting a criterion that earns its own DoD (`loaf issue promote`) |
 | Working Issues | [references/local-tasks.md](references/local-tasks.md) | Frontier, started worktrees, status, definition of done |
 | Agent Delegation | [references/delegation.md](references/delegation.md) | Choosing agents, spawning subagents, decision trees |
+| Amp Delegates | [references/amp-delegates.md](references/amp-delegates.md) | Amp Loaf Medium/Ultra orchestrators, Grok/Luna/oracle tools, snapshots, preflight, and prototype migration |
 | Parallel Agents | [references/parallel-agents.md](references/parallel-agents.md) | Dispatching independent work concurrently |
 | Subagent Development | [references/subagent-development.md](references/subagent-development.md) | Delegating to specialized agents |
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |

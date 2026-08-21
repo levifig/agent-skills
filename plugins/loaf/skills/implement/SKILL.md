@@ -163,7 +163,7 @@ Spawn specialized agents with the appropriate profile:
 | Code review/audit | reviewer | relevant domain skills |
 | Research/comparison | researcher | relevant domain skills |
 
-**Rules:** Be specific in prompts. One concern per agent. Include the issue ref, `started_worktree`, body, and definition of done. Parallel when independent (separate worktrees), sequential when a `blocks` edge says so.
+**Rules:** Be specific in prompts. One concern per agent. Include the issue ref, `started_worktree`, body, and definition of done. Parallel when independent (separate worktrees), sequential when a `blocks` edge says so. On Amp, follow [amp-delegates.md](../orchestration/references/amp-delegates.md): use Loaf Medium or Loaf Ultra; implementation defaults to Grok and review defaults to Luna unless the user explicitly overrides that role.
 
 ---
 
@@ -263,6 +263,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 | Batch Orchestration | [batch-orchestration.md](references/batch-orchestration.md) | Running a parent or a set of issue refs with dependency-ready rounds |
 | Branch and Completion | [branch-and-completion.md](references/branch-and-completion.md) | Team routing, diagrams, exploration, journaling alongside `loaf issue start` / `stop` |
 | Working issues locally | [../orchestration/references/local-tasks.md](../orchestration/references/local-tasks.md) | Frontier, started worktrees, status vocabulary, definition of done |
+| Amp Delegates | [../orchestration/references/amp-delegates.md](../orchestration/references/amp-delegates.md) | Amp Loaf Medium/Ultra orchestrators, Grok/Luna tools, isolated worktrees, caller-prepared review snapshots |
 
 ---
 
