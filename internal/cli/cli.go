@@ -215,6 +215,10 @@ func (r Runner) Run(args []string) error {
 		return nil
 	}
 
+	if gateErr := r.enforceAttachGate(args, errOut); gateErr != nil {
+		return gateErr
+	}
+
 	var dispatchErr error
 	switch args[0] {
 	case "--help", "-h", "help":
@@ -292,6 +296,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runJournal(args[1:], out, runtime)
 	case "scratchpad":
 		dispatchErr = r.runScratchpad(args[1:], out, runtime)
+	case "auth":
+		dispatchErr = r.runAuth(args[1:], out, runtime)
 	case "serve":
 		dispatchErr = r.runServe(args[1:], out)
 	case "sync":
@@ -367,6 +373,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  render        Maintain durable markdown renders")
 	fmt.Fprintln(out, "  journal       Record and read the project journal")
 	fmt.Fprintln(out, "  scratchpad    Ephemeral agent coordination channel")
+	fmt.Fprintln(out, "  auth          Manage substrate attach and connection tokens")
 	fmt.Fprintln(out, "  serve         Run the self-hostable sync relay")
 	fmt.Fprintln(out, "  sync          Push and pull facts through the sync relay")
 	fmt.Fprintln(out, "  intent        Show tracked Intent (writes frozen; use issue)")
