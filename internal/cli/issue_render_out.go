@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
 )
 
