@@ -83,6 +83,23 @@ func TestStoreValidateCurrentSchemaRefusesGoneTables(t *testing.T) {
 	}
 }
 
+func TestHandoffsTableRemainsAfterMigrations(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open(sqliteDriverName, filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := ApplyMigrations(ctx, db, SchemaMigrations()); err != nil {
+		t.Fatalf("ApplyMigrations() error = %v", err)
+	}
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'handoffs'`).Scan(&name); err != nil {
+		t.Fatalf("handoffs table missing after migrations: %v", err)
+	}
+}
+
 func TestMigration0018DeletesGoneKindRelationshipsAndAliases(t *testing.T) {
 	ctx := context.Background()
 	root, err := project.ResolveRoot(t.TempDir())
@@ -120,24 +137,24 @@ func TestMigration0018DeletesGoneKindRelationshipsAndAliases(t *testing.T) {
 	now := "2026-08-26T00:00:00Z"
 
 	mustExec(t, store, `
-INSERT INTO reports (id, project_id, report_kind, title, status, created_at, updated_at)
-VALUES ('report-alive', ?, 'research', 'Alive Report', 'draft', ?, ?)
+INSERT INTO sparks (id, project_id, status, text, created_at, updated_at)
+VALUES ('spark-alive', ?, 'captured', 'Alive spark', ?, ?)
 `, projectID, now, now)
 	mustExec(t, store, `
 INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
 VALUES
-  ('alias-report', ?, 'report', 'report-alive', 'report', 'REPORT-ALIVE', ?, ?),
+  ('alias-spark', ?, 'spark', 'spark-alive', 'spark', 'SPARK-ALIVE', ?, ?),
   ('alias-finding', ?, 'finding', 'finding-fossil', 'finding', 'FINDING-FOSSIL', ?, ?)
 `, projectID, now, now, projectID, now, now)
 	mustExec(t, store, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
 VALUES
-  ('rel-report-finding', ?, 'report', 'report-alive', 'finding', 'finding-fossil', 'produced', 'fossil', 'command', ?, ?),
-  ('rel-run-report', ?, 'run', 'run-fossil', 'report', 'report-alive', 'generated', 'fossil', 'command', ?, ?),
-  ('rel-keep', ?, 'report', 'report-alive', 'report', 'report-alive', 'self', 'keep', 'manual', ?, ?)
+  ('rel-spark-finding', ?, 'spark', 'spark-alive', 'finding', 'finding-fossil', 'produced', 'fossil', 'command', ?, ?),
+  ('rel-run-spark', ?, 'run', 'run-fossil', 'spark', 'spark-alive', 'generated', 'fossil', 'command', ?, ?),
+  ('rel-keep', ?, 'spark', 'spark-alive', 'spark', 'spark-alive', 'self', 'keep', 'manual', ?, ?)
 `, projectID, now, now, projectID, now, now, projectID, now, now)
 
-	if err := ApplyMigrations(ctx, store.db, migrations[dropIdx:]); err != nil {
+	if err := ApplyMigrations(ctx, store.db, migrations[dropIdx:dropIdx+1]); err != nil {
 		t.Fatalf("ApplyMigrations(0018) error = %v", err)
 	}
 
@@ -182,21 +199,21 @@ func TestTraceAndLinkListSkipGoneKindNeighborEdges(t *testing.T) {
 	projectID := projectIDForTest(t, store, root)
 	now := "2026-08-26T00:00:00Z"
 	mustExec(t, store, `
-INSERT INTO reports (id, project_id, report_kind, title, status, created_at, updated_at)
-VALUES ('report-alive', ?, 'research', 'Alive Report', 'draft', ?, ?)
+INSERT INTO sparks (id, project_id, status, text, created_at, updated_at)
+VALUES ('spark-alive', ?, 'captured', 'Alive spark', ?, ?)
 `, projectID, now, now)
 	mustExec(t, store, `
 INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
-VALUES ('alias-report', ?, 'report', 'report-alive', 'report', 'REPORT-ALIVE', ?, ?)
+VALUES ('alias-spark', ?, 'spark', 'spark-alive', 'spark', 'SPARK-ALIVE', ?, ?)
 `, projectID, now, now)
 	mustExec(t, store, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
 VALUES
-  ('rel-fossil', ?, 'report', 'report-alive', 'finding', 'finding-fossil', 'produced', 'fossil neighbor', 'command', ?, ?),
-  ('rel-alive', ?, 'report', 'report-alive', 'report', 'report-alive', 'self', 'alive neighbor', 'manual', ?, ?)
+  ('rel-fossil', ?, 'spark', 'spark-alive', 'finding', 'finding-fossil', 'produced', 'fossil neighbor', 'command', ?, ?),
+  ('rel-alive', ?, 'spark', 'spark-alive', 'spark', 'spark-alive', 'self', 'alive neighbor', 'manual', ?, ?)
 `, projectID, now, now, projectID, now, now)
 
-	trace, err := store.Trace(ctx, root, "REPORT-ALIVE")
+	trace, err := store.Trace(ctx, root, "SPARK-ALIVE")
 	if err != nil {
 		t.Fatalf("Trace() error = %v, want success despite fossil finding neighbor", err)
 	}
@@ -205,11 +222,11 @@ VALUES
 			t.Fatalf("trace relationships = %#v, want fossil gone-kind edges skipped", trace.Relationships)
 		}
 	}
-	if !hasStateTraceRelationship(trace.Relationships, "outbound", "self", "report", "REPORT-ALIVE") {
-		t.Fatalf("trace relationships = %#v, want alive report self edge retained", trace.Relationships)
+	if !hasStateTraceRelationship(trace.Relationships, "outbound", "self", "spark", "SPARK-ALIVE") {
+		t.Fatalf("trace relationships = %#v, want alive spark self edge retained", trace.Relationships)
 	}
 
-	list, err := store.ListLinks(ctx, root, "REPORT-ALIVE")
+	list, err := store.ListLinks(ctx, root, "SPARK-ALIVE")
 	if err != nil {
 		t.Fatalf("ListLinks() error = %v, want success despite fossil finding neighbor", err)
 	}
@@ -218,7 +235,7 @@ VALUES
 			t.Fatalf("list relationships = %#v, want fossil gone-kind edges skipped", list.Relationships)
 		}
 	}
-	if !hasStateTraceRelationship(list.Relationships, "outbound", "self", "report", "REPORT-ALIVE") {
-		t.Fatalf("list relationships = %#v, want alive report self edge retained", list.Relationships)
+	if !hasStateTraceRelationship(list.Relationships, "outbound", "self", "spark", "SPARK-ALIVE") {
+		t.Fatalf("list relationships = %#v, want alive spark self edge retained", list.Relationships)
 	}
 }

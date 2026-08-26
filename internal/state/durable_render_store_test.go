@@ -60,20 +60,21 @@ func TestRenderDurableArtifactWritesReportToCache(t *testing.T) {
 	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	created, err := CreateReport(context.Background(), root, PathResolver{StateHome: stateHome}, ReportCreateOptions{
-		Slug:    "cache-render",
-		Kind:    "audit",
-		Source:  "test",
-		Body:    "# Cache Render\n\nReport body.",
-		SetBody: true,
-	})
-	if err != nil {
-		t.Fatalf("CreateReport() error = %v", err)
-	}
+	alias := "report-cache-render"
+	writeAgentsFile(t, root.Path(), "reports/.work/"+alias+".md", `---
+id: report-cache-render
+title: Cache Render
+type: audit
+status: draft
+---
+# Cache Render
+
+Report body.
+`)
 
 	result, err := RenderDurableArtifact(context.Background(), root, PathResolver{StateHome: stateHome, CacheHome: cacheHome}, DurableRenderOptions{
 		Kind:   "report",
-		Ref:    created.Report.Alias,
+		Ref:    alias,
 		Branch: "feature/report",
 	})
 	if err != nil {
@@ -84,7 +85,7 @@ func TestRenderDurableArtifactWritesReportToCache(t *testing.T) {
 		t.Fatalf("read report render error = %v", err)
 	}
 	text := string(content)
-	if result.Kind != "report" || result.Ref != created.Report.Alias || result.Contract != DurableRenderContract || result.ContentHash != artifactBodyHash(text) {
+	if result.Kind != "report" || result.Ref != alias || result.Contract != DurableRenderContract || result.ContentHash != artifactBodyHash(text) {
 		t.Fatalf("result = %#v, want report render metadata", result)
 	}
 	if !strings.Contains(text, "report_kind: audit") || !strings.Contains(text, "<!-- loaf:render kind=report contract=durable-doc-v1 -->") {
@@ -135,22 +136,23 @@ func TestFinalizeDurableArtifactWritesReportFallbackPath(t *testing.T) {
 	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	created, err := CreateReport(context.Background(), root, PathResolver{StateHome: stateHome}, ReportCreateOptions{
-		Slug:    "finalize-render",
-		Kind:    "audit",
-		Source:  "test",
-		Body:    "# Finalize Render\n\nReport body.",
-		SetBody: true,
-	})
-	if err != nil {
-		t.Fatalf("CreateReport() error = %v", err)
-	}
+	alias := "report-finalize-render"
+	writeAgentsFile(t, root.Path(), "reports/.work/"+alias+".md", `---
+id: report-finalize-render
+title: Finalize Render
+type: audit
+status: draft
+---
+# Finalize Render
 
-	result, err := FinalizeDurableArtifact(context.Background(), root, PathResolver{StateHome: stateHome}, DurableFinalizeOptions{Kind: "report", Ref: created.Report.Alias})
+Report body.
+`)
+
+	result, err := FinalizeDurableArtifact(context.Background(), root, PathResolver{StateHome: stateHome}, DurableFinalizeOptions{Kind: "report", Ref: alias})
 	if err != nil {
 		t.Fatalf("FinalizeDurableArtifact(report) error = %v", err)
 	}
-	wantRel := filepath.ToSlash(filepath.Join(".agents", "reports", created.Report.Alias+".md"))
+	wantRel := filepath.ToSlash(filepath.Join(".agents", "reports", alias+".md"))
 	if result.RelativePath != wantRel {
 		t.Fatalf("RelativePath = %q, want %q", result.RelativePath, wantRel)
 	}

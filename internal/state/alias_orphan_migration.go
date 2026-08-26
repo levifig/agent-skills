@@ -238,11 +238,9 @@ type aliasOrphanEntityTable struct {
 var aliasOrphanEntityTables = []aliasOrphanEntityTable{
 	{kind: "task", table: "tasks", titleColumn: "title", sourceColumn: "body_source_id", namespace: "task"},
 	{kind: "spec", table: "specs", titleColumn: "title", sourceColumn: "body_source_id", namespace: "spec"},
-	{kind: "report", table: "reports", titleColumn: "title", sourceColumn: "body_source_id", namespace: "report"},
 	{kind: "idea", table: "ideas", titleColumn: "title", sourceColumn: "body_source_id", namespace: "idea"},
 	{kind: "spark", table: "sparks", titleColumn: "text", sourceColumn: "source_id", namespace: "spark"},
 	{kind: "brainstorm", table: "brainstorms", titleColumn: "title", sourceColumn: "body_source_id", namespace: "brainstorm"},
-	{kind: "shaping_draft", table: "shaping_drafts", titleColumn: "title", sourceColumn: "body_source_id", namespace: "shaping_draft"},
 }
 
 // aliasOrphanDeadAliasPredicate distinguishes a dead alias from a forward
@@ -1291,8 +1289,15 @@ ORDER BY body_kind
 }
 
 func classifyBrokenEvidenceReport(ctx context.Context, q aliasOrphanQuerier, projectID string) (*AliasOrphanDisposition, error) {
+	exists, err := sqliteTableExistsQ(ctx, q, "reports")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, nil
+	}
 	var status string
-	err := q.QueryRowContext(ctx, `
+	err = q.QueryRowContext(ctx, `
 SELECT status FROM reports WHERE project_id = ? AND id = ?
 `, projectID, brokenEvidenceReportID).Scan(&status)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1506,8 +1511,15 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 }
 
 func applyBrokenEvidenceArchiveTx(ctx context.Context, tx *sql.Tx, projectID string, now string, manifest *AliasOrphanRollbackManifest) error {
+	exists, err := sqliteTableExistsQ(ctx, tx, "reports")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	var previous, previousUpdatedAt string
-	err := tx.QueryRowContext(ctx, `SELECT status, COALESCE(updated_at, '') FROM reports WHERE project_id = ? AND id = ?`, projectID, brokenEvidenceReportID).Scan(&previous, &previousUpdatedAt)
+	err = tx.QueryRowContext(ctx, `SELECT status, COALESCE(updated_at, '') FROM reports WHERE project_id = ? AND id = ?`, projectID, brokenEvidenceReportID).Scan(&previous, &previousUpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -1846,7 +1858,6 @@ func unlinkReferencesToEntityTx(ctx context.Context, tx *sql.Tx, projectID strin
 			{"tasks", "spec_id"},
 			{"journal_entries", "spec_id"},
 			{"plans", "spec_id"},
-			{"councils", "spec_id"},
 		}
 	case "task":
 		unlinkSpecs = []unlinkSpec{

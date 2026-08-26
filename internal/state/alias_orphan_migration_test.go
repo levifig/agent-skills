@@ -92,15 +92,7 @@ VALUES (?, ?, 'task', 'task:missing0000000000001', 'task', 'TASK-MISSING', ?, ?)
 	unprovenID := "spec:unproven0000000000001"
 	seedSpec(t, stateHome, root, projectID, unprovenID, "Unproven Spec", "active", "2026-06-13T12:00:00Z", false, "")
 
-	// Seed broken-evidence report (named disposition).
-	mustExecOpen(t, stateHome, root, `
-INSERT INTO reports (id, project_id, report_kind, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, 'audit', 'Transitional TypeScript Surfaces — Do Not Deepen', 'active', NULL, ?, ?)
-`, brokenEvidenceReportID, projectID, "2026-06-20T00:00:00Z", "2026-06-20T00:00:00Z")
-	mustExecOpen(t, stateHome, root, `
-INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
-VALUES (?, ?, 'report', ?, 'report', 'transitional-surfaces-do-not-deepen', ?, ?)
-`, stableMigrationID("alias", projectID, "report", "transitional-surfaces-do-not-deepen"), projectID, brokenEvidenceReportID, "2026-06-20T00:00:00Z", "2026-06-20T00:00:00Z")
+	// reports table gone (migration 0021); broken-evidence disposition is a no-op when absent.
 
 	// Apply without disposition must leave unproven alone and retire proven rows.
 	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
@@ -131,13 +123,6 @@ VALUES (?, ?, 'report', ?, 'report', 'transitional-surfaces-do-not-deepen', ?, ?
 	if residueCount(t, stateHome, root, projectID, "spec", orphanID) != 0 {
 		t.Fatalf("reference residue remains for retired orphan")
 	}
-	if got := aliasOrphanReportStatus(t, stateHome, root, brokenEvidenceReportID); got != LifecycleStatusArchived {
-		t.Fatalf("broken-evidence status = %q, want archived", got)
-	}
-	if mootEventCount(t, stateHome, root, projectID, brokenEvidenceReportID) != 1 {
-		t.Fatal("expected one moot archive event for broken-evidence report")
-	}
-
 	// Idempotency: second preview classifies zero retire/dangling; second apply no-ops.
 	secondPreview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
@@ -170,9 +155,6 @@ VALUES (?, ?, 'report', ?, 'report', 'transitional-surfaces-do-not-deepen', ?, ?
 	}
 	if residueCount(t, stateHome, root, projectID, "spec", orphanID) == 0 {
 		t.Fatal("expected residue restored with orphan")
-	}
-	if got := aliasOrphanReportStatus(t, stateHome, root, brokenEvidenceReportID); got != "active" {
-		t.Fatalf("broken-evidence status after rollback = %q, want active", got)
 	}
 }
 
@@ -394,17 +376,6 @@ func residueCount(t *testing.T, stateHome string, root project.Root, projectID, 
 		total += n
 	}
 	return total
-}
-
-func aliasOrphanReportStatus(t *testing.T, stateHome string, root project.Root, id string) string {
-	t.Helper()
-	store := openTestStore(t, root, stateHome)
-	defer store.Close()
-	var status string
-	if err := store.db.QueryRow(`SELECT status FROM reports WHERE id = ?`, id).Scan(&status); err != nil {
-		t.Fatalf("report status: %v", err)
-	}
-	return status
 }
 
 func mootEventCount(t *testing.T, stateHome string, root project.Root, projectID, entityID string) int {

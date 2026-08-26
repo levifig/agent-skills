@@ -150,7 +150,14 @@ func (s *Store) resolveEntityByInternalID(ctx context.Context, projectID string,
 func (s *Store) entityDetails(ctx context.Context, projectID string, kind string, id string) (TraceEntity, error) {
 	entity := TraceEntity{Kind: kind, ID: id}
 	switch kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report", "plan", "handoff", "council", "issue":
+	case "council", "report", "shaping_draft":
+		entity, err := entityWithAliasFallback(ctx, s, projectID, entity)
+		if err != nil {
+			return entity, err
+		}
+		s.enrichFileBackedTraceEntityFromProject(ctx, projectID, &entity)
+		return entity, nil
+	case "spec", "task", "idea", "brainstorm", "plan", "handoff", "issue":
 		table := traceTable(kind)
 		var title, status sql.NullString
 		err := s.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT title, status FROM %s WHERE project_id = ? AND id = ?`, table), projectID, id).Scan(&title, &status)
@@ -271,8 +278,10 @@ func (s *Store) traceSources(ctx context.Context, entity TraceEntity) ([]TraceSo
 
 func traceSourceQuery(entity TraceEntity) (string, []any, bool) {
 	switch entity.Kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report", "plan", "handoff", "council":
+	case "spec", "task", "idea", "brainstorm", "plan", "handoff":
 		return fmt.Sprintf(`SELECT sources.path, sources.hash FROM %s JOIN sources ON sources.id = %s.body_source_id WHERE %s.id = ?`, traceTable(entity.Kind), traceTable(entity.Kind), traceTable(entity.Kind)), []any{entity.ID}, true
+	case "shaping_draft", "report", "council":
+		return "", nil, false
 	case "spark":
 		return `SELECT sources.path, sources.hash FROM sparks JOIN sources ON sources.id = sparks.source_id WHERE sparks.id = ?`, []any{entity.ID}, true
 	default:

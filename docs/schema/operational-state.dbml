@@ -130,16 +130,6 @@ Table brainstorms {
   updated_at text [not null]
 }
 
-Table shaping_drafts {
-  id text [pk, not null]
-  project_id text [not null, ref: > projects.id]
-  title text [not null]
-  status text [not null]
-  body_source_id text [ref: > sources.id]
-  created_at text [not null]
-  updated_at text [not null]
-}
-
 Table sessions {
   id text [pk, not null]
   project_id text [not null, ref: > projects.id]
@@ -229,20 +219,6 @@ Table docs_search {
   content text
 }
 
-Table reports {
-  id text [pk, not null]
-  project_id text [not null, ref: > projects.id]
-  report_kind text [not null]
-  title text [not null]
-  status text [not null]
-  body_source_id text [ref: > sources.id]
-  created_at text [not null]
-  updated_at text [not null]
-}
-
-
-
-
 Table plans {
   id text [pk, not null]
   project_id text [not null, ref: > projects.id]
@@ -269,20 +245,6 @@ Table handoffs {
   updated_at text [not null]
   indexes {
     (project_id, session_id, task_id)
-  }
-}
-
-Table councils {
-  id text [pk, not null]
-  project_id text [not null, ref: > projects.id]
-  spec_id text [ref: > specs.id]
-  title text [not null]
-  status text [not null]
-  body_source_id text [ref: > sources.id]
-  created_at text [not null]
-  updated_at text [not null]
-  indexes {
-    (project_id, spec_id)
   }
 }
 

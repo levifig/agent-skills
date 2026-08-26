@@ -144,9 +144,7 @@ var exportAllTables = []exportTable{
 	{Name: "ideas", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "sparks", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "brainstorms", OrderBy: "id", FilterColumn: "project_id"},
-	{Name: "shaping_drafts", OrderBy: "id", FilterColumn: "project_id"},
-	{Name: "reports", OrderBy: "id", FilterColumn: "project_id"},
-	{Name: "journal_entries", OrderBy: "id", FilterColumn: "project_id"},
+		{Name: "journal_entries", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "journal_origins", OrderBy: "journal_entry_id", FilterColumn: "project_id"},
 	{Name: "journal_deferrals", OrderBy: "operation_key", FilterColumn: "project_id"},
 	{Name: "events", OrderBy: "id", FilterColumn: "project_id"},
@@ -384,7 +382,7 @@ func (s *Store) releaseReadinessExportData(ctx context.Context, root project.Roo
 	if err != nil {
 		return releaseReadinessExportData{}, err
 	}
-	reports, err := s.ListReports(ctx, root, ReportListOptions{})
+	reports, err := ListFileBackedReports(ctx, root, ReportListOptions{})
 	if err != nil {
 		return releaseReadinessExportData{}, err
 	}
@@ -417,7 +415,7 @@ ORDER BY export_kind, format
 	if err != nil {
 		return releaseReadinessExportData{}, fmt.Errorf("query release export counts: %w", err)
 	}
-	recentReports, err := s.releaseReadinessRecentReports(ctx, projectID)
+	recentReports, err := fileBackedRecentReports(root)
 	if err != nil {
 		return releaseReadinessExportData{}, err
 	}
@@ -441,7 +439,6 @@ func (s *Store) releaseReadinessSourceCoverage(ctx context.Context, projectID st
 	}{
 		{Label: "Specs", Table: "specs", Column: "body_source_id"},
 		{Label: "Tasks", Table: "tasks", Column: "body_source_id"},
-		{Label: "Reports", Table: "reports", Column: "body_source_id"},
 	}
 	coverage := make([]releaseReadinessSourceCoverage, 0, len(tables))
 	for _, table := range tables {
@@ -474,33 +471,6 @@ func (s *Store) releaseReadinessGroupedCounts(ctx context.Context, query string,
 		return nil, err
 	}
 	return counts, nil
-}
-
-func (s *Store) releaseReadinessRecentReports(ctx context.Context, projectID string) ([]releaseReadinessReport, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT title, report_kind, status
-FROM reports
-WHERE project_id = ?
-ORDER BY created_at DESC, id DESC
-LIMIT 5
-`, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("query release recent reports: %w", err)
-	}
-	defer rows.Close()
-	reports := []releaseReadinessReport{}
-	for rows.Next() {
-		var report releaseReadinessReport
-		if err := rows.Scan(&report.Title, &report.Kind, &report.Status); err != nil {
-			return nil, fmt.Errorf("scan release recent report: %w", err)
-		}
-		report.Status = LifecycleStatusForDisplay(LifecycleEntityReport, report.Status)
-		reports = append(reports, report)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate release recent reports: %w", err)
-	}
-	return reports, nil
 }
 
 func (s *Store) validateExportTableFilters(ctx context.Context, tables []exportTable) error {

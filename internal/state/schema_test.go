@@ -20,9 +20,7 @@ var requiredInitialTables = []string{
 	"ideas",
 	"sparks",
 	"brainstorms",
-	"shaping_drafts",
 	"sessions",
-	"reports",
 	"journal_entries",
 	"events",
 	"relationships",
@@ -39,7 +37,6 @@ var requiredInitialTables = []string{
 	"docs_index",
 	"plans",
 	"handoffs",
-	"councils",
 	"journal_origins",
 	"journal_deferrals",
 	"intents",
@@ -109,11 +106,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 19 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 19", len(migrations))
+	if len(migrations) != 20 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 20", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -175,6 +172,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[18].Name != "facts_and_journal_envelope" {
 		t.Fatalf("migration[18].Name = %q, want facts_and_journal_envelope", migrations[18].Name)
+	}
+	if migrations[19].Name != "drop_document_layer" {
+		t.Fatalf("migration[19].Name = %q, want drop_document_layer", migrations[19].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -262,7 +262,6 @@ func TestInitialSchemaPreservesLineageAndExports(t *testing.T) {
 		"docs_index":              {"path", "content", "content_hash", "indexed_ref", "indexed_worktree", "indexed_at"},
 		"plans":                   {"spec_id", "body_source_id"},
 		"handoffs":                {"session_id", "task_id", "body_source_id"},
-		"councils":                {"spec_id", "body_source_id"},
 	} {
 		body := tableBody(t, sql, table)
 		for _, column := range columns {
@@ -431,6 +430,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if normalizeMigrationSQL(sqlDoc) != normalizeMigrationSQL(factsAndJournalEnvelopeSQL) {
 		t.Fatal("docs/schema/0020_facts_and_journal_envelope.sql must match embedded migration 0020 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0021_drop_document_layer.sql")
+	if sqlDoc != SchemaMigrations()[19].SQL {
+		t.Fatal("docs/schema/0021_drop_document_layer.sql must match embedded migration 0021 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -478,7 +481,6 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ bundles : scopes",
 		"projects ||--o{ conversation_handles : scopes",
 		"projects ||--o{ conversation_log_refs : scopes",
-		"projects ||--o{ councils : scopes",
 		"projects ||--o{ docs_index : scopes",
 		"projects ||--o{ entity_tags : scopes",
 		"projects ||--o{ events : scopes",
@@ -503,10 +505,8 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ plans : scopes",
 		"projects ||--o{ project_paths : locates",
 		"projects ||--o{ relationships : scopes",
-		"projects ||--o{ reports : scopes",
 		"projects ||--o{ session_state_snapshots : scopes",
 		"projects ||--o{ sessions : scopes",
-		"projects ||--o{ shaping_drafts : scopes",
 		"projects ||--o{ source_availability_observations : scopes",
 		"projects ||--o{ sources : scopes",
 		"projects ||--o{ sparks : scopes",
@@ -518,17 +518,13 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"sessions ||--o{ session_state_snapshots : summarizes",
 		"sources ||--o{ artifact_bodies : provenance",
 		"sources ||--o{ brainstorms : bodies",
-		"sources ||--o{ councils : bodies",
 		"sources ||--o{ handoffs : bodies",
 		"sources ||--o{ ideas : bodies",
 		"sources ||--o{ plans : bodies",
-		"sources ||--o{ reports : bodies",
 		"sources ||--o{ sessions : bodies",
-		"sources ||--o{ shaping_drafts : bodies",
 		"sources ||--o{ sparks : origins",
 		"sources ||--o{ specs : bodies",
 		"sources ||--o{ tasks : bodies",
-		"specs ||--o{ councils : contextualizes",
 		"specs ||--o{ journal_entries : contextualizes",
 		"specs ||--o{ plans : shapes",
 		"specs ||--o{ tasks : contains",
@@ -839,3 +835,4 @@ func mermaidRelationships(t *testing.T, doc string) []string {
 	sort.Strings(relationships)
 	return relationships
 }
+

@@ -2,17 +2,12 @@ package state
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"regexp"
-	"strings"
-	"time"
 
 	"github.com/levifig/loaf/internal/project"
 )
 
-var reportSlugCleaner = regexp.MustCompile(`[^a-z0-9]+`)
+var errReportFileBacked = fmt.Errorf("reports are file-backed under .agents/reports/; SQLite rows were removed in migration 0021")
 
 // ReportCreateOptions describes a SQLite-backed report creation request.
 type ReportCreateOptions struct {
@@ -75,324 +70,68 @@ type ReportEditResult struct {
 
 // CreateReport creates a draft report in initialized SQLite state.
 func CreateReport(ctx context.Context, root project.Root, resolver PathResolver, options ReportCreateOptions) (ReportCreateResult, error) {
-	store, err := openInitializedStore(root, resolver)
-	if err != nil {
-		return ReportCreateResult{}, err
-	}
-	defer store.Close()
-	return store.CreateReport(ctx, root, options)
+	_ = ctx
+	_ = root
+	_ = resolver
+	return ReportCreateResult{}, errReportFileBacked
 }
 
 // EditReportBody replaces a report's SQLite body in initialized SQLite state.
 func EditReportBody(ctx context.Context, root project.Root, resolver PathResolver, options ReportEditOptions) (ReportEditResult, error) {
-	store, err := openInitializedStore(root, resolver)
-	if err != nil {
-		return ReportEditResult{}, err
-	}
-	defer store.Close()
-	return store.EditReportBody(ctx, root, options)
+	_ = ctx
+	_ = root
+	_ = resolver
+	return ReportEditResult{}, errReportFileBacked
 }
 
-// EditReportBody replaces a report's SQLite body in an open store.
+// EditReportBody refuses SQLite authority; reports are file-backed after migration 0021.
 func (s *Store) EditReportBody(ctx context.Context, root project.Root, options ReportEditOptions) (ReportEditResult, error) {
-	projectID, err := s.projectID(ctx, root)
-	if err != nil {
-		return ReportEditResult{}, err
-	}
-	identity, err := s.projectIdentity(ctx, projectID)
-	if err != nil {
-		return ReportEditResult{}, err
-	}
-	entity, err := s.resolveTraceEntity(ctx, projectID, options.Ref)
-	if err != nil {
-		return ReportEditResult{}, err
-	}
-	if entity.Kind != "report" {
-		return ReportEditResult{}, fmt.Errorf("report edit target %q resolved to %s, not report", options.Ref, entity.Kind)
-	}
-
-	var status string
-	var bodySourceID, sourcePath sql.NullString
-	err = s.db.QueryRowContext(ctx, `
-SELECT reports.status, reports.body_source_id, sources.path
-FROM reports
-LEFT JOIN sources ON sources.id = reports.body_source_id
-WHERE reports.project_id = ? AND reports.id = ?
-`, projectID, entity.ID).Scan(&status, &bodySourceID, &sourcePath)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ReportEditResult{}, fmt.Errorf("report %q not found in SQLite state", firstNonEmpty(entity.Alias, options.Ref))
-	}
-	if err != nil {
-		return ReportEditResult{}, fmt.Errorf("read report body source: %w", err)
-	}
-
-	display := firstNonEmpty(entity.Alias, options.Ref)
-	// Rejecting before any mutation keeps archived reports whole: `loaf report
-	// finalize` refuses archived reports, so an accepted edit could never reach
-	// the durable render and would strand in SQLite.
-	if LifecycleStatusMatches(LifecycleEntityReport, status, LifecycleStatusArchived) {
-		return ReportEditResult{}, fmt.Errorf("report %q is archived and cannot be edited: `loaf report finalize` does not refresh archived renders, so the edit would never reach the durable render; leave the archived render as the historical record, or create a follow-up report with `loaf report create`", display)
-	}
-
-	renderPath := ""
-	if !sourcePath.Valid || strings.TrimSpace(sourcePath.String) == "" {
-		_, rel, err := durableRenderGitFile(root, "report", display, nil)
-		if err != nil {
-			return ReportEditResult{}, err
-		}
-		renderPath = rel
-	}
-	outcome, err := s.editArtifactBody(ctx, root.Path(), projectID, "report", "reports", entity.ID, display, bodySourceID, sourcePath, renderPath, options.Body, options.Force)
-	if err != nil {
-		return ReportEditResult{}, err
-	}
-
-	return ReportEditResult{
-		ContractVersion:    StateJSONContractVersion,
-		DatabaseScope:      identity.DatabaseScope,
-		DatabasePath:       identity.DatabasePath,
-		ProjectID:          identity.ID,
-		ProjectName:        identity.FriendlyName,
-		ProjectCurrentPath: identity.CurrentPath,
-		Report:             entity,
-		Imported:           outcome.Imported,
-		ContentHash:        outcome.ContentHash,
-		EventID:            outcome.EventID,
-	}, nil
+	_ = s
+	_ = ctx
+	_ = root
+	_ = options
+	return ReportEditResult{}, errReportFileBacked
 }
 
 // FinalizeReport transitions a draft report to done in initialized SQLite state.
 func FinalizeReport(ctx context.Context, root project.Root, resolver PathResolver, ref string) (ReportStatusResult, error) {
-	store, err := openInitializedStore(root, resolver)
-	if err != nil {
-		return ReportStatusResult{}, err
-	}
-	defer store.Close()
-	return store.FinalizeReport(ctx, root, ref)
+	_ = ctx
+	_ = root
+	_ = resolver
+	return ReportStatusResult{}, errReportFileBacked
 }
 
 // ArchiveReport transitions a done report to archived in initialized SQLite state.
 func ArchiveReport(ctx context.Context, root project.Root, resolver PathResolver, ref string) (ReportStatusResult, error) {
-	store, err := openInitializedStore(root, resolver)
-	if err != nil {
-		return ReportStatusResult{}, err
-	}
-	defer store.Close()
-	return store.ArchiveReport(ctx, root, ref)
+	_ = ctx
+	_ = root
+	_ = resolver
+	return ReportStatusResult{}, errReportFileBacked
 }
 
-// CreateReport creates a draft report in an open store.
+// CreateReport refuses SQLite authority; reports are file-backed after migration 0021.
 func (s *Store) CreateReport(ctx context.Context, root project.Root, options ReportCreateOptions) (ReportCreateResult, error) {
-	projectID, err := s.projectID(ctx, root)
-	if err != nil {
-		return ReportCreateResult{}, err
-	}
-	identity, err := s.projectIdentity(ctx, projectID)
-	if err != nil {
-		return ReportCreateResult{}, err
-	}
-	slug := normalizeReportSlug(options.Slug)
-	if slug == "" {
-		return ReportCreateResult{}, fmt.Errorf("report create requires a slug")
-	}
-	kind := strings.TrimSpace(options.Kind)
-	if kind == "" {
-		kind = "research"
-	}
-	source := strings.TrimSpace(options.Source)
-	if source == "" {
-		source = "ad-hoc"
-	}
-	title := reportTitleFromSlug(slug)
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return ReportCreateResult{}, fmt.Errorf("begin report create transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	alias, err := s.nextReportAlias(ctx, tx, projectID, slug)
-	if err != nil {
-		return ReportCreateResult{}, err
-	}
-	reportID := stableMigrationID("report", projectID, alias)
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	_, err = tx.ExecContext(ctx, `
-INSERT INTO reports (id, project_id, report_kind, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
-`, reportID, projectID, kind, title, LifecycleStatusDraft, now, now)
-	if err != nil {
-		return ReportCreateResult{}, fmt.Errorf("insert report %s: %w", alias, err)
-	}
-	if err := insertAlias(ctx, tx, projectID, "report", reportID, "report", alias, now); err != nil {
-		return ReportCreateResult{}, err
-	}
-
-	eventID := stableMigrationID("event", projectID, "report", reportID, "created", LifecycleStatusDraft)
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, 'report', ?, 'status_changed', NULL, ?, ?, ?, ?)
-`, eventID, projectID, reportID, LifecycleStatusDraft, reportCreateEventNote(source), now, now); err != nil {
-		return ReportCreateResult{}, fmt.Errorf("record report create event: %w", err)
-	}
-	if options.SetBody {
-		if _, err := upsertArtifactBodyTx(ctx, tx, projectID, "report", reportID, ArtifactBodyKindMarkdown, options.Body, nil, now); err != nil {
-			return ReportCreateResult{}, err
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return ReportCreateResult{}, fmt.Errorf("commit report create transaction: %w", err)
-	}
-
-	return ReportCreateResult{
-		ContractVersion:    StateJSONContractVersion,
-		DatabaseScope:      identity.DatabaseScope,
-		DatabasePath:       identity.DatabasePath,
-		ProjectID:          identity.ID,
-		ProjectName:        identity.FriendlyName,
-		ProjectCurrentPath: identity.CurrentPath,
-		Report:             TraceEntity{Kind: "report", ID: reportID, Alias: alias, Title: title, Status: LifecycleStatusDraft},
-		Kind:               kind,
-		Source:             source,
-		EventID:            eventID,
-	}, nil
+	_ = s
+	_ = ctx
+	_ = root
+	_ = options
+	return ReportCreateResult{}, errReportFileBacked
 }
 
-// FinalizeReport transitions a draft report to done in an open store.
+// FinalizeReport refuses SQLite authority; reports are file-backed after migration 0021.
 func (s *Store) FinalizeReport(ctx context.Context, root project.Root, ref string) (ReportStatusResult, error) {
-	return s.updateReportStatus(ctx, root, ref, LifecycleStatusDraft, LifecycleStatusDone, "finalize")
+	_ = s
+	_ = ctx
+	_ = root
+	_ = ref
+	return ReportStatusResult{}, errReportFileBacked
 }
 
-// ArchiveReport transitions a done report to archived in an open store.
+// ArchiveReport refuses SQLite authority; reports are file-backed after migration 0021.
 func (s *Store) ArchiveReport(ctx context.Context, root project.Root, ref string) (ReportStatusResult, error) {
-	return s.updateReportStatus(ctx, root, ref, LifecycleStatusDone, LifecycleStatusArchived, "archive")
-}
-
-func (s *Store) updateReportStatus(ctx context.Context, root project.Root, ref string, requiredStatus string, nextStatus string, command string) (ReportStatusResult, error) {
-	projectID, err := s.projectID(ctx, root)
-	if err != nil {
-		return ReportStatusResult{}, err
-	}
-	identity, err := s.projectIdentity(ctx, projectID)
-	if err != nil {
-		return ReportStatusResult{}, err
-	}
-	report, err := s.resolveTraceEntity(ctx, projectID, ref)
-	if err != nil {
-		return ReportStatusResult{}, err
-	}
-	if report.Kind != "report" {
-		return ReportStatusResult{}, fmt.Errorf("%q resolves to %s, not report", ref, report.Kind)
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return ReportStatusResult{}, fmt.Errorf("begin report %s transaction: %w", command, err)
-	}
-	defer tx.Rollback()
-
-	var title, previousStatus string
-	err = tx.QueryRowContext(ctx, `SELECT title, status FROM reports WHERE project_id = ? AND id = ?`, projectID, report.ID).Scan(&title, &previousStatus)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ReportStatusResult{}, fmt.Errorf("report %q not found in SQLite state", ref)
-	}
-	if err != nil {
-		return ReportStatusResult{}, fmt.Errorf("read report metadata: %w", err)
-	}
-	if command == "finalize" && LifecycleStatusMatches(LifecycleEntityReport, previousStatus, nextStatus) {
-		// Finalize is idempotent: re-finalizing a done report succeeds without a
-		// transition or a new event so the render can always be refreshed.
-		status := LifecycleStatusForDisplay(LifecycleEntityReport, previousStatus)
-		report.Title = title
-		report.Status = status
-		return ReportStatusResult{
-			ContractVersion:    StateJSONContractVersion,
-			DatabaseScope:      identity.DatabaseScope,
-			DatabasePath:       identity.DatabasePath,
-			ProjectID:          identity.ID,
-			ProjectName:        identity.FriendlyName,
-			ProjectCurrentPath: identity.CurrentPath,
-			Report:             report,
-			Previous:           status,
-			Status:             status,
-		}, nil
-	}
-	if !LifecycleStatusMatches(LifecycleEntityReport, previousStatus, requiredStatus) {
-		return ReportStatusResult{}, fmt.Errorf("report %q is not %s (status: %s)", firstNonEmpty(report.Alias, ref), requiredStatus, previousStatus)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := tx.ExecContext(ctx, `UPDATE reports SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, nextStatus, now, projectID, report.ID); err != nil {
-		return ReportStatusResult{}, fmt.Errorf("update report status: %w", err)
-	}
-
-	eventID := stableMigrationID("event", projectID, "report", report.ID, "status", previousStatus, nextStatus)
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, 'report', ?, 'status_changed', ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO NOTHING
-`, eventID, projectID, report.ID, previousStatus, nextStatus, "recorded by report "+command, now, now); err != nil {
-		return ReportStatusResult{}, fmt.Errorf("record report status event: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return ReportStatusResult{}, fmt.Errorf("commit report %s transaction: %w", command, err)
-	}
-
-	report.Title = title
-	report.Status = nextStatus
-	return ReportStatusResult{
-		ContractVersion:    StateJSONContractVersion,
-		DatabaseScope:      identity.DatabaseScope,
-		DatabasePath:       identity.DatabasePath,
-		ProjectID:          identity.ID,
-		ProjectName:        identity.FriendlyName,
-		ProjectCurrentPath: identity.CurrentPath,
-		Report:             report,
-		Previous:           previousStatus,
-		Status:             nextStatus,
-		EventID:            eventID,
-	}, nil
-}
-
-func (s *Store) nextReportAlias(ctx context.Context, tx *sql.Tx, projectID string, slug string) (string, error) {
-	base := "report-" + slug
-	for suffix := 0; ; suffix++ {
-		alias := base
-		if suffix > 0 {
-			alias = fmt.Sprintf("%s-%d", base, suffix+1)
-		}
-		var existing string
-		err := tx.QueryRowContext(ctx, `SELECT id FROM aliases WHERE project_id = ? AND namespace = 'report' AND alias = ?`, projectID, alias).Scan(&existing)
-		if errors.Is(err, sql.ErrNoRows) {
-			return alias, nil
-		}
-		if err != nil {
-			return "", fmt.Errorf("check report alias %s: %w", alias, err)
-		}
-	}
-}
-
-func normalizeReportSlug(slug string) string {
-	normalized := strings.ToLower(strings.TrimSpace(slug))
-	normalized = reportSlugCleaner.ReplaceAllString(normalized, "-")
-	normalized = strings.Trim(normalized, "-")
-	return normalized
-}
-
-func reportTitleFromSlug(slug string) string {
-	parts := strings.Split(slug, "-")
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-		parts[i] = strings.ToUpper(part[:1]) + part[1:]
-	}
-	return strings.Join(parts, " ")
-}
-
-func reportCreateEventNote(source string) string {
-	return fmt.Sprintf("recorded by report create; source=%s", source)
+	_ = s
+	_ = ctx
+	_ = root
+	_ = ref
+	return ReportStatusResult{}, errReportFileBacked
 }

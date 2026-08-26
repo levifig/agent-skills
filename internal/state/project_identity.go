@@ -621,6 +621,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?)
 		return "", fmt.Errorf("insert rekeyed project: %w", err)
 	}
 	for _, table := range projectScopedRekeyTables() {
+		var tableExists int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&tableExists); err != nil {
+			return "", fmt.Errorf("inspect %s table: %w", table, err)
+		}
+		if tableExists == 0 {
+			continue
+		}
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
 UPDATE %s
 SET project_id = ?

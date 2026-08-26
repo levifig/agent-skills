@@ -225,16 +225,12 @@ kind: shaping
 	assertEntityStatus(t, store, "tasks", result.ProjectID, "task", "TASK-010", "done")
 	assertEntityStatus(t, store, "tasks", result.ProjectID, "task", "TASK-011", "accepted")
 	assertEntityStatus(t, store, "tasks", result.ProjectID, "task", "TASK-012", "unknown")
-	assertEntityStatus(t, store, "reports", result.ProjectID, "report", "report-final", "done")
-	assertEntityStatus(t, store, "reports", result.ProjectID, "report", "report-bare", "unknown")
-	assertEntityStatus(t, store, "reports", result.ProjectID, "report", "report-archived", "archived")
 	assertEntityStatus(t, store, "ideas", result.ProjectID, "idea", "idea-resolved", "done")
 	assertEntityStatus(t, store, "ideas", result.ProjectID, "idea", "idea-unknown", "open")
 	assertEntityStatus(t, store, "ideas", result.ProjectID, "idea", "idea-oov", "pending")
 	assertEntityStatus(t, store, "brainstorms", result.ProjectID, "brainstorm", "brainstorm-open", "open")
 	assertEntityStatus(t, store, "brainstorms", result.ProjectID, "brainstorm", "brainstorm-unknown", "open")
 	assertEntityStatus(t, store, "brainstorms", result.ProjectID, "brainstorm", "brainstorm-oov", "cooking")
-	assertEntityStatus(t, store, "shaping_drafts", result.ProjectID, "shaping_draft", "shape-raw", "grilling")
 }
 
 func TestImportMarkdownFirstApplyRecordsOOVWarnings(t *testing.T) {

@@ -358,11 +358,12 @@ func TestInspectWarnsWhenGlobalDatabaseHasNotImportedCurrentMarkdown(t *testing.
 	if _, err := Initialize(context.Background(), registeredRoot, PathResolver{StateHome: stateHome}); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	writeAgentsFile(t, unimportedRoot.Path(), "reports/local.md", `---
-title: Local Markdown Report
-status: final
+	writeAgentsFile(t, unimportedRoot.Path(), "specs/SPEC-LOCAL.md", `---
+id: SPEC-LOCAL
+title: Local Markdown Spec
+status: drafting
 ---
-# Local Markdown Report
+# Local Markdown Spec
 `)
 
 	status, err := Inspect(unimportedRoot, PathResolver{StateHome: stateHome})
@@ -378,7 +379,7 @@ status: final
 	}
 	assertDiagnosticPolicy(t, status.Diagnostics, "local-markdown-not-imported", RepairCategoryMarkdownImport, DiagnosticPolicyImportPending, false)
 	assertDiagnosticDetail(t, status.Diagnostics, "local-markdown-not-imported", "importable_count", 1)
-	assertDiagnosticDetail(t, status.Diagnostics, "local-markdown-not-imported", "reports", 1)
+	assertDiagnosticDetail(t, status.Diagnostics, "local-markdown-not-imported", "specs", 1)
 	assertDiagnosticDetail(t, status.Diagnostics, "local-markdown-not-imported", "preview_command", "loaf state migrate markdown --dry-run")
 	action := findRepairAction(t, RepairPlanForStatus(status), "migrate-current-project-markdown")
 	if action.Command != "loaf state migrate markdown --dry-run" || !action.Safe {
@@ -1029,12 +1030,6 @@ VALUES ('plan-one', ?, 'spec-artifact-entities', 'Plan one', 'draft', NULL, ?, ?
 VALUES ('handoff-one', ?, 'session-artifact-entities', 'task-artifact-entities', 'Handoff one', 'final', NULL, ?, ?)`,
 			args: []any{projectID, now, now},
 		},
-		{
-			table: "councils",
-			query: `INSERT INTO councils (id, project_id, spec_id, title, status, body_source_id, created_at, updated_at)
-VALUES ('council-one', ?, 'spec-artifact-entities', 'Council one', 'archived', NULL, ?, ?)`,
-			args: []any{projectID, now, now},
-		},
 	}
 	for _, fixture := range fixtures {
 		if _, err := store.db.ExecContext(context.Background(), fixture.query, fixture.args...); err != nil {
@@ -1049,7 +1044,6 @@ VALUES ('council-one', ?, 'spec-artifact-entities', 'Council one', 'archived', N
 		{"backend-mapping-artifact-body", "artifact_body", "artifact-body-one"},
 		{"backend-mapping-plan", "plan", "plan-one"},
 		{"backend-mapping-handoff", "handoff", "handoff-one"},
-		{"backend-mapping-council", "council", "council-one"},
 	} {
 		if _, err := store.db.ExecContext(context.Background(), `
 INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)

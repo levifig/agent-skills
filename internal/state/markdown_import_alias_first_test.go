@@ -83,6 +83,9 @@ func TestImportAliasFirstRekeyReimportStable(t *testing.T) {
 			continue
 		}
 		kind, alias := parts[0], parts[1]
+		if kind == "report" || kind == "council" || kind == "shaping_draft" {
+			continue // file-backed; no SQLite entity table after migration 0021
+		}
 		twin := stableMigrationID(kind, newProjectID, alias)
 		if twin == entityID {
 			continue
@@ -300,7 +303,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?)
 
 func countProjectEntities(t *testing.T, store *Store, projectID string) map[string]int {
 	t.Helper()
-	tables := []string{"specs", "tasks", "ideas", "brainstorms", "reports", "sparks", "shaping_drafts"}
+	tables := []string{"specs", "tasks", "ideas", "brainstorms", "sparks"}
 	out := make(map[string]int, len(tables))
 	for _, table := range tables {
 		out[table] = countTableWhere(t, store, fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE project_id = ?`, table), projectID)
@@ -346,7 +349,7 @@ ORDER BY namespace, alias
 func entityIDSet(t *testing.T, store *Store, projectID string) map[string]struct{} {
 	t.Helper()
 	out := map[string]struct{}{}
-	for _, table := range []string{"specs", "tasks", "ideas", "brainstorms", "reports", "sparks", "shaping_drafts"} {
+	for _, table := range []string{"specs", "tasks", "ideas", "brainstorms", "sparks"} {
 		rows, err := store.db.QueryContext(context.Background(), fmt.Sprintf(`SELECT id FROM %s WHERE project_id = ?`, table), projectID)
 		if err != nil {
 			t.Fatalf("query %s ids: %v", table, err)
@@ -398,7 +401,6 @@ func countAliasOrphans(t *testing.T, store *Store, projectID string) int {
 		"task":       "tasks",
 		"idea":       "ideas",
 		"brainstorm": "brainstorms",
-		"report":     "reports",
 		"spark":      "sparks",
 	} {
 		var n int
@@ -432,12 +434,10 @@ func entityTableForKind(kind string) string {
 		return "ideas"
 	case "brainstorm":
 		return "brainstorms"
-	case "report":
-		return "reports"
 	case "spark":
 		return "sparks"
-	case "shaping_draft":
-		return "shaping_drafts"
+	case "report", "council", "shaping_draft":
+		panic("file-backed kind has no SQLite table: " + kind)
 	default:
 		return kind + "s"
 	}

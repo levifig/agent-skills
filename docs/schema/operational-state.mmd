@@ -105,15 +105,6 @@ erDiagram
     text created_at
     text updated_at
   }
-  shaping_drafts {
-    text id PK
-    text project_id FK
-    text title
-    text status
-    text body_source_id FK
-    text created_at
-    text updated_at
-  }
   sessions {
     text id PK
     text project_id FK
@@ -211,16 +202,6 @@ erDiagram
     text path
     text content
   }
-  reports {
-    text id PK
-    text project_id FK
-    text report_kind
-    text title
-    text status
-    text body_source_id FK
-    text created_at
-    text updated_at
-  }
   plans {
     text id PK
     text project_id FK
@@ -236,16 +217,6 @@ erDiagram
     text project_id FK
     text session_id FK
     text task_id FK
-    text title
-    text status
-    text body_source_id FK
-    text created_at
-    text updated_at
-  }
-  councils {
-    text id PK
-    text project_id FK
-    text spec_id FK
     text title
     text status
     text body_source_id FK
@@ -386,13 +357,10 @@ erDiagram
   projects ||--o{ ideas : scopes
   projects ||--o{ sparks : scopes
   projects ||--o{ brainstorms : scopes
-  projects ||--o{ shaping_drafts : scopes
   projects ||--o{ sessions : scopes
   projects ||--o{ session_state_snapshots : scopes
-  projects ||--o{ reports : scopes
   projects ||--o{ plans : scopes
   projects ||--o{ handoffs : scopes
-  projects ||--o{ councils : scopes
   projects ||--o{ journal_entries : scopes
   projects ||--o{ journal_origins : scopes
   projects ||--o{ journal_deferrals : scopes
@@ -409,7 +377,6 @@ erDiagram
   projects ||--o{ exports : scopes
   specs ||--o{ tasks : contains
   specs ||--o{ plans : shapes
-  specs ||--o{ councils : contextualizes
   sessions ||--o{ journal_entries : records
   sessions ||--o{ handoffs : transfers
   sessions ||--o{ session_state_snapshots : summarizes
@@ -424,12 +391,9 @@ erDiagram
   sources ||--o{ ideas : bodies
   sources ||--o{ sparks : origins
   sources ||--o{ brainstorms : bodies
-  sources ||--o{ shaping_drafts : bodies
   sources ||--o{ sessions : bodies
-  sources ||--o{ reports : bodies
   sources ||--o{ plans : bodies
   sources ||--o{ handoffs : bodies
-  sources ||--o{ councils : bodies
   intents {
     text id PK
     text project_id FK

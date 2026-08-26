@@ -367,50 +367,6 @@ func TestAliasOrphanSourceSaltRefusesManyOrphansToOneHolder(t *testing.T) {
 
 // Schema 18 dropped findings/verdicts; retiring an orphan report must not
 // query those tables. The polymorphic sweep alone is enough.
-func TestAliasOrphanRetiresOrphanReportAtSchema18(t *testing.T) {
-	ctx := context.Background()
-	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
-	legacyID := hex.EncodeToString(sha256Sum(path))
-	alias := "report-schema18"
-	twinID := stableMigrationID("report", projectID, alias)
-	orphanID := stableMigrationID("report", legacyID, alias)
-
-	seedReport(t, stateHome, root, projectID, twinID, "Schema 18 Report", "2026-06-24T13:03:00Z", alias)
-	seedReport(t, stateHome, root, projectID, orphanID, "Schema 18 Report", "2026-06-13T10:00:00Z", "")
-
-	store := openTestStore(t, root, stateHome)
-	schemaVersion, err := store.SchemaVersion(ctx)
-	if err != nil {
-		store.Close()
-		t.Fatalf("SchemaVersion() error = %v", err)
-	}
-	if err := validateGoneTablesAbsent(ctx, store.db); err != nil {
-		store.Close()
-		t.Fatalf("validateGoneTablesAbsent() error = %v", err)
-	}
-	store.Close()
-	if schemaVersion != CurrentSchemaVersion() {
-		t.Fatalf("schema version = %d, want current %d", schemaVersion, CurrentSchemaVersion())
-	}
-
-	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
-	if err != nil {
-		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
-	}
-	if entityExists(t, stateHome, root, "reports", orphanID) {
-		t.Fatal("orphan report survived apply")
-	}
-	if !entityExists(t, stateHome, root, "reports", twinID) {
-		t.Fatal("the alias-holding report was retired")
-	}
-
-	if _, err := RollbackAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, applied.RollbackManifestPath); err != nil {
-		t.Fatalf("RollbackAliasOrphanMigration() error = %v", err)
-	}
-	if !entityExists(t, stateHome, root, "reports", orphanID) {
-		t.Fatal("orphan report not restored by rollback")
-	}
-}
 
 // journal_deferrals.spark_id and intent_operations.spark_id are NOT NULL with no
 // foreign key: retiring a spark without touching them leaves silent dangling
@@ -698,85 +654,10 @@ func TestAliasOrphanPreviewReportsOrphanedSources(t *testing.T) {
 	}
 }
 
-// Rollback restores the archived report byte-identically, updated_at included.
-func TestAliasOrphanRollbackRestoresUpdatedAt(t *testing.T) {
-	ctx := context.Background()
-	root, stateHome, projectID, _ := seedAliasOrphanFixtureBase(t)
-	seedReport(t, stateHome, root, projectID, brokenEvidenceReportID, "Transitional TypeScript Surfaces — Do Not Deepen", "2026-06-20T00:00:00Z", "transitional-surfaces-do-not-deepen")
-	mustExecOpen(t, stateHome, root, `UPDATE reports SET status = 'active', updated_at = ? WHERE id = ?`, "2026-06-20T00:00:00Z", brokenEvidenceReportID)
 
-	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
-	if err != nil {
-		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
-	}
-	if _, err := RollbackAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, applied.RollbackManifestPath); err != nil {
-		t.Fatalf("RollbackAliasOrphanMigration() error = %v", err)
-	}
-	status, updatedAt := reportStatusAndUpdatedAt(t, stateHome, root, brokenEvidenceReportID)
-	if status != "active" || updatedAt != "2026-06-20T00:00:00Z" {
-		t.Fatalf("report after rollback = %q/%q, want active/2026-06-20T00:00:00Z", status, updatedAt)
-	}
-}
-
-// The housekeeping scanner counts shaping drafts and the importer gives them
-// aliases, so they can orphan exactly like the other six tables. Detector and
-// repair have to reach them or the count-agreement receipt is not a receipt.
-func TestAliasOrphanCoversShapingDrafts(t *testing.T) {
-	ctx := context.Background()
-	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
-	legacyID := hex.EncodeToString(sha256Sum(path))
-	alias := "shape-token-rotation"
-	twinID := stableMigrationID("shaping_draft", projectID, alias)
-	orphanID := stableMigrationID("shaping_draft", legacyID, alias)
-
-	seedShapingDraft(t, stateHome, root, projectID, twinID, "Token Rotation Shape", "2026-06-24T13:03:00Z", alias)
-	seedShapingDraft(t, stateHome, root, projectID, orphanID, "Token Rotation Shape", "2026-06-13T10:00:00Z", "")
-
-	store := openTestStore(t, root, stateHome)
-	parity, err := InspectAliasParity(ctx, store)
-	store.Close()
-	if err != nil {
-		t.Fatalf("InspectAliasParity() error = %v", err)
-	}
-	drafts := findAliasParityTable(t, parity, projectID, "shaping_drafts")
-	if drafts.RawCount != 2 || drafts.AliasReachableCount != 1 || drafts.OrphanDelta != 1 {
-		t.Fatalf("shaping_drafts parity = %#v, want raw=2 reachable=1 orphan=1", drafts)
-	}
-
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
-	if err != nil {
-		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
-	}
-	if got := aliasOrphanClassification(t, preview, orphanID); got.Proof != aliasOrphanProofDerivation || got.TwinID != twinID {
-		t.Fatalf("shaping draft classification = %#v, want derivation against %s", got, twinID)
-	}
-
-	if _, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{}); err != nil {
-		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
-	}
-	if entityExists(t, stateHome, root, "shaping_drafts", orphanID) {
-		t.Fatal("orphan shaping draft survived apply")
-	}
-	if !entityExists(t, stateHome, root, "shaping_drafts", twinID) {
-		t.Fatal("the alias-holding shaping draft was retired")
-	}
-}
 
 // --- fixture helpers ---
 
-func seedShapingDraft(t *testing.T, stateHome string, root project.Root, projectID, id, title, createdAt, alias string) {
-	t.Helper()
-	mustExecOpen(t, stateHome, root, `
-INSERT INTO shaping_drafts (id, project_id, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, 'draft', NULL, ?, ?)
-`, id, projectID, title, createdAt, createdAt)
-	if alias != "" {
-		mustExecOpen(t, stateHome, root, `
-INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
-VALUES (?, ?, 'shaping_draft', ?, 'shaping_draft', ?, ?, ?)
-`, stableMigrationID("alias", projectID, "shaping_draft", alias), projectID, id, alias, createdAt, createdAt)
-	}
-}
 
 func aliasOrphanClassification(t *testing.T, result AliasOrphanMigrationResult, entityID string) AliasOrphanRowClassify {
 	t.Helper()
@@ -833,19 +714,6 @@ VALUES (?, ?, 'spark', ?, 'spark', ?, ?, ?)
 	}
 }
 
-func seedReport(t *testing.T, stateHome string, root project.Root, projectID, id, title, createdAt, alias string) {
-	t.Helper()
-	mustExecOpen(t, stateHome, root, `
-INSERT INTO reports (id, project_id, report_kind, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, 'audit', ?, 'final', NULL, ?, ?)
-`, id, projectID, title, createdAt, createdAt)
-	if alias != "" {
-		mustExecOpen(t, stateHome, root, `
-INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
-VALUES (?, ?, 'report', ?, 'report', ?, ?, ?)
-`, stableMigrationID("alias", projectID, "report", alias), projectID, id, alias, createdAt, createdAt)
-	}
-}
 
 func deferralSparkID(t *testing.T, stateHome string, root project.Root, projectID, operationKey string) string {
 	t.Helper()
@@ -858,13 +726,3 @@ func deferralSparkID(t *testing.T, stateHome string, root project.Root, projectI
 	return sparkID
 }
 
-func reportStatusAndUpdatedAt(t *testing.T, stateHome string, root project.Root, id string) (string, string) {
-	t.Helper()
-	store := openTestStore(t, root, stateHome)
-	defer store.Close()
-	var status, updatedAt string
-	if err := store.db.QueryRow(`SELECT status, updated_at FROM reports WHERE id = ?`, id).Scan(&status, &updatedAt); err != nil {
-		t.Fatalf("read report: %v", err)
-	}
-	return status, updatedAt
-}
