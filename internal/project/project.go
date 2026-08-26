@@ -66,6 +66,21 @@ func (r Root) Path() string {
 	return r.path
 }
 
+// ResolveRepositoryRoot returns the Git worktree root for command execution
+// at the given start path. Linked worktrees resolve to their own checkout; unlike ResolveRoot,
+// this does not normalize to the main worktree.
+func ResolveRepositoryRoot(start string) (Root, error) {
+	workingDir, err := ResolveWorkingDirectory(start)
+	if err != nil {
+		return Root{}, err
+	}
+
+	if gitRoot, ok := gitOutput(workingDir.Path(), "rev-parse", "--show-toplevel"); ok {
+		return Root{path: realpathOrSelf(gitRoot)}, nil
+	}
+	return Root{path: workingDir.Path()}, nil
+}
+
 func resolveGitRoot(start string) (string, bool) {
 	gitDir, ok := gitOutput(start, "rev-parse", "--path-format=absolute", "--git-dir")
 	if !ok {

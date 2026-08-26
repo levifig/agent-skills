@@ -66,6 +66,41 @@ func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func TestRunnerIssueVerifyRunsInInvokingWorktree(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Verify worktree"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	marker := "worktree-only-marker.txt"
+	command := "test -f " + marker
+	if _, err := runIssue(t, repo, stateHome, "dod", "add", "LOAF-1", "marker exists in invoking worktree",
+		"--command", command, "--expect", "exit 0"); err != nil {
+		t.Fatalf("dod add error = %v", err)
+	}
+
+	startedOut, err := runIssue(t, repo, stateHome, "start", "LOAF-1", "--json")
+	if err != nil {
+		t.Fatalf("issue start error = %v", err)
+	}
+	started := decodeIssueStart(t, startedOut)
+	if err := os.WriteFile(filepath.Join(started.Worktree, marker), []byte("present\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(marker) error = %v", err)
+	}
+
+	out, err := runIssue(t, started.Worktree, stateHome, "verify", "LOAF-1")
+	if err != nil {
+		t.Fatalf("verify from worktree error = %v\n%s", err, out)
+	}
+	if !strings.Contains(out, command) {
+		t.Fatalf("verify output = %q, want command %q", out, command)
+	}
+
+	failOut, err := runIssue(t, repo, stateHome, "verify", "LOAF-1")
+	if err == nil {
+		t.Fatalf("verify from main checkout should fail when marker exists only in worktree\n%s", failOut)
+	}
+}
+
 func TestRunnerIssueStartChildJoinsRootWorkspace(t *testing.T) {
 	repo, stateHome := issueGitFixture(t)
 	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
@@ -314,7 +349,6 @@ func TestRunnerIssueStopChildNamesRootWhenRootNotStarted(t *testing.T) {
 		t.Fatalf("stop child error = %v, want root-directed refusal", err)
 	}
 }
-
 
 func TestRunnerIssueListStartedShowsLiveAndStale(t *testing.T) {
 	repo, stateHome := issueGitFixture(t)

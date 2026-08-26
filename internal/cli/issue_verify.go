@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
 )
 
@@ -46,7 +47,12 @@ func (r Runner) runIssueVerify(args []string, out io.Writer, runtime state.Runti
 		return err
 	}
 
-	rootPath := projectRoot.Path()
+	commandRoot, err := project.ResolveRepositoryRoot(runtime.RootPath())
+	if err != nil {
+		return err
+	}
+	commandPath := commandRoot.Path()
+
 	result := issueVerifyResult{
 		ContractVersion:    shown.ContractVersion,
 		DatabaseScope:      shown.DatabaseScope,
@@ -63,7 +69,7 @@ func (r Runner) runIssueVerify(args []string, out io.Writer, runtime state.Runti
 		if criterion.Tier != state.IssueCriterionTierV || strings.TrimSpace(criterion.Command) == "" {
 			continue
 		}
-		exitCode, output, runErr := runChangeCriterionCommand(rootPath, criterion.Command)
+		exitCode, output, runErr := runChangeCriterionCommand(commandPath, criterion.Command)
 		expectation := parseChangeExpectation(criterion.Expect)
 		checks := evaluateChangeExpectation(expectation, exitCode, output)
 		ok := runErr == nil && changeExpectChecksPass(checks)
@@ -110,6 +116,6 @@ func (r Runner) runIssueVerify(args []string, out io.Writer, runtime state.Runti
 
 func writeIssueVerifyHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf issue verify <ref> [--json]",
-		"Run the issue's V-tier criteria (command + expect) from the repository root. Honors exit N and contains `text`. Writes nothing; exits non-zero on any failure.",
+		"Run the issue's V-tier criteria (command + expect) from the invoking worktree repository root. Honors exit N and contains `text`. Writes nothing; exits non-zero on any failure.",
 		"--json       Output per-criterion results as JSON")
 }
