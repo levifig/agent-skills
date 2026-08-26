@@ -76,6 +76,8 @@ var projectScopedDeleteTables = []string{
 	"sources",
 	"project_attachment_evidence",
 	"project_conf_labels",
+	"sync_outbound_queue",
+	"sync_project_cursors",
 	"project_paths",
 }
 
