@@ -103,6 +103,9 @@ func UnattendedAttach(ctx context.Context, in AttachInput) (AttachResult, error)
 	if probeStore == nil {
 		return AttachResult{}, errors.New("attach probe store is required")
 	}
+	if _, err := probeStore.ResolveProjectByConf(ctx, conf, state.ConfResolutionUnattended); err != nil {
+		return AttachResult{}, classifyConfResolutionError(err)
+	}
 	maxSkew := in.MaxHLCSkewMS
 	if maxSkew <= 0 {
 		maxSkew = int64((24 * time.Hour) / time.Millisecond)
@@ -224,6 +227,30 @@ func classifyReceiveError(err error) error {
 	return err
 }
 
+
+
+func classifyConfResolutionError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var required *state.ConfResolutionRequiredError
+	if errors.As(err, &required) {
+		return &RefusalError{
+			Code:   refusalCodeConfMissing,
+			Cause:  required.Error(),
+			Remedy: "confirm first contact on this substrate before unattended attach; register the conf label interactively",
+		}
+	}
+	var outOfScope *state.ConfOutOfScopeError
+	if errors.As(err, &outOfScope) {
+		return &RefusalError{
+			Code:   refusalCodeIdentityMismatch,
+			Cause:  outOfScope.Error(),
+			Remedy: "ensure `.agents/loaf.conf` project_id matches the registered conf label on this substrate",
+		}
+	}
+	return err
+}
 
 // AttachRefusalJSON renders an attach refusal for --json callers.
 func AttachRefusalJSON(err error) ([]byte, error) {

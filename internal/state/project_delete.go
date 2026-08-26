@@ -74,6 +74,8 @@ var projectScopedDeleteTables = []string{
 	"brainstorms",
 	"aliases",
 	"sources",
+	"project_attachment_evidence",
+	"project_conf_labels",
 	"project_paths",
 }
 
