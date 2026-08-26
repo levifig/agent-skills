@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -241,8 +242,12 @@ func TestIdeaAndReleaseWritersUseFactChokepoint(t *testing.T) {
 }
 
 func TestRebuildMutableCoreProjectionsFromFacts(t *testing.T) {
+	requireGit(t)
 	ctx := context.Background()
-	root := projectRoot(t)
+	root, err := project.ResolveRoot(initGitRepo(t))
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
 	resolver := PathResolver{StateHome: t.TempDir()}
 	status, err := Initialize(ctx, root, resolver)
 	if err != nil {
@@ -274,5 +279,164 @@ func TestRebuildMutableCoreProjectionsFromFacts(t *testing.T) {
 	}
 	if !parity.Sparks.Ready || parity.Sparks.ProjectionRows != 1 {
 		t.Fatalf("spark parity after rebuild = %#v", parity.Sparks)
+	}
+}
+
+func TestRebuildMutableCoreProjectionsFromReceivedRefAndVerificationFacts(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	root, err := project.ResolveRoot(initGitRepo(t))
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	projectID, err := store.projectID(ctx, root)
+	if err != nil {
+		t.Fatalf("projectID() error = %v", err)
+	}
+
+	now := time.Date(2026, 8, 26, 18, 0, 0, 0, time.UTC)
+	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000101", FactKindRefRegistered, "env-recv", 1, now.UnixMilli(), CoreEventPayload{
+		SubjectKind:  "ref",
+		SubjectID:    "bmap-recv-1",
+		Backend:      "linear",
+		EntityKind:   "issue",
+		EntityID:     "issue-recv-1",
+		ExternalKind: "issue",
+		ExternalID:   "LOAF-62",
+		ExternalURL:  "https://linear.app/loaf/issue/LOAF-62",
+		SyncStatus:   linearSyncLinked,
+		CreatedAt:    now.Format(time.RFC3339),
+		UpdatedAt:    now.Format(time.RFC3339),
+	})
+	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000102", FactKindVerificationRecorded, "env-recv", 2, now.UnixMilli()+1, CoreEventPayload{
+		SubjectKind:  "verification",
+		SubjectID:    "wcr-recv-1",
+		Provider:     "branch",
+		ProviderRef:  "issue/loaf-62",
+		ReceiptKind:  "pr",
+		ReceiptValue: "https://github.com/levifig/loaf/pull/204",
+		CreatedAt:    now.Format(time.RFC3339),
+		UpdatedAt:    now.Format(time.RFC3339),
+	})
+
+	var mappings, receipts int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM backend_mappings WHERE id = ?`, "bmap-recv-1").Scan(&mappings); err != nil {
+		t.Fatalf("count mappings before rebuild: %v", err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_contract_receipts WHERE id = ?`, "wcr-recv-1").Scan(&receipts); err != nil {
+		t.Fatalf("count receipts before rebuild: %v", err)
+	}
+	if mappings != 0 || receipts != 0 {
+		t.Fatalf("projections before rebuild mappings=%d receipts=%d, want 0 (ReceiveFact is insert-only)", mappings, receipts)
+	}
+
+	if _, err := RebuildMutableCoreProjectionsForProject(ctx, store, projectID); err != nil {
+		t.Fatalf("RebuildMutableCoreProjectionsForProject() error = %v", err)
+	}
+
+	var externalID, receiptValue string
+	if err := store.db.QueryRowContext(ctx, `SELECT external_id FROM backend_mappings WHERE id = ?`, "bmap-recv-1").Scan(&externalID); err != nil {
+		t.Fatalf("backend mapping after rebuild: %v", err)
+	}
+	if externalID != "LOAF-62" {
+		t.Fatalf("backend mapping external_id = %q, want LOAF-62", externalID)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT receipt_value FROM work_contract_receipts WHERE id = ?`, "wcr-recv-1").Scan(&receiptValue); err != nil {
+		t.Fatalf("verification receipt after rebuild: %v", err)
+	}
+	if receiptValue != "https://github.com/levifig/loaf/pull/204" {
+		t.Fatalf("receipt_value = %q", receiptValue)
+	}
+}
+
+func TestRebuildMutableCoreProjectionsFoldsWorktreeFacts(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	root, err := project.ResolveRoot(initGitRepo(t))
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	projectID, err := store.projectID(ctx, root)
+	if err != nil {
+		t.Fatalf("projectID() error = %v", err)
+	}
+	now := time.Date(2026, 8, 26, 18, 30, 0, 0, time.UTC).Format(time.RFC3339)
+	mustExec(t, store, `INSERT INTO issues (id, project_id, kind, title, body, status, created_at, updated_at) VALUES (?, ?, 'delivery', 'worktree fold', '', 'todo', ?, ?)`, "issue-wt-1", projectID, now, now)
+
+	boundAt := time.Date(2026, 8, 26, 18, 31, 0, 0, time.UTC)
+	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000201", FactKindWorktreeBound, "env-wt", 1, boundAt.UnixMilli(), CoreEventPayload{
+		SubjectKind: "issue",
+		SubjectID:   "issue-wt-1",
+		Branch:      "issue/loaf-62",
+		Worktree:    "/tmp/remote-machine/issue-loaf-62",
+		CreatedAt:   boundAt.Format(time.RFC3339),
+		UpdatedAt:   boundAt.Format(time.RFC3339),
+	})
+	if _, err := RebuildMutableCoreProjectionsForProject(ctx, store, projectID); err != nil {
+		t.Fatalf("rebuild after bind: %v", err)
+	}
+	var branch, worktree string
+	if err := store.db.QueryRowContext(ctx, `SELECT COALESCE(started_branch, ''), COALESCE(started_worktree, '') FROM issues WHERE id = ?`, "issue-wt-1").Scan(&branch, &worktree); err != nil {
+		t.Fatalf("read started workspace: %v", err)
+	}
+	if branch != "issue/loaf-62" || worktree != "/tmp/remote-machine/issue-loaf-62" {
+		t.Fatalf("started = (%q, %q), want bound fact applied", branch, worktree)
+	}
+
+	unboundAt := boundAt.Add(time.Minute)
+	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000202", FactKindWorktreeUnbound, "env-wt", 2, unboundAt.UnixMilli(), CoreEventPayload{
+		SubjectKind: "issue",
+		SubjectID:   "issue-wt-1",
+		CreatedAt:   unboundAt.Format(time.RFC3339),
+		UpdatedAt:   unboundAt.Format(time.RFC3339),
+	})
+	if _, err := RebuildMutableCoreProjectionsForProject(ctx, store, projectID); err != nil {
+		t.Fatalf("rebuild after unbind: %v", err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COALESCE(started_branch, ''), COALESCE(started_worktree, '') FROM issues WHERE id = ?`, "issue-wt-1").Scan(&branch, &worktree); err != nil {
+		t.Fatalf("read started workspace after unbind: %v", err)
+	}
+	if branch != "" || worktree != "" {
+		t.Fatalf("started after unbind = (%q, %q), want cleared", branch, worktree)
+	}
+}
+
+func receiveCoreFact(t *testing.T, store *Store, projectID, id, kind, envID string, seq, wallMS int64, payload CoreEventPayload) {
+	t.Helper()
+	encoded, err := encodeCoreEventPayload(payload)
+	if err != nil {
+		t.Fatalf("encode payload: %v", err)
+	}
+	inserted, err := ReceiveFact(context.Background(), store, FactEnvelope{
+		ID: id, ProjectID: projectID, Kind: kind, Payload: encoded,
+		EnvID: envID, Seq: seq,
+		HLC:       fmt.Sprintf("%020d:%06d", wallMS, 0),
+		EnvelopeV: factEnvelopeVersion,
+	}, ReceiveFactOptions{})
+	if err != nil {
+		t.Fatalf("ReceiveFact(%s) error = %v", kind, err)
+	}
+	if !inserted {
+		t.Fatalf("ReceiveFact(%s) inserted = false", kind)
 	}
 }

@@ -27,7 +27,7 @@ func TestTwoClientConvergenceUnion(t *testing.T) {
 	factA, err := state.AppendFact(ctx, homeA, state.AppendFactInput{
 		ProjectID: h.projectID, Kind: state.FactKindJournal,
 		Payload: `{"entry_type":"discover","message":"from-a","created_at":"2026-08-26T12:00:00Z","updated_at":"2026-08-26T12:00:00Z"}`,
-		EnvID: "env-a", Now: now,
+		EnvID:   "env-a", Now: now,
 	})
 	if err != nil {
 		t.Fatalf("append A: %v", err)
@@ -35,7 +35,7 @@ func TestTwoClientConvergenceUnion(t *testing.T) {
 	factB, err := state.AppendFact(ctx, homeB, state.AppendFactInput{
 		ProjectID: h.projectID, Kind: state.FactKindJournal,
 		Payload: `{"entry_type":"discover","message":"from-b","created_at":"2026-08-26T12:00:01Z","updated_at":"2026-08-26T12:00:01Z"}`,
-		EnvID: "env-b", Now: now.Add(time.Second),
+		EnvID:   "env-b", Now: now.Add(time.Second),
 	})
 	if err != nil {
 		t.Fatalf("append B: %v", err)
@@ -81,9 +81,9 @@ func TestGapInjectionIsLoud(t *testing.T) {
 	for _, seq := range []int64{1, 3} {
 		if _, err := state.ReceiveFact(ctx, store, state.FactEnvelope{
 			ID: fmt.Sprintf("018f5c2a-0000-7000-8000-%012d", seq), ProjectID: h.projectID,
-			Kind: state.FactKindJournal,
+			Kind:    state.FactKindJournal,
 			Payload: fmt.Sprintf(`{"entry_type":"discover","message":"seq-%d","created_at":"2026-08-26T12:00:00Z","updated_at":"2026-08-26T12:00:00Z"}`, seq),
-			EnvID: "gap-env", Seq: seq, HLC: fmt.Sprintf("%020d:%06d", 1_700_000_000_000+seq, 0), EnvelopeV: 1,
+			EnvID:   "gap-env", Seq: seq, HLC: fmt.Sprintf("%020d:%06d", 1_700_000_000_000+seq, 0), EnvelopeV: 1,
 		}, state.ReceiveFactOptions{}); err != nil {
 			t.Fatalf("receive seq %d: %v", seq, err)
 		}
@@ -108,7 +108,7 @@ func TestSkewRefusal(t *testing.T) {
 	fact, err := state.AppendFact(ctx, publisher, state.AppendFactInput{
 		ProjectID: h.projectID, Kind: state.FactKindJournal,
 		Payload: `{"entry_type":"discover","message":"future","created_at":"2030-01-01T00:00:00Z","updated_at":"2030-01-01T00:00:00Z"}`,
-		EnvID: "skew-env", Now: farFuture,
+		EnvID:   "skew-env", Now: farFuture,
 	})
 	if err != nil {
 		t.Fatalf("append future: %v", err)
@@ -124,9 +124,9 @@ func TestSkewRefusal(t *testing.T) {
 	receiver := openIsolatedStore(t, h.projectID)
 	if _, err := state.ReceiveFact(ctx, receiver, state.FactEnvelope{
 		ID: "018f5c2a-0000-7000-8000-000000000010", ProjectID: h.projectID,
-		Kind: state.FactKindJournal,
+		Kind:    state.FactKindJournal,
 		Payload: `{"entry_type":"discover","message":"baseline","created_at":"2026-08-26T12:00:00Z","updated_at":"2026-08-26T12:00:00Z"}`,
-		EnvID: "receiver-env", Seq: 1, HLC: "00000000000000170000:000000", EnvelopeV: 1,
+		EnvID:   "receiver-env", Seq: 1, HLC: "00000000000000170000:000000", EnvelopeV: 1,
 	}, state.ReceiveFactOptions{}); err != nil {
 		t.Fatalf("seed baseline: %v", err)
 	}
@@ -246,5 +246,78 @@ func mustExec(t *testing.T, store *state.Store, query string, args ...any) {
 	t.Helper()
 	if _, err := store.DB().ExecContext(context.Background(), query, args...); err != nil {
 		t.Fatalf("exec: %v", err)
+	}
+}
+
+func TestPullRefAndVerificationFactsRefreshProjections(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := newConvergenceHarness(t)
+	publisher := openIsolatedStore(t, h.projectID)
+	receiver := openIsolatedStore(t, h.projectID)
+
+	now := time.Date(2026, 8, 26, 19, 0, 0, 0, time.UTC)
+	refPayload, err := json.Marshal(state.CoreEventPayload{
+		SubjectKind:  "ref",
+		SubjectID:    "bmap-sync-1",
+		Backend:      "linear",
+		EntityKind:   "issue",
+		EntityID:     "issue-sync-1",
+		ExternalKind: "issue",
+		ExternalID:   "LOAF-62",
+		ExternalURL:  "https://linear.app/loaf/issue/LOAF-62",
+		SyncStatus:   "linked",
+		CreatedAt:    now.Format(time.RFC3339),
+		UpdatedAt:    now.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("marshal ref payload: %v", err)
+	}
+	verifyPayload, err := json.Marshal(state.CoreEventPayload{
+		SubjectKind:  "verification",
+		SubjectID:    "wcr-sync-1",
+		Provider:     "branch",
+		ProviderRef:  "issue/loaf-62",
+		ReceiptKind:  "pr",
+		ReceiptValue: "https://github.com/levifig/loaf/pull/204",
+		CreatedAt:    now.Format(time.RFC3339),
+		UpdatedAt:    now.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("marshal verification payload: %v", err)
+	}
+
+	if _, err := state.AppendFact(ctx, publisher, state.AppendFactInput{
+		ProjectID: h.projectID, Kind: state.FactKindRefRegistered,
+		Payload: string(refPayload), EnvID: "env-pub", Now: now,
+	}); err != nil {
+		t.Fatalf("append ref: %v", err)
+	}
+	if _, err := state.AppendFact(ctx, publisher, state.AppendFactInput{
+		ProjectID: h.projectID, Kind: state.FactKindVerificationRecorded,
+		Payload: string(verifyPayload), EnvID: "env-pub", Now: now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("append verification: %v", err)
+	}
+
+	if _, err := newEngine(t, publisher, h).Sync(ctx); err != nil {
+		t.Fatalf("sync publisher: %v", err)
+	}
+	if _, err := newEngine(t, receiver, h).Sync(ctx); err != nil {
+		t.Fatalf("sync receiver: %v", err)
+	}
+
+	var externalID, receiptValue string
+	if err := receiver.DB().QueryRowContext(ctx, `SELECT external_id FROM backend_mappings WHERE id = ?`, "bmap-sync-1").Scan(&externalID); err != nil {
+		t.Fatalf("receiver backend mapping: %v", err)
+	}
+	if externalID != "LOAF-62" {
+		t.Fatalf("receiver external_id = %q, want LOAF-62", externalID)
+	}
+	if err := receiver.DB().QueryRowContext(ctx, `SELECT receipt_value FROM work_contract_receipts WHERE id = ?`, "wcr-sync-1").Scan(&receiptValue); err != nil {
+		t.Fatalf("receiver verification receipt: %v", err)
+	}
+	if receiptValue != "https://github.com/levifig/loaf/pull/204" {
+		t.Fatalf("receiver receipt_value = %q", receiptValue)
 	}
 }

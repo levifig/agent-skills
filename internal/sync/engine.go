@@ -209,6 +209,7 @@ func refreshProjections(ctx context.Context, store *state.Store, projectID strin
 	if _, err := state.RebuildJournalProjectionForProject(ctx, store, projectID); err != nil {
 		return err
 	}
+	// Rebuilds spark/idea/handoff/release plus refs, worktrees, and verification.
 	_, err := state.RebuildMutableCoreProjectionsForProject(ctx, store, projectID)
 	return err
 }
