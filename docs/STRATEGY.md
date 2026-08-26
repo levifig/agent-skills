@@ -62,9 +62,11 @@ The implication for both personas: Loaf's value is the *framework* -- mechanical
 > **Revision 2026-08-26 (LOAF-90):** Inserts substrate arc priorities. Supersedes: priorities listing only journal reliability and Loaf Flow without personal-substrate destination.
 >
 > **Revision 2026-08-26 (LOAF-90, schema 25):** LOAF-63/64/72 landed on main. Supersedes: "remaining mutable-core migration" and "LOAF-64 partial".
+>
+> **Revision 2026-08-26 (LOAF-62 closeout):** LOAF-68 children 84–86 shipped; sync refresh folds refs, worktrees, and verification. Grow-only union docs shipped with the LOAF-63 lock.
 
-- **Personal memory substrate (LOAF-62).** Fact envelope, E2E crypto, sync server/client, attach-or-refuse, identity evidence, and mutable-core event facts shipped (LOAF-63–67, 71–72, 75–76). Writers append through the LOAF-71 chokepoint; the `events` table remains local archive (migration 0025). Parent closeout is independent review and ship.
-- **Refs + contracts cutover (LOAF-68).** Contract machinery keys to refs (LOAF-82) and render-out (LOAF-83) shipped; branch/PR bootstrap (LOAF-85), flow-skill ref cutover (LOAF-86), and decision re-home (LOAF-84) remain.
+- **Personal memory substrate (LOAF-62).** Fact envelope, E2E crypto, sync server/client, attach-or-refuse, identity evidence, grow-only union, and mutable-core event facts shipped (LOAF-63–67, 71–72, 75–76). Writers append through the LOAF-71 chokepoint; the `events` table remains local archive (migration 0025). Sync refresh rebuilds spark/idea/handoff/release/ref/verification projections and worktree start bindings from facts (worktree paths may not exist on the receiving machine). Parent closeout is independent review and ship.
+- **Refs + contracts cutover (LOAF-68).** Contract machinery keys to refs (LOAF-82), render-out (LOAF-83), branch/PR bootstrap (LOAF-85), flow-skill ref cutover (LOAF-86), and decision re-home (LOAF-84) shipped.
 - **Dead state before sync (LOAF-69).** Delete zero-row schema (LOAF-79), demote document layer (LOAF-80), and inventory lock (LOAF-81) shipped — minimal sync contract enforced.
 - **Scratchpad (LOAF-74).** CLI and closed kind set (LOAF-87) and server SSE/long-poll fanout (LOAF-88) shipped; close/prune (LOAF-89) shipped.
 - **Journal reliability across installed targets.** Converge content-addressed installation, target adapter ownership, capability diagnosis, and isolated installed-runtime dogfood without mutating users' production state.

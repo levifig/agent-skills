@@ -20,7 +20,7 @@ Functional profiles define what agents can mechanically touch (tool access). Ski
 
 > **Revision 2026-08-26 (LOAF-90):** Continuity is personal-first and environment-agnostic. Supersedes: continuity described only as project-journal handoff on a single machine.
 
-Loaf's durable memory — journal, wraps, handoffs, decisions, work-unit refs, verification records — lives in one operator's **personal memory substrate**. Every environment the operator uses (laptop, second machine, Cursor Cloud Agent, Amp Orb, CI) attaches to the same substrate or **hard-refuses** Loaf-flow work. There is no silent empty universe and no memoryless degraded mode.
+Loaf's durable memory — journal, wraps, handoffs, decisions, work-unit refs, verification records — lives in one operator's **personal memory substrate**. Every environment the operator uses (laptop, second machine, Cursor Cloud Agent, Amp Orb, CI) attaches to the same substrate or **hard-refuses** Loaf-flow work. There is no silent empty universe and no memoryless degraded mode. A never-attached trusted machine remains a complete local-first replica; attach is the multi-environment join, not a prerequisite for first use.
 
 Work survives context loss, compaction, tool restarts, and cross-conversation handoffs because the substrate is external to any single harness session. The project journal is a **projection** of grow-only ledger facts, not a hand-authored file. Change artifacts and compatible task records keep intent and execution inspectable outside any one conversation. Context at conversation start is a derived digest — never a lifecycle transition.
 

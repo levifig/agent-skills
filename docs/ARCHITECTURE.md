@@ -66,7 +66,7 @@ The standing invariant is alias parity: for every project and every aliased enti
 
 > **Revision 2026-08-26 (LOAF-90):** New section. Supersedes: implicit single-machine SQLite as sufficient for Loaf-flow work.
 
-One operator's substrate is **identical across every environment** they operate. Local SQLite on a trusted machine is a full replica (local-first). A self-hostable sync relay (`loaf serve`, LOAF-75) converges facts between environments; the server holds opaque ciphertext blobs and auth tokens only — never keys, never plaintext semantics. The client sync engine (LOAF-76) queues, pulls by cursor, and detects env-seq gaps with loud warnings. Environments that cannot attach hard-refuse substrate-touching commands (LOAF-67); there is no detached override in v1.
+One operator's substrate is **identical across every environment** they operate. Local SQLite on a trusted machine is a full replica (local-first). A self-hostable sync relay (`loaf serve`, LOAF-75) converges facts between environments; the server holds opaque ciphertext blobs and auth tokens only — never keys, never plaintext semantics. The client sync engine (LOAF-76) queues, pulls by cursor, and detects env-seq gaps with loud warnings. Environments that cannot attach hard-refuse substrate-touching commands (LOAF-67); there is no detached override in v1. Never-attached local use remains valid local-first; fail-loud attach applies when joining the sync fleet.
 
 **Synced minimal core:** project identity and attachment evidence, ref mappings and work contracts, ledger facts (journal, sparks, wraps, handoffs, decisions), verification-run records, releases. **Never synced:** FTS indexes, hook trust, conversation handles, vocabulary fossils (local archive).
 
