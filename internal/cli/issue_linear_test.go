@@ -303,9 +303,21 @@ func TestRunnerIssuePushThenReconcileHasNoFalseDescriptionDrift(t *testing.T) {
 
 func TestRunnerIssueCheckPublishesReadyForAgentThroughLinear(t *testing.T) {
 	workingDir, stateHome, fake := linearIssueCLIFixture(t)
-	out, err := runIssue(t, workingDir, stateHome, "new", "Should we ship the adapter?", "--kind", "decision")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("issue new error = %v\n%s", err, out)
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	legacy, err := state.CreateIssueLegacyDecisionRow(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IssueCreateOptions{
+		Title: "Should we ship the adapter?",
+		Kind:  state.IssueKindDecision,
+		Alias: "ENG-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLegacyDecisionRow() error = %v", err)
+	}
+	fake.SeedIssue("ENG-1", legacy.Title, "", "backlog", "")
+	if err := state.BindLinearIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, legacy.ID, "ENG-1", ""); err != nil {
+		t.Fatalf("BindLinearIssue() error = %v", err)
 	}
 	checkOut, err := runIssue(t, workingDir, stateHome, "check", "ENG-1", "--json")
 	if err != nil {
@@ -333,9 +345,21 @@ func TestRunnerIssueCheckAttachesConfiguredTeamLabel(t *testing.T) {
 	workingDir, stateHome, fake := linearIssueCLIFixture(t)
 	other := fake.SeedLabel("team_other", readinessLabelAgent)
 	want := fake.SeedLabel(fake.Team.ID, readinessLabelAgent)
-	out, err := runIssue(t, workingDir, stateHome, "new", "Should we ship the adapter?", "--kind", "decision")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("issue new error = %v\n%s", err, out)
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	legacy, err := state.CreateIssueLegacyDecisionRow(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IssueCreateOptions{
+		Title: "Should we ship the adapter?",
+		Kind:  state.IssueKindDecision,
+		Alias: "ENG-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLegacyDecisionRow() error = %v", err)
+	}
+	fake.SeedIssue("ENG-1", legacy.Title, "", "backlog", "")
+	if err := state.BindLinearIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, legacy.ID, "ENG-1", ""); err != nil {
+		t.Fatalf("BindLinearIssue() error = %v", err)
 	}
 	if _, err := runIssue(t, workingDir, stateHome, "check", "ENG-1"); err != nil {
 		t.Fatalf("issue check error = %v", err)
