@@ -330,3 +330,27 @@ func (r Runner) runIssueStopContract(ctx context.Context, projectRoot project.Ro
 	}
 	return nil
 }
+
+func (r Runner) runIssueShowContract(ctx context.Context, projectRoot project.Root, ref string, jsonOutput bool, out io.Writer) error {
+	shown, err := state.ShowWorkContract(ctx, projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, shown)
+	}
+	fmt.Fprintf(out, "contract %s
+", shown.Contract.AuthorityRef.String())
+	fmt.Fprintf(out, "kind: %s
+", shown.Contract.Kind)
+	fmt.Fprintf(out, "status: %s
+", shown.Contract.Status)
+	fmt.Fprintf(out, "title: %s
+", shown.Contract.Title)
+	if shown.Contract.Body != "" {
+		fmt.Fprintf(out, "
+%s
+", shown.Contract.Body)
+	}
+	return nil
+}

@@ -417,6 +417,9 @@ func (r Runner) runIssueShow(args []string, out io.Writer, runtime state.Runtime
 	if err != nil {
 		return err
 	}
+	if authorityRefCommand(ref) {
+		return r.runIssueShowContract(context.Background(), projectRoot, ref, jsonOutput, out)
+	}
 	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
 		return err
