@@ -2,6 +2,7 @@ package scratchpad
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
 )
+
+var ErrChannelClosed = errors.New("scratchpad channel is closed")
 
 type AppendOptions struct {
 	Channel    string
@@ -26,6 +29,12 @@ type ClaimOptions struct {
 	EnvID      string
 	Resource   string
 	TTL        time.Duration
+}
+
+type CloseOptions struct {
+	Channel    string
+	InstanceID string
+	EnvID      string
 }
 
 type ReleaseOptions struct {
@@ -61,6 +70,9 @@ func AppendMessage(ctx context.Context, root project.Root, resolver state.PathRe
 		return state.FactEnvelope{}, err
 	}
 	defer store.Close()
+	if err := ensureChannelOpen(ctx, store, projectID, channel); err != nil {
+		return state.FactEnvelope{}, err
+	}
 
 	introduced, err := instanceIntroduced(ctx, store, projectID, channel, instanceID, envID)
 	if err != nil {
@@ -120,6 +132,9 @@ func Claim(ctx context.Context, root project.Root, resolver state.PathResolver, 
 		return state.FactEnvelope{}, err
 	}
 	defer store.Close()
+	if err := ensureChannelOpen(ctx, store, projectID, channel); err != nil {
+		return state.FactEnvelope{}, err
+	}
 	expiresAt := time.Now().UTC().Add(opts.TTL).Format(time.RFC3339Nano)
 	payload, err := encodePayload(ClaimPayload{
 		Channel:    channel,
@@ -158,6 +173,9 @@ func Release(ctx context.Context, root project.Root, resolver state.PathResolver
 		return state.FactEnvelope{}, err
 	}
 	defer store.Close()
+	if err := ensureChannelOpen(ctx, store, projectID, channel); err != nil {
+		return state.FactEnvelope{}, err
+	}
 	payload, err := encodePayload(ReleasePayload{
 		Channel:    channel,
 		InstanceID: instanceID,
@@ -170,6 +188,44 @@ func Release(ctx context.Context, root project.Root, resolver state.PathResolver
 	return state.AppendFact(ctx, store, state.AppendFactInput{
 		ProjectID: projectID,
 		Kind:      KindRelease,
+		Payload:   payload,
+		EnvID:     envID,
+	})
+}
+
+func CloseChannel(ctx context.Context, root project.Root, resolver state.PathResolver, opts CloseOptions) (state.FactEnvelope, error) {
+	channel, err := normalizeChannel(opts.Channel)
+	if err != nil {
+		return state.FactEnvelope{}, err
+	}
+	instanceID := normalizeInstanceID(opts.InstanceID)
+	envID := strings.TrimSpace(opts.EnvID)
+	if envID == "" {
+		envID = state.LocalFactEnvID()
+	}
+	store, projectID, err := openProjectStore(ctx, root, resolver)
+	if err != nil {
+		return state.FactEnvelope{}, err
+	}
+	defer store.Close()
+	closed, err := channelIsClosed(ctx, store, projectID, channel)
+	if err != nil {
+		return state.FactEnvelope{}, err
+	}
+	if closed {
+		return state.FactEnvelope{}, ErrChannelClosed
+	}
+	payload, err := encodePayload(ClosePayload{
+		Channel:    channel,
+		InstanceID: instanceID,
+		EnvID:      envID,
+	})
+	if err != nil {
+		return state.FactEnvelope{}, err
+	}
+	return state.AppendFact(ctx, store, state.AppendFactInput{
+		ProjectID: projectID,
+		Kind:      KindClose,
 		Payload:   payload,
 		EnvID:     envID,
 	})
@@ -188,6 +244,9 @@ func ReadChannel(ctx context.Context, root project.Root, resolver state.PathReso
 	facts, err := listChannelFacts(ctx, store, projectID, channel)
 	if err != nil {
 		return ChannelView{}, err
+	}
+	if factsChannelClosed(facts) {
+		return ChannelView{Channel: channel}, nil
 	}
 	view := ChannelView{Channel: channel}
 	now := time.Now().UTC()
@@ -331,9 +390,9 @@ func listChannelFacts(ctx context.Context, store *state.Store, projectID, channe
 SELECT id, project_id, kind, payload, env_id, seq, hlc, envelope_v
 FROM facts
 WHERE project_id = ?
-  AND kind IN (?, ?, ?, ?)
+  AND kind IN (?, ?, ?, ?, ?)
 ORDER BY hlc ASC, env_id ASC, id ASC
-`, projectID, KindIntro, KindMessage, KindClaim, KindRelease)
+`, projectID, KindIntro, KindMessage, KindClaim, KindRelease, KindClose)
 	if err != nil {
 		return nil, fmt.Errorf("list scratchpad facts: %w", err)
 	}
@@ -368,9 +427,40 @@ func factMatchesChannel(fact state.FactEnvelope, channel string) bool {
 	case KindRelease:
 		payload, err := decodeRelease(fact.Payload)
 		return err == nil && payload.Channel == channel
+	case KindClose:
+		payload, err := decodeClose(fact.Payload)
+		return err == nil && payload.Channel == channel
 	default:
 		return false
 	}
+}
+
+func ensureChannelOpen(ctx context.Context, store *state.Store, projectID, channel string) error {
+	closed, err := channelIsClosed(ctx, store, projectID, channel)
+	if err != nil {
+		return err
+	}
+	if closed {
+		return ErrChannelClosed
+	}
+	return nil
+}
+
+func channelIsClosed(ctx context.Context, store *state.Store, projectID, channel string) (bool, error) {
+	facts, err := listChannelFacts(ctx, store, projectID, channel)
+	if err != nil {
+		return false, err
+	}
+	return factsChannelClosed(facts), nil
+}
+
+func factsChannelClosed(facts []state.FactEnvelope) bool {
+	for _, fact := range facts {
+		if fact.Kind == KindClose {
+			return true
+		}
+	}
+	return false
 }
 
 func rosterKey(envID, instanceID string) string {

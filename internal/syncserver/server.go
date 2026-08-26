@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/projects/{project_id}/scratchpad/{channel}", s.handleScratchpadPublish)
 	mux.HandleFunc("GET /v1/projects/{project_id}/scratchpad/{channel}/poll", s.handleScratchpadPoll)
 	mux.HandleFunc("GET /v1/projects/{project_id}/scratchpad/{channel}/stream", s.handleScratchpadStream)
+	mux.HandleFunc("DELETE /v1/projects/{project_id}/scratchpad/{channel}", s.handleScratchpadPrune)
 	mux.HandleFunc("DELETE /v1/admin/tokens", s.handleRevokeToken)
 	return mux
 }
