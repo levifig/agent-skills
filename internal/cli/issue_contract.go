@@ -24,7 +24,7 @@ func providerQualifiedRefCommand(ref string) bool {
 	return state.IsAuthorityRef(ref) || strings.Contains(strings.TrimSpace(ref), ":")
 }
 
-var updateWorkContractForStartFn = func(ctx context.Context, root project.Root, resolver state.PathResolver, options state.WorkContractUpdateOptions) (state.WorkContract, error) {
+var updateWorkContractFn = func(ctx context.Context, root project.Root, resolver state.PathResolver, options state.WorkContractUpdateOptions) (state.WorkContract, error) {
 	return state.UpdateWorkContract(ctx, root, resolver, options)
 }
 
@@ -257,7 +257,7 @@ func (r Runner) runIssueStartContract(ctx context.Context, projectRoot project.R
 	if err != nil {
 		return err
 	}
-	updated, err := updateWorkContractForStartFn(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
+	updated, err := updateWorkContractFn(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
 		AuthorityRef:    authorityRef,
 		Status:          state.IssueStatusActive,
 		SetStatus:       true,
@@ -296,7 +296,7 @@ func (r Runner) runIssueStopContract(ctx context.Context, projectRoot project.Ro
 	}
 	savedBranch := shown.Contract.StartedBranch
 	savedWorktree := shown.Contract.StartedWorktree
-	if _, err := state.UpdateWorkContract(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
+	if _, err := updateWorkContractFn(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
 		AuthorityRef: authorityRef,
 		SetStarted:   true,
 	}); err != nil {
@@ -304,12 +304,14 @@ func (r Runner) runIssueStopContract(ctx context.Context, projectRoot project.Ro
 	}
 	alreadyGone, err := removeIssueWorktreeFn(projectRoot.Path(), savedWorktree, force)
 	if err != nil {
-		_, _ = state.UpdateWorkContract(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
+		if _, restoreErr := updateWorkContractFn(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
 			AuthorityRef:    authorityRef,
 			StartedBranch:   savedBranch,
 			StartedWorktree: savedWorktree,
 			SetStarted:      true,
-		})
+		}); restoreErr != nil {
+			return fmt.Errorf("remove worktree: %w (also failed to restore started fields: %v)", err, restoreErr)
+		}
 		return err
 	}
 	if jsonOutput {
