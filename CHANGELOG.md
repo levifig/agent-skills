@@ -6,20 +6,47 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+### Personal memory substrate (LOAF-62)
+
+One operator's durable memory — journal, wraps, handoffs, refs, verification — converges across laptops, cloud agents, and CI through E2E-encrypted facts on a self-hostable relay, or hard-refuses Loaf-flow work when attach is impossible. Local SQLite stays a full local-first replica; sync is a convergent relay, not authority transfer. The fleet agrees on the fact envelope ([ADR-029](docs/decisions/ADR-029-fact-envelope-sync-contract.md)), not a shared SQLite schema; writers append through one chokepoint and projections fold latest-event-wins. This arc-boundary release ([ADR-026](docs/decisions/ADR-026-major-zero-versioning.md)) ships grow-only facts, sync server and client, attach-or-refuse, identity evidence, schema 25 migration, scratchpad coordination, refs-and-contracts cutover, and closeout projection fixes ([#207](https://github.com/levifig/loaf/pull/207)).
+
 ### Changed
 
 - **Breaking:** The distroless sync-server image now binds HTTP `:8080` instead of `:8443`. Terminate TLS at a reverse proxy, or pass `--tls-cert` and `--tls-key` to `loaf serve`.
-- `loaf issue start` walks to the shippable root of the issue tree. Only that root gets `issue/<root-alias>` and a worktree; starting a child creates or joins the root workspace and marks the child active. `loaf issue stop` on a child that does not own a worktree names the root (LOAF-50).
+- **Breaking:** `loaf serve` refuses ports `443` and `8443` unless `--tls-cert` and `--tls-key` are set, so `LoafToken` / `LoafAdmin` credentials are not sent on a TLS-looking cleartext listener ([#198](https://github.com/levifig/loaf/pull/198)).
+- `loaf issue start` walks to the shippable root of the issue tree. Only that root gets `issue/<root-alias>` and a worktree; starting a child creates or joins the root workspace and marks the child active. `loaf issue stop` on a child that does not own a worktree names the root ([#166](https://github.com/levifig/loaf/pull/166)).
+- Mutable-core state — journal, sparks, ideas, handoffs, refs, releases, and verification — writes as grow-only event facts with latest-event-wins projections instead of direct SQLite row authority ([#177](https://github.com/levifig/loaf/pull/177), [#202](https://github.com/levifig/loaf/pull/202)).
+- Flow skills, contract machinery, and verification operate on provider-qualified authority refs; internal issue rows render out to branch authority ([#174](https://github.com/levifig/loaf/pull/174), [#182](https://github.com/levifig/loaf/pull/182), [#200](https://github.com/levifig/loaf/pull/200)).
+- Decision records re-home to ledger question/resolution facts instead of decision issues ([#205](https://github.com/levifig/loaf/pull/205)).
+- Every project-scoped table is classified (synced minimal core, local archive, machine-local, gone) and fossil relationship edges are pruned ([#179](https://github.com/levifig/loaf/pull/179)).
+- Reports, councils, and shaping drafts are file-backed; the CLI serves them from disk instead of SQLite document rows ([#175](https://github.com/levifig/loaf/pull/175)).
+
+### Added
+
+- Self-hostable sync relay (`loaf serve`) stores opaque ciphertext blobs and auth tokens only — never keys or plaintext semantics ([#183](https://github.com/levifig/loaf/pull/183)).
+- Client sync engine queues local facts, pulls by arrival cursor, detects env-seq gaps with loud warnings, and refreshes projections after pull ([#184](https://github.com/levifig/loaf/pull/184)).
+- Grow-only fact envelope with versioned cleartext contract and E2E payload; replay builds projections ordered by `(hlc, env_id, id)` ([#177](https://github.com/levifig/loaf/pull/177)).
+- Project identity is an internal UUID with attachment evidence; mirrors and renames never mint a duplicate universe, and `loaf state doctor` names duplicate-universe drift ([#181](https://github.com/levifig/loaf/pull/181), [#192](https://github.com/levifig/loaf/pull/192)).
+- Attach-or-refuse ceremony with auth setup/link, SessionStart gate, and HLC skew checks; cloud project environments bootstrap for Cursor and Amp ([#173](https://github.com/levifig/loaf/pull/173), [#185](https://github.com/levifig/loaf/pull/185), [#187](https://github.com/levifig/loaf/pull/187), [#190](https://github.com/levifig/loaf/pull/190)).
+- Schema migration 0025 replays sparks, ideas, handoffs, refs, worktree bindings, verification receipts, and releases onto event facts with verified lossless replay ([#202](https://github.com/levifig/loaf/pull/202), [#203](https://github.com/levifig/loaf/pull/203)).
+- Scratchpad effort-scoped coordination: `loaf scratchpad append|read|list|claim|release`, closed fact kinds, SSE/long-poll fanout on `loaf serve`, logical close, and admin-only prune scoped to the owning account ([#180](https://github.com/levifig/loaf/pull/180), [#194](https://github.com/levifig/loaf/pull/194), [#197](https://github.com/levifig/loaf/pull/197), [#201](https://github.com/levifig/loaf/pull/201)).
+- Tracker-steering issue bootstrap mints branch and PR refs as authority ([#193](https://github.com/levifig/loaf/pull/193)).
+- First-class Linear workflows.
+- Development builds report a distinct dev identity (`<version>+g<short-sha>`) and stage native targets before activation; release tags that are not strict SemVer fail resolve instead of being skipped as dev identities.
+
+### Removed
+
+- Findings, verdicts, and runs schema and CLI surface (migration 0018) ([#176](https://github.com/levifig/loaf/pull/176)).
+- SQLite document-layer authority for reports, councils, and shaping drafts ([#175](https://github.com/levifig/loaf/pull/175)).
 
 ### Fixed
 
-- Repeated work-contract mapping and receipt upserts reuse the existing projection row id as the fact SubjectID, so a second render-out of the same ref rebuilds without colliding on the unique key (LOAF-62).
-- Sync refresh rebuilds ref, worktree, and verification projections from pulled facts so a receiving replica shows CLI-facing mappings, start bindings, and receipts (LOAF-62).
-- Sync-server admin `DELETE` of facts is scoped to projects the authenticating account has minted a connection token for, so a second tenant cannot delete another tenant's blobs.
-- `loaf serve` refuses ports `443` and `8443` unless `--tls-cert` and `--tls-key` are set, so `LoafToken` / `LoafAdmin` credentials are not sent on a TLS-looking cleartext port.
-
-- Development builds stage native targets before replacing `bin/native` and `bin/.loaf-dev-commit`, so a later target failure cannot leave a new binary reporting a previous commit. Activation updates a Loaf-owned launcher pointer and creates `~/.local/bin/loaf` only when that name is absent; existing operator-owned paths are never replaced, and activation failures no longer fail a successful native build. Release tags that are not strict SemVer fail resolve instead of being skipped as dev identities.
+- Sync refresh rebuilds ref, worktree, and verification projections from pulled facts so a receiving replica shows CLI-facing mappings, start bindings, and receipts ([#204](https://github.com/levifig/loaf/pull/204)).
+- Repeated work-contract mapping and receipt upserts reuse the existing projection row id as the fact SubjectID, so a second render-out of the same ref rebuilds without colliding on the unique key ([#206](https://github.com/levifig/loaf/pull/206)).
+- Sync-server admin `DELETE` of facts is scoped to projects the authenticating account has minted a connection token for, so a second tenant cannot delete another tenant's blobs ([#198](https://github.com/levifig/loaf/pull/198)).
+- Development builds stage native targets before replacing `bin/native` and `bin/.loaf-dev-commit`, so a later target failure cannot leave a new binary reporting a previous commit. Activation updates a Loaf-owned launcher pointer and creates `~/.local/bin/loaf` only when that name is absent; existing operator-owned paths are never replaced, and activation failures no longer fail a successful native build.
 - `loaf issue start` on a child refuses if the root workspace is missing or the root is already `done` / archived, instead of joining a stale or closed workspace.
+- `loaf issue verify` runs in the invoking worktree ([#172](https://github.com/levifig/loaf/pull/172)).
 - Homebrew formula generation pins an explicit `version` so older `brew` does not infer `64` from `darwin-arm64` in the asset URL.
 - CI workflows use Node 24 Actions (`actions/checkout@v7`, `actions/setup-node@v7`, `actions/setup-go@v7`) so runs stop warning about deprecated Node 20.
 
