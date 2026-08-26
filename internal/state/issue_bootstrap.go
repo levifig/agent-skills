@@ -145,7 +145,7 @@ func RefuseUnsupportedIssueBootstrap(projectRoot string) error {
 }
 
 func trackerBootstrapLinearReady(projectRoot string) (bool, error) {
-	if strings.TrimSpace(os.Getenv("LINEAR_API_KEY")) != "" {
+	if strings.TrimSpace(os.Getenv(linearAPITokenEnv())) != "" {
 		return true, nil
 	}
 	if enabled, err := linearIntegrationEnabled(projectRoot); err != nil {
