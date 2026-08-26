@@ -14,7 +14,7 @@ func TestListIssuesFiltersStatusKindAndArchived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue(delivery) error = %v", err)
 	}
-	if _, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Decision", Kind: IssueKindDecision}); err != nil {
+	if _, err := store.CreateIssueLegacyDecisionRow(ctx, root, IssueCreateOptions{Title: "Should we ship?", Kind: IssueKindDecision}); err != nil {
 		t.Fatalf("CreateIssue(decision) error = %v", err)
 	}
 	if _, err := store.UpdateIssue(ctx, root, IssueUpdateOptions{Ref: delivery.ID, Status: IssueStatusTodo, SetStatus: true}); err != nil {
@@ -48,7 +48,7 @@ func TestListIssuesFiltersStatusKindAndArchived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListIssues(decision) error = %v", err)
 	}
-	if len(decisions.Issues) != 1 || decisions.Issues[0].Title != "Decision" {
+	if len(decisions.Issues) != 1 || decisions.Issues[0].Title != "Should we ship?" {
 		t.Fatalf("decision list = %#v, want Decision", decisions.Issues)
 	}
 

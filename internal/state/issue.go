@@ -256,6 +256,9 @@ func createIssueTx(ctx context.Context, tx *sql.Tx, projectID string, options Is
 	if err != nil {
 		return Issue{}, err
 	}
+	if kind == IssueKindDecision {
+		return createDecisionLedgerIssueTx(ctx, tx, projectID, options, now)
+	}
 	criteria, err := normalizeIssueCriteria(options.Criteria)
 	if err != nil {
 		return Issue{}, err
