@@ -270,6 +270,45 @@ func TestRunnerIssueContractCheckDefersLinearPublicationButAcceptsHuman(t *testi
 	}
 }
 
+func TestRunnerIssueContractCheckSkipsLinearPublicationForBranchRefs(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	if _, err := state.SetIssueIdentity(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IssueIdentityOptions{Authority: state.IssueAuthorityLinear}); err != nil {
+		t.Fatalf("SetIssueIdentity() error = %v", err)
+	}
+	ref := seedReadyBranchDecisionContract(t, workingDir, stateHome, "issue/linear-skip-pub")
+
+	previous := defaultReadinessPublisher
+	defaultReadinessPublisher = failingReadinessPublisher{err: errors.New("PublishLinearReadiness must not run for work contracts")}
+	t.Cleanup(func() { defaultReadinessPublisher = previous })
+
+	out, err := runIssue(t, workingDir, stateHome, "check", ref, "--json")
+	if err != nil {
+		t.Fatalf("issue check branch: on Linear project error = %v\n%s", err, out)
+	}
+	var result issueCheckResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if !result.Ready {
+		t.Fatalf("result = %#v, want ready", result)
+	}
+	if result.Publication != nil {
+		t.Fatalf("publication = %#v, want omitted until LOAF-83/85 Linear contract mapping", result.Publication)
+	}
+}
+
+type failingReadinessPublisher struct {
+	err error
+}
+
+func (f failingReadinessPublisher) Publish(context.Context, ReadinessPublication) error {
+	return f.err
+}
+
 func TestRunnerIssueContractVerifyEmitsAdvisoryWarnings(t *testing.T) {
 	workingDir, stateHome := issueCLIFixture(t)
 	root, err := project.ResolveRoot(workingDir)
