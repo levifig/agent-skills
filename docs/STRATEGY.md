@@ -58,6 +58,13 @@ The implication for both personas: Loaf's value is the *framework* -- mechanical
 
 ## Current Priorities
 
+
+> **Revision 2026-08-26 (LOAF-90):** Inserts substrate arc priorities. Supersedes: priorities listing only journal reliability and Loaf Flow without personal-substrate destination.
+
+- **Personal memory substrate (LOAF-62).** Land fact envelope, E2E crypto, sync server/client, and attach-or-refuse (LOAF-66–67, 71, 75–76 shipped on main). Remaining: full mutable-core migration (LOAF-63/72), identity attachment evidence (LOAF-64 partial), grow-only union semantics documentation.
+- **Refs + contracts cutover (LOAF-68).** Contract machinery keys to refs (LOAF-82) and render-out (LOAF-83) shipped; branch/PR bootstrap (LOAF-85), flow-skill ref cutover (LOAF-86), and decision re-home (LOAF-84) remain.
+- **Dead state before sync (LOAF-69).** Delete zero-row schema (LOAF-79), demote document layer (LOAF-80), and inventory lock (LOAF-81) shipped — minimal sync contract enforced.
+- **Scratchpad (LOAF-74).** CLI and closed kind set (LOAF-87) shipped; server SSE channel (LOAF-88) and close/prune (LOAF-89) remain.
 - **Journal reliability across installed targets.** Converge content-addressed installation, target adapter ownership, capability diagnosis, and isolated installed-runtime dogfood without mutating users' production state.
 - **Loaf Flow completeness.** The entry stage shipped in v0.2.17: `/pitch` at both scales, captured-folder promotion in `loaf change init`, bootstrap series-prep under the landing matrix. Next is dogfood-driven fine-tuning (the deferred end-to-end pitch→shape proof, seam oiling), then the Intent-tracked follow-ons: the Arc decision-map, the review-convergence loop, and the skills audit. Existing spec and task records remain supported compatibility surfaces until deliberately converted.
 - **The fix cadence, collecting its dividend.** 0.2.21 shipped the identity-fork repair (#159, ADR-028) and per-entry hook reconciliation (#161) as one combined cut — the first release since the reset to leave every harness current with zero refusals, and the first to exercise all four incident-born release mechanisms (release-PR flow, mechanical receipt gate, receipt-vouched cohort grading, changelog staging) without incident. The remaining queue, numbered at cut time per the revised ADR-026: the OpenCode session-start fix, the content-addressed skills store, and the skills audit.
@@ -66,6 +73,11 @@ The implication for both personas: Loaf's value is the *framework* -- mechanical
 - **Durable knowledge with low ceremony.** Preserve decisions, discoveries, and operational lessons where later work can retrieve them, while removing lifecycle machinery and planning vocabulary that do not carry product meaning.
 
 ## Strategic Tensions
+
+
+**Personal continuity vs collaboration surfaces.** The substrate is private and E2E; team coordination stays on trackers and git promote paths. Building a shared memory layer in the substrate is explicitly out of scope for v1.
+
+**Local-first vs cloud attach.** Local SQLite remains authoritative for reads; sync is convergent relay. Fail-loud attach prioritizes invariant trust over run availability.
 
 **Portability versus native leverage.** A shared skill should express the common contract, but each native adapter expands the compatibility and test surface. Native behavior earns its place only when it is observable and maintainable.
 
@@ -76,6 +88,10 @@ The implication for both personas: Loaf's value is the *framework* -- mechanical
 **Durability versus noise.** The journal must retain information that changes future decisions, not duplicate lifecycle state or syntheses that can be derived from source, git, and pull requests.
 
 ## Open Questions
+
+
+- **Master-key recovery (resolved LOAF-66):** Emergency Kit + surviving-machine re-key; no escrow.
+- **Supersession collision UX (resolved LOAF-63 lock):** Grow-only union; no supersession ceremony in v1.
 
 - Which target-native signals can provide durable event identity and trustworthy success evidence without coupling Loaf to unstable client internals?
 - How should scheduled client-version discovery produce reviewable candidate evidence without automatically changing capability classifications?

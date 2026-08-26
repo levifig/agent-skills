@@ -18,7 +18,13 @@ Functional profiles define what agents can mechanically touch (tool access). Ski
 
 ### Continuity
 
-Work survives context loss, compaction, tool restarts, and cross-conversation handoffs. The project journal is external memory, while Change artifacts and compatible task records keep intent and execution inspectable outside any one conversation.
+> **Revision 2026-08-26 (LOAF-90):** Continuity is personal-first and environment-agnostic. Supersedes: continuity described only as project-journal handoff on a single machine.
+
+Loaf's durable memory — journal, wraps, handoffs, decisions, work-unit refs, verification records — lives in one operator's **personal memory substrate**. Every environment the operator uses (laptop, second machine, Cursor Cloud Agent, Amp Orb, CI) attaches to the same substrate or **hard-refuses** Loaf-flow work. There is no silent empty universe and no memoryless degraded mode.
+
+Work survives context loss, compaction, tool restarts, and cross-conversation handoffs because the substrate is external to any single harness session. The project journal is a **projection** of grow-only ledger facts, not a hand-authored file. Context at conversation start is a derived digest — never a lifecycle transition.
+
+Sharing with other humans happens only through explicit **promote surfaces** (PR bodies, committed files, external trackers). The substrate itself is private.
 
 ## What Success Looks Like
 
@@ -29,6 +35,8 @@ A developer installs Loaf and immediately gets:
 - **Project journal history that enables handoff** -- pick up where you left off, or hand off to a colleague
 - **Hooks that enforce quality without friction** -- secrets scanning, commit conventions, push guards
 - **Domain expertise that loads automatically** -- the right engineering standards for the current task
+- **Same project, any session, any harness, any host** — a cloud agent picks up the same journal, wraps, and open work definitions as the operator's laptop after attach
+- **Fail-loud provisioning** — misconfigured credentials or unknown project identity refuse with cause and remedy; no quarantine buffer
 
 ## What Loaf Is Not
 
@@ -37,3 +45,14 @@ A developer installs Loaf and immediately gets:
 **Not Claude-only.** Multi-target by design. Claude Code is the primary development target, but skills are authored once and built for all supported harnesses.
 
 **Not opinionated about what you build.** Opinionated about *how* you build it. The Change contract, conventions, and quality checks are explicit; the domain knowledge is yours.
+
+**Not a team memory product.** Collaboration is deliberate export through trackers and git; the synced core is one operator's facts, E2E-encrypted on the wire.
+
+## Product boundary
+
+| Layer | Owns |
+|-------|------|
+| Trackers (Linear v1) | Work definition, DoD text, workflow state |
+| Git | Code and promoted artifacts |
+| Harnesses | Execution, tool boundaries |
+| Loaf substrate | Context, journal, wraps, handoffs, decisions, continuity digest, ref mappings |
