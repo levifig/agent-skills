@@ -76,6 +76,7 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		"render":    writeIssueRenderHelp,
 		"render-out": writeIssueRenderOutHelp,
 		"identity":  writeIssueIdentityHelp,
+		"bootstrap": writeIssueBootstrapHelp,
 		"export":    writeIssueExportHelp,
 		"pull":      writeIssuePullHelp,
 		"push":      writeIssuePushHelp,
@@ -131,6 +132,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueRender(args[1:], out, runtime)
 	case "render-out":
 		return r.runIssueRenderOut(args[1:], out, runtime)
+	case "bootstrap":
+		return r.runIssueBootstrap(args[1:], out, runtime)
 	case "identity":
 		return r.runIssueIdentity(args[1:], out, runtime)
 	case "export":
@@ -312,6 +315,9 @@ func (r Runner) runIssueNew(args []string, out io.Writer, runtime state.Runtime)
 	}
 	projectRoot, err := r.requireIssueSQLiteState("issue new", runtime)
 	if err != nil {
+		return err
+	}
+	if err := state.RefuseUnsupportedIssueBootstrap(projectRoot.Path()); err != nil {
 		return err
 	}
 	body, ok, err := r.resolveBodyInput("issue new", options.body, false)
