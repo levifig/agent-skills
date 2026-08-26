@@ -237,3 +237,33 @@ func TestCloudEnvironmentResolveInstallCodexHomeIgnoresEnv(t *testing.T) {
 		t.Fatalf("resolveInstallCodexHome without project env = %q, want elsewhere", got)
 	}
 }
+
+func TestCloudEnvironmentConfigTargetInstallOptionsUsesLayoutHome(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	projectDir := filepath.Join(root, "project")
+	mkdirAll(t, home)
+	mkdirAll(t, projectDir)
+	t.Setenv("HOME", home)
+	t.Setenv(projectEnvironmentEnv, "1")
+
+	opts := configTargetInstallOptions(projectDir, projectDir, detectedInstallTool{
+		key:       "cursor",
+		configDir: filepath.Join(projectDir, ".cursor"),
+	}, installTestHookState(t), false)
+	if opts.HomeDir != projectDir {
+		t.Fatalf("HomeDir = %q, want project layout home %q", opts.HomeDir, projectDir)
+	}
+	if opts.HomeDir == home {
+		t.Fatal("HomeDir must not be user installHome under LOAF_PROJECT_ENV=1")
+	}
+
+	os.Unsetenv(projectEnvironmentEnv)
+	opts = configTargetInstallOptions(projectDir, projectDir, detectedInstallTool{
+		key:       "cursor",
+		configDir: filepath.Join(home, ".cursor"),
+	}, installTestHookState(t), false)
+	if opts.HomeDir != home {
+		t.Fatalf("HomeDir without project env = %q, want %q", opts.HomeDir, home)
+	}
+}

@@ -595,7 +595,7 @@ func configTargetInstallOptions(projectRoot string, loafRoot string, target dete
 		ConfigDir:   target.configDir,
 		Upgrade:     upgrade,
 		Version:     packageVersion(loafRoot),
-		HomeDir:     installHome(),
+		HomeDir:     installLayoutHome(projectRoot),
 		CodexHome:   resolveInstallCodexHome(target.configDir),
 		ProjectRoot: projectRoot,
 		HookState:   hookState,
