@@ -10,6 +10,42 @@ import (
 	"testing"
 )
 
+func TestShapeSizingRuleVerificationIndexed(t *testing.T) {
+	root := repoRoot(t)
+	shapeSkill := readTextFile(t, filepath.Join(root, "content", "skills", "shape", "SKILL.md"))
+	decomposition := readTextFile(t, filepath.Join(root, "content", "skills", "shape", "references", "decomposition.md"))
+	critiqueGate := readTextFile(t, filepath.Join(root, "content", "skills", "shape", "references", "critique-gate.md"))
+	implementSkill := readTextFile(t, filepath.Join(root, "content", "skills", "implement", "SKILL.md"))
+
+	for _, required := range []string{"verifiable alone", "revertible alone"} {
+		if !strings.Contains(shapeSkill, required) {
+			t.Fatalf("content/skills/shape/SKILL.md missing verification-indexed sizing phrase %q", required)
+		}
+		if !strings.Contains(decomposition, required) {
+			t.Fatalf("content/skills/shape/references/decomposition.md missing verification-indexed sizing phrase %q", required)
+		}
+		if !strings.Contains(critiqueGate, required) {
+			t.Fatalf("content/skills/shape/references/critique-gate.md missing verification-indexed sizing phrase %q", required)
+		}
+	}
+
+	if !strings.Contains(shapeSkill, "runtime heuristic") || !strings.Contains(implementSkill, "runtime heuristic") {
+		t.Fatalf("shape and implement skills must demote window-fit to a labeled runtime heuristic")
+	}
+
+	for _, tc := range []struct {
+		rel  string
+		body string
+	}{
+		{"content/skills/shape/SKILL.md", shapeSkill},
+		{"content/skills/shape/references/decomposition.md", decomposition},
+	} {
+		if strings.Contains(tc.body, "fits one fresh context window and is verifiable alone") {
+			t.Fatalf("%s still uses the retired window-fit sizing rule", tc.rel)
+		}
+	}
+}
+
 func TestSkillContentHygieneStaleReferences(t *testing.T) {
 	root := repoRoot(t)
 	cases := []struct {

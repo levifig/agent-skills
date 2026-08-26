@@ -6,10 +6,10 @@ description: >-
   DoD — validated by loaf issue check. Use when the user asks "shape this,"
   "turn this into an issue," or a diagnosed fix needs a row. Produces a shaped
   issue — never a folder or a plan document. Teaches fog graduation (park,
-  then a decision child) and one-criterion sizing (one fresh context window,
-  verifiable alone). Not for quick capture (use idea), problem discovery that
-  should author a brief first (use pitch), or open-ended divergent thinking
-  (agent technique: explore / brainstorm — user entry routes to pitch).
+  then a decision child) and one-criterion sizing (verifiable alone, revertible
+  alone). Not for quick capture (use idea), problem discovery that should author
+  a brief first (use pitch), or open-ended divergent thinking (agent technique:
+  explore / brainstorm — user entry routes to pitch).
 user-invocable: true
 argument-hint: '[messy input to shape into a Change]'
 version: 0.3.1
@@ -33,19 +33,19 @@ Prepare a bounded, reviewable issue.
 
 ## Critical Rules
 
-1. **Log invocation first** — `loaf journal log "skill(shape): shaping <topic> into LOAF-42"` before doing anything else. If no issue exists yet, log `skill(shape): shaping <topic>` and add the alias in the outcome entry.
-2. **Produces an issue, never a folder** — the deliverable is the issue row: problem in the body, definition of done as `loaf issue dod` criteria, an explicit out-of-scope statement in the body, children via `loaf issue promote` when a criterion earns its own DoD. No plan document is committed. The PR body, if a PR is opened, is `loaf issue render` output.
-3. **The fog register routes, you don't guess** — every named unknown carries a quadrant tag that dispatches it to exactly one technique (see Quick Reference). Technique-by-vibes is the failure mode this replaces.
-4. **Fog graduates instead of evaporating** — a question not yet sharp enough is parked in the issue's `fog` field (`loaf issue new --fog`). When it sharpens it becomes a `--kind decision` child, which is ready when it poses a sharp question (a `?` in the title or body). No plan required.
-5. **Blindspot pass precedes grilling, offered not imposed** — run it when the territory is unfamiliar; skip it when the shaper is the domain expert. Never impose it as a mandatory step.
-6. **Grill one question at a time, with a recommendation** — using your harness's structured question tool if it has one (otherwise one inline question per message — same semantics). Never a form to fill in one pass. Order by architectural impact: questions whose answer would change the architecture go first, cosmetic questions last.
-7. **Techniques return fog entries, not decisions** — blindspot passes, grilling, and reaction artifacts hand back named unknowns and evidence for the human to adjudicate. Reconnaissance, not orders.
-8. **Decomposition is the tail** — a parent gets children only when its DoD needs more than one coherent slice. A criterion becomes a child the moment it earns its own DoD, via `loaf issue promote`. Own those boundaries autonomously; ask only when two orderings carry genuinely different trade-offs.
-9. **One sizing criterion** — a slice is right-sized when it fits one fresh context window and is verifiable alone. Expand–contract is the named exception for wide mechanical refactors. See [references/decomposition.md](references/decomposition.md).
-10. **Surface misalignment, never silently adjust** — when the idea conflicts with strategic docs, prior issues, or the journal, tell the user and let them decide. Don't quietly reshape their idea.
-11. **Critique before finalizing** — run the Critique Gate as the last shaping step, before `loaf issue check`.
-12. **A diagnosed one-line fix is two commands** — `loaf issue new` with a body that states the problem and `Out of scope: …`, then one `loaf issue dod add`. No problem-space ceremony. Confirm scope with the user before `loaf issue new` on anything larger.
-13. **Log the outcome** — `loaf journal log "decision(shape): LOAF-42 shaped — N children, N open fog entries"`.
+1. **Log invocation first** — Because shaping is a project-scoped event others may audit, `loaf journal log "skill(shape): shaping <topic> into LOAF-42"` before doing anything else. If no issue exists yet, log `skill(shape): shaping <topic>` and add the alias in the outcome entry.
+2. **Produces an issue, never a folder** — Because bounded work lives in SQLite and ships through PRs, the deliverable is the issue row: problem in the body, definition of done as `loaf issue dod` criteria, an explicit out-of-scope statement in the body, children via `loaf issue promote` when a criterion earns its own DoD. No plan document is committed. The PR body, if a PR is opened, is `loaf issue render` output.
+3. **The fog register routes, you don't guess** — Because unknowns have different resolution techniques, every named unknown carries a quadrant tag that dispatches it to exactly one technique (see Quick Reference). Technique-by-vibes is the failure mode this replaces.
+4. **Fog graduates instead of evaporating** — Because parked questions resurface as scope creep, a question not yet sharp enough is parked in the issue's `fog` field (`loaf issue new --fog`). When it sharpens it becomes a `--kind decision` child, which is ready when it poses a sharp question (a `?` in the title or body). No plan required.
+5. **Blindspot pass precedes grilling, offered not imposed** — Because reconnaissance cost should match unfamiliarity, run it when the territory is unfamiliar; skip it when the shaper is the domain expert. Never impose it as a mandatory step.
+6. **Grill one question at a time, with a recommendation** — Because parallel questions hide trade-offs, use your harness's structured question tool if it has one (otherwise one inline question per message — same semantics). Never a form to fill in one pass. Order by architectural impact: questions whose answer would change the architecture go first, cosmetic questions last.
+7. **Techniques return fog entries, not decisions** — Because the human adjudicates, blindspot passes, grilling, and reaction artifacts hand back named unknowns and evidence for the human to adjudicate. Reconnaissance, not orders.
+8. **Decomposition is the tail** — Because premature splitting obscures the problem, a parent gets children only when its DoD needs more than one coherent slice. A criterion becomes a child the moment it earns its own DoD, via `loaf issue promote`. Own those boundaries autonomously; ask only when two orderings carry genuinely different trade-offs.
+9. **One sizing criterion** — Because unattended autonomy appreciates per-slice proof and bounded revert (while executor window-fit decays with better continuity), a slice is right-sized when it is verifiable alone and revertible alone. Window-fit ("fits one fresh context window") is a labeled **runtime heuristic** owned by implement — shape decomposes for verification; implement sub-decomposes for execution per executor via handoffs and scratchpad, and that runtime carving never appears in the issue tree. Expand–contract is the named exception for wide mechanical refactors. See [references/decomposition.md](references/decomposition.md).
+10. **Surface misalignment, never silently adjust** — Because strategic drift hidden in a reshaped issue wastes implementer time, when the idea conflicts with strategic docs, prior issues, or the journal, tell the user and let them decide. Don't quietly reshape their idea.
+11. **Critique before finalizing** — Because agents won't interrogate their own scope without a gate, run the Critique Gate as the last shaping step, before `loaf issue check`.
+12. **A diagnosed one-line fix is two commands** — Because ceremony should match uncertainty, `loaf issue new` with a body that states the problem and `Out of scope: …`, then one `loaf issue dod add`. No problem-space ceremony. Confirm scope with the user before `loaf issue new` on anything larger.
+13. **Log the outcome** — Because shaped issues are audit events, `loaf journal log "decision(shape): LOAF-42 shaped — N children, N open fog entries"`.
 
 ---
 
@@ -172,7 +172,7 @@ Then shape the child the same way (body, out-of-scope, its own criteria). Order 
 
 ### Step 6: Run the Critique Gate
 
-Before finalizing, challenge the draft — see [references/critique-gate.md](references/critique-gate.md). Is scope still bounded, does every new command or state name its ceremony, is a second progress flag creeping into the body, is the CLI/skill boundary drawn correctly, and could this be smaller and still be verifiable in one fresh context window?
+Before finalizing, challenge the draft — see [references/critique-gate.md](references/critique-gate.md). Is scope still bounded, does every new command or state name its ceremony, is a second progress flag creeping into the body, is the CLI/skill boundary drawn correctly, and could this be smaller and still be verifiable alone and revertible alone?
 
 ### Step 7: Validate
 

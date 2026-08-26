@@ -20,10 +20,11 @@ Same problem, another slice → another criterion on this issue, or a promoted c
 
 ## The sizing rule
 
-One test, replacing the old four-question checklist: **a slice is right-sized when it fits one fresh context window and is verifiable alone.**
+One test, replacing the old four-question checklist: **a slice is right-sized when it is verifiable alone and revertible alone.**
 
-- If an implementer cannot pick the issue up in a new conversation and finish it without reading a sibling, split.
-- If the done-check cannot run (or be reviewed) without another slice landing first, either split and `loaf issue link <predecessor> blocks <successor>`, or merge — do not leave a criterion that is only true in combination.
+- **Verifiable alone** — the done-check can run (or be reviewed) without another slice landing first. If not, split and `loaf issue link <predecessor> blocks <successor>`, or merge — do not leave a criterion that is only true in combination.
+- **Revertible alone** — the slice's landing can be reverted without undoing a sibling. If reverting would require coordinated rollback across slices, split or sequence with `blocks` edges.
+- **Window-fit is implement's runtime heuristic** — if an executor slice still exceeds one fresh context window, implement sub-decomposes for execution via handoffs and scratchpad; that carving never appears in the issue tree. Shape sizes for verification and revertibility, not executor memory.
 - If you are splitting just to have more rows, merge back.
 
 Per-slice verification stays with the slice. Never a separate "verify" child; keep tests with the code they test.
