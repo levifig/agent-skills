@@ -42,6 +42,9 @@ func (r Runner) runIssueVerify(args []string, out io.Writer, runtime state.Runti
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueVerifyContract(context.Background(), projectRoot, ref, jsonOutput, out)
+	}
 	shown, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
 		return err

@@ -67,6 +67,9 @@ func (r Runner) runIssueStart(args []string, out io.Writer, runtime state.Runtim
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueStartContract(context.Background(), projectRoot, ref, jsonOutput, out)
+	}
 	repoRoot := projectRoot.Path()
 	if !gitRepoAt(repoRoot) {
 		return fmt.Errorf("issue start requires a git repository")
@@ -205,6 +208,9 @@ func (r Runner) runIssueStop(args []string, out io.Writer, runtime state.Runtime
 	projectRoot, err := r.requireIssueSQLiteState("issue stop", runtime)
 	if err != nil {
 		return err
+	}
+	if providerQualifiedRefCommand(options.ref) {
+		return r.runIssueStopContract(context.Background(), projectRoot, options.ref, options.force, options.jsonOutput, out)
 	}
 	resolver := state.PathResolver{StateHome: r.StateHome}
 	issue, err := state.GetIssue(context.Background(), projectRoot, resolver, options.ref)
