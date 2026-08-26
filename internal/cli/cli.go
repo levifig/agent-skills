@@ -294,6 +294,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runScratchpad(args[1:], out, runtime)
 	case "serve":
 		dispatchErr = r.runServe(args[1:], out)
+	case "sync":
+		dispatchErr = r.runClientSync(args[1:], out, runtime)
 	case "task":
 		dispatchErr = r.runTask(args[1:], out, runtime)
 	case "housekeeping":
@@ -366,6 +368,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  journal       Record and read the project journal")
 	fmt.Fprintln(out, "  scratchpad    Ephemeral agent coordination channel")
 	fmt.Fprintln(out, "  serve         Run the self-hostable sync relay")
+	fmt.Fprintln(out, "  sync          Push and pull facts through the sync relay")
 	fmt.Fprintln(out, "  intent        Show tracked Intent (writes frozen; use issue)")
 	fmt.Fprintln(out, "  exploration   Manage Exploration continuity")
 	fmt.Fprintln(out, "  conversation  Manage conversation provenance")

@@ -592,3 +592,20 @@ erDiagram
     integer hlc_logical
     integer next_seq
   }
+
+  sync_outbound_queue {
+    text project_id FK
+    text fact_id
+    text enqueued_at
+    text pushed_at
+  }
+
+  sync_project_cursors {
+    text project_id PK FK
+    integer arrival_cursor
+    text updated_at
+  }
+
+  projects ||--o{ sync_outbound_queue : scopes
+  projects ||--o{ sync_project_cursors : scopes
+

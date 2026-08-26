@@ -159,6 +159,14 @@ func sqliteReadOnlyBackupDSN(path string) string {
 }
 
 // Close closes the database connection.
+// DB exposes the underlying SQLite handle for sync metadata operations.
+func (s *Store) DB() *sql.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil

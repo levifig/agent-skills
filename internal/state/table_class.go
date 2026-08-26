@@ -103,6 +103,10 @@ var projectScopedTableClasses = map[string]TableClass{
 	"journal_conversation_handles":     TableClassMachineLocal,
 	"source_availability_observations": TableClassMachineLocal,
 
+	// Client sync engine machine-local state (migration 0023).
+	"sync_outbound_queue":              TableClassMachineLocal,
+	"sync_project_cursors":             TableClassMachineLocal,
+
 	// Gone — schema deleted; tests refuse reintroduction (LOAF-79/80).
 	"findings":       TableClassGone,
 	"verdicts":       TableClassGone,

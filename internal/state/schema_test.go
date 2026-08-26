@@ -70,6 +70,8 @@ var requiredInitialTables = []string{
 	"release_members",
 	"facts",
 	"fact_env_clocks",
+	"sync_outbound_queue",
+	"sync_project_cursors",
 	"schema_migrations",
 }
 
@@ -106,11 +108,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 21 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 21", len(migrations))
+	if len(migrations) != 22 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 22", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -179,6 +181,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if migrations[20].Name != "prune_fossil_relationship_edges" {
 		t.Fatalf("migration[20].Name = %q, want prune_fossil_relationship_edges", migrations[20].Name)
 	}
+	if migrations[21].Name != "sync_client" {
+		t.Fatalf("migration[21].Name = %q, want sync_client", migrations[21].Name)
+	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
 			t.Fatalf("migration %d SQL is empty", migration.Version)
@@ -233,7 +238,7 @@ func TestOperationalTablesHaveStableIDsAndTimestamps(t *testing.T) {
 	}
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
-		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" || table == "release_members" || table == "facts" || table == "fact_env_clocks" {
+		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" || table == "release_members" || table == "facts" || table == "fact_env_clocks" || table == "sync_outbound_queue" || table == "sync_project_cursors" {
 			continue
 		}
 		body := tableBody(t, sql, table)
@@ -441,6 +446,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[20].SQL {
 		t.Fatal("docs/schema/0022_prune_fossil_relationship_edges.sql must match embedded migration 0022 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0023_sync_client.sql")
+	if sqlDoc != SchemaMigrations()[21].SQL {
+		t.Fatal("docs/schema/0023_sync_client.sql must match embedded migration 0023 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -518,6 +527,8 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ sources : scopes",
 		"projects ||--o{ sparks : scopes",
 		"projects ||--o{ specs : scopes",
+		"projects ||--o{ sync_outbound_queue : scopes",
+		"projects ||--o{ sync_project_cursors : scopes",
 		"projects ||--o{ tags : scopes",
 		"projects ||--o{ tasks : scopes",
 		"sessions ||--o{ handoffs : transfers",

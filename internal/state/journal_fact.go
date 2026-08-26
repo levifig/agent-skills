@@ -472,3 +472,24 @@ WHERE project_id = ? AND id = ?
 	}
 	return tx.Commit()
 }
+
+
+// RebuildJournalProjectionForProject rebuilds journal_entries from journal facts for one project.
+func RebuildJournalProjectionForProject(ctx context.Context, store *Store, projectID string) (int, error) {
+	if store == nil || store.db == nil {
+		return 0, fmt.Errorf("rebuild journal projection: store is nil")
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin journal projection rebuild: %w", err)
+	}
+	defer tx.Rollback()
+	count, err := rebuildJournalProjectionFromFactsTx(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit journal projection rebuild: %w", err)
+	}
+	return count, nil
+}
