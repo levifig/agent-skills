@@ -160,13 +160,6 @@ func matrixFixture(t *testing.T, root project.Root, store *Store) map[string]str
 		t.Fatalf("CreateReport() error = %v", err)
 	}
 	refs["report"] = report.Report.ID
-	finding, err := store.CreateFinding(ctx, root, FindingCreateOptions{
-		Report: report.Report.ID, Title: "matrix finding", Severity: "low", Confidence: "medium", Dimension: "correctness",
-	})
-	if err != nil {
-		t.Fatalf("CreateFinding() error = %v", err)
-	}
-	refs["finding"] = finding.Finding.ID
 	return refs
 }
 

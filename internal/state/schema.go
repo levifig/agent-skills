@@ -58,6 +58,9 @@ var releasesSQL string
 //go:embed migrations/0017_issue_started_workspace.sql
 var issueStartedWorkspaceSQL string
 
+//go:embed migrations/0018_drop_findings_verdicts_runs.sql
+var dropFindingsVerdictsRunsSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -155,6 +158,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 17,
 			Name:    "issue_started_workspace",
 			SQL:     normalizeMigrationSQL(issueStartedWorkspaceSQL),
+		},
+		{
+			Version: 18,
+			Name:    "drop_findings_verdicts_runs",
+			SQL:     normalizeMigrationSQL(dropFindingsVerdictsRunsSQL),
 		},
 	}
 }

@@ -252,6 +252,9 @@ func (s *Store) ValidateCurrentSchema(ctx context.Context) (int, error) {
 	if err := s.validateOptionalJournalFirstMigration(ctx); err != nil {
 		return version, err
 	}
+	if err := validateGoneTablesAbsent(ctx, s.db); err != nil {
+		return version, err
+	}
 	return version, nil
 }
 

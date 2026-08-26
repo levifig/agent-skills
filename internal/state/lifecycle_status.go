@@ -154,11 +154,7 @@ var lifecycleLegacyStatusMap = map[string]map[string]string{
 	},
 }
 
-var nonLifecycleStatusVocabularies = []string{
-	"finding_status",
-	"verdict_outcome",
-	"run_status",
-}
+var nonLifecycleStatusVocabularies = []string{}
 
 // LifecycleStatuses returns canonical lifecycle statuses in global display order.
 func LifecycleStatuses() []string {
@@ -235,5 +231,17 @@ func LifecycleStatusFilterMatches(kind string, status string, filter string) boo
 
 // NonLifecycleStatusVocabularies returns explicit status-like vocabularies excluded from lifecycle canonicalization.
 func NonLifecycleStatusVocabularies() []string {
+	if len(nonLifecycleStatusVocabularies) == 0 {
+		return []string{}
+	}
 	return append([]string(nil), nonLifecycleStatusVocabularies...)
+}
+
+func containsString(items []string, value string) bool {
+	for _, item := range items {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }

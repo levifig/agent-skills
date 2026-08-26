@@ -172,39 +172,6 @@ func (s *Store) entityDetails(ctx context.Context, projectID string, kind string
 		}
 		entity.Title = text.String
 		entity.Status = LifecycleStatusForDisplay(LifecycleEntitySpark, status.String)
-	case "finding":
-		var title, status sql.NullString
-		err := s.db.QueryRowContext(ctx, `SELECT title, status FROM findings WHERE project_id = ? AND id = ?`, projectID, id).Scan(&title, &status)
-		if errors.Is(err, sql.ErrNoRows) {
-			return entityWithAliasFallback(ctx, s, projectID, entity)
-		}
-		if err != nil {
-			return TraceEntity{}, fmt.Errorf("read finding %s: %w", id, err)
-		}
-		entity.Title = title.String
-		entity.Status = status.String
-	case "verdict":
-		var outcome, rationale sql.NullString
-		err := s.db.QueryRowContext(ctx, `SELECT outcome, rationale FROM verdicts WHERE project_id = ? AND id = ?`, projectID, id).Scan(&outcome, &rationale)
-		if errors.Is(err, sql.ErrNoRows) {
-			return entityWithAliasFallback(ctx, s, projectID, entity)
-		}
-		if err != nil {
-			return TraceEntity{}, fmt.Errorf("read verdict %s: %w", id, err)
-		}
-		entity.Title = rationale.String
-		entity.Status = outcome.String
-	case "run":
-		var generatorRef, status sql.NullString
-		err := s.db.QueryRowContext(ctx, `SELECT generator_ref, status FROM runs WHERE project_id = ? AND id = ?`, projectID, id).Scan(&generatorRef, &status)
-		if errors.Is(err, sql.ErrNoRows) {
-			return entityWithAliasFallback(ctx, s, projectID, entity)
-		}
-		if err != nil {
-			return TraceEntity{}, fmt.Errorf("read run %s: %w", id, err)
-		}
-		entity.Title = generatorRef.String
-		entity.Status = status.String
 	case "journal_entry":
 		var entryType, scope, message sql.NullString
 		err := s.db.QueryRowContext(ctx, `SELECT entry_type, scope, message FROM journal_entries WHERE project_id = ? AND id = ?`, projectID, id).Scan(&entryType, &scope, &message)
