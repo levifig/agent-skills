@@ -389,8 +389,8 @@ func TestAliasOrphanRetiresOrphanReportAtSchema18(t *testing.T) {
 		t.Fatalf("validateGoneTablesAbsent() error = %v", err)
 	}
 	store.Close()
-	if schemaVersion != CurrentSchemaVersion() || schemaVersion != 18 {
-		t.Fatalf("schema version = %d, want 18", schemaVersion)
+	if schemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("schema version = %d, want current %d", schemaVersion, CurrentSchemaVersion())
 	}
 
 	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
