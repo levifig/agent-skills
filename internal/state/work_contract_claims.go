@@ -81,6 +81,66 @@ ON CONFLICT(child_criterion_id, parent_criterion_id) DO UPDATE SET updated_at = 
 	return updated, nil
 }
 
+// UnclaimWorkContractCriterion removes a child-to-parent criterion claim.
+func UnclaimWorkContractCriterion(ctx context.Context, root project.Root, resolver PathResolver, childRef string, childPosition, parentPosition int) (WorkContract, error) {
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	defer store.Close()
+	return store.UnclaimWorkContractCriterion(ctx, root, childRef, childPosition, parentPosition)
+}
+
+func (s *Store) UnclaimWorkContractCriterion(ctx context.Context, root project.Root, childRef string, childPosition, parentPosition int) (WorkContract, error) {
+	childAuthority, err := ParseAuthorityRef(childRef)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return WorkContract{}, err
+	}
+	defer tx.Rollback()
+
+	childContract, err := loadWorkContractByRefTx(ctx, tx, projectID, childAuthority)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	if childContract.ParentContractID == "" {
+		return WorkContract{}, fmt.Errorf("work contract %s has no parent to unclaim against", childAuthority.String())
+	}
+	parentContract, err := loadWorkContractTx(ctx, tx, projectID, childContract.ParentContractID)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	childCriterionID, err := workContractCriterionIDByPosition(childContract.Criteria, childPosition)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	parentCriterionID, err := workContractCriterionIDByPosition(parentContract.Criteria, parentPosition)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM work_contract_criterion_claims
+WHERE project_id = ? AND child_criterion_id = ? AND parent_criterion_id = ?
+`, projectID, childCriterionID, parentCriterionID); err != nil {
+		return WorkContract{}, fmt.Errorf("unclaim work contract criterion: %w", err)
+	}
+	updated, err := loadWorkContractTx(ctx, tx, projectID, childContract.ID)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return WorkContract{}, err
+	}
+	return updated, nil
+}
+
 func workContractCriterionIDByPosition(criteria []WorkContractCriterion, position int) (string, error) {
 	for _, criterion := range criteria {
 		if criterion.Position == position {

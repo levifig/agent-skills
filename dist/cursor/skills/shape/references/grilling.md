@@ -23,7 +23,7 @@ Stop when either holds:
 - No unrouted `[KU]` entries remain.
 - Answers stop changing the issue — the last several questions confirmed direction rather than altering the body, the criteria, or the children.
 
-Write each accepted answer into the issue as it lands: `loaf issue edit` for the body, `loaf issue dod add` for a new done-check, `loaf issue new --kind decision --parent <ref>` when the answer is itself a sharp question that still needs a later call. Do not leave a resolved `[KU]` only in the conversation.
+Write each accepted answer into the issue as it lands: `loaf issue edit` for the body, `loaf issue dod add` for a new done-check, `loaf issue new --kind decision` (ledger; no `--ref`) when the answer is itself a sharp question that still needs a later call. Do not leave a resolved `[KU]` only in the conversation.
 
 ## Mid-Interview Reroute
 

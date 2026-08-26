@@ -101,3 +101,50 @@ func containsAll(s string, parts ...string) bool {
 	}
 	return true
 }
+
+func TestWorkContractFrontierAndCriterionAppend(t *testing.T) {
+	ctx, root, store, ref := workContractFixture(t)
+
+	frontier, err := store.ListWorkContractFrontier(ctx, root)
+	if err != nil {
+		t.Fatalf("ListWorkContractFrontier() error = %v", err)
+	}
+	if len(frontier) != 1 || frontier[0].AuthorityRef.String() != ref.String() {
+		t.Fatalf("frontier = %#v, want [%s]", frontier, ref)
+	}
+
+	updated, err := store.AddWorkContractCriterion(ctx, root, ref.String(), IssueCriterionInput{
+		Text:    "Package tests pass",
+		Command: "go test ./internal/state/ -run TestWorkContractFrontierAndCriterionAppend",
+		Expect:  "exit 0",
+	})
+	if err != nil {
+		t.Fatalf("AddWorkContractCriterion() error = %v", err)
+	}
+	if len(updated.Criteria) != 2 || updated.Criteria[1].Position != 2 {
+		t.Fatalf("criteria after add = %#v", updated.Criteria)
+	}
+
+	removed, err := store.RemoveWorkContractCriterion(ctx, root, ref.String(), 1)
+	if err != nil {
+		t.Fatalf("RemoveWorkContractCriterion() error = %v", err)
+	}
+	if len(removed.Criteria) != 1 || removed.Criteria[0].Position != 1 || removed.Criteria[0].Text != "Package tests pass" {
+		t.Fatalf("criteria after remove = %#v", removed.Criteria)
+	}
+
+	if _, err := store.UpdateWorkContract(ctx, root, WorkContractUpdateOptions{
+		AuthorityRef: ref,
+		Status:       IssueStatusDone,
+		SetStatus:    true,
+	}); err != nil {
+		t.Fatalf("UpdateWorkContract() error = %v", err)
+	}
+	frontier, err = store.ListWorkContractFrontier(ctx, root)
+	if err != nil {
+		t.Fatalf("ListWorkContractFrontier() after done error = %v", err)
+	}
+	if len(frontier) != 0 {
+		t.Fatalf("frontier after done = %#v, want empty", frontier)
+	}
+}

@@ -14,6 +14,7 @@ import (
 type issueNewOptions struct {
 	jsonOutput bool
 	status     string
+	ref        string
 	create     state.IssueCreateOptions
 	body       bodyInputOptions
 }
@@ -56,31 +57,31 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return nil
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
-		"new":       writeIssueNewHelp,
-		"absorb":    writeIssueAbsorbHelp,
-		"show":      writeIssueShowHelp,
-		"list":      writeIssueListHelp,
-		"tree":      writeIssueTreeHelp,
-		"frontier":  writeIssueFrontierHelp,
-		"start":     writeIssueStartHelp,
-		"stop":      writeIssueStopHelp,
-		"edit":      writeIssueEditHelp,
-		"retitle":   writeIssueRetitleHelp,
-		"status":    writeIssueStatusHelp,
-		"dod":       writeIssueDodHelp,
-		"promote":   writeIssuePromoteHelp,
-		"check":     writeIssueCheckHelp,
-		"verify":    writeIssueVerifyHelp,
-		"bucket":    writeIssueBucketHelp,
-		"link":      writeIssueLinkHelp,
-		"render":    writeIssueRenderHelp,
+		"new":        writeIssueNewHelp,
+		"absorb":     writeIssueAbsorbHelp,
+		"show":       writeIssueShowHelp,
+		"list":       writeIssueListHelp,
+		"tree":       writeIssueTreeHelp,
+		"frontier":   writeIssueFrontierHelp,
+		"start":      writeIssueStartHelp,
+		"stop":       writeIssueStopHelp,
+		"edit":       writeIssueEditHelp,
+		"retitle":    writeIssueRetitleHelp,
+		"status":     writeIssueStatusHelp,
+		"dod":        writeIssueDodHelp,
+		"promote":    writeIssuePromoteHelp,
+		"check":      writeIssueCheckHelp,
+		"verify":     writeIssueVerifyHelp,
+		"bucket":     writeIssueBucketHelp,
+		"link":       writeIssueLinkHelp,
+		"render":     writeIssueRenderHelp,
 		"render-out": writeIssueRenderOutHelp,
-		"identity":  writeIssueIdentityHelp,
-		"bootstrap": writeIssueBootstrapHelp,
-		"export":    writeIssueExportHelp,
-		"pull":      writeIssuePullHelp,
-		"push":      writeIssuePushHelp,
-		"reconcile": writeIssueReconcileHelp,
+		"identity":   writeIssueIdentityHelp,
+		"bootstrap":  writeIssueBootstrapHelp,
+		"export":     writeIssueExportHelp,
+		"pull":       writeIssuePullHelp,
+		"push":       writeIssuePushHelp,
+		"reconcile":  writeIssueReconcileHelp,
 	}) {
 		return nil
 	}
@@ -153,12 +154,12 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 
 func writeIssueHelp(out io.Writer) {
 	writeCommandGroupHelp(out, "loaf issue <subcommand> [options]", "Manage issues in native SQLite state.", []subcommandHelpItem{
-		{Name: "new", Summary: "Create an issue"},
+		{Name: "new", Summary: "Create an issue or a ref-keyed work contract"},
 		{Name: "absorb", Summary: "Mint an issue from leftover SQLite work, or dismiss the source"},
-		{Name: "show", Summary: "Show one issue"},
+		{Name: "show", Summary: "Show one issue or work contract by ref"},
 		{Name: "list", Summary: "List project issues"},
 		{Name: "tree", Summary: "Print a recursive issue tree"},
-		{Name: "frontier", Summary: "List unblocked pick-up-next issues"},
+		{Name: "frontier", Summary: "List unblocked pick-up-next authority refs"},
 		{Name: "start", Summary: "Start or join the shippable root workspace"},
 		{Name: "stop", Summary: "Remove a started worktree; descendants must stop the root"},
 		{Name: "edit", Summary: "Replace an issue body"},
@@ -166,7 +167,7 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "status", Summary: "Set an issue status"},
 		{Name: "dod", Summary: "Manage definition-of-done criteria"},
 		{Name: "promote", Summary: "Promote a criterion into a child issue"},
-		{Name: "check", Summary: "Derive readiness from the issue row"},
+		{Name: "check", Summary: "Derive readiness from a ref-keyed contract or issue row"},
 		{Name: "verify", Summary: "Run V-tier criteria from the repository root"},
 		{Name: "bucket", Summary: "Set an advisory Now/Next/Later label"},
 		{Name: "link", Summary: "Create or remove an issue relationship"},
@@ -182,19 +183,20 @@ func writeIssueHelp(out io.Writer) {
 }
 
 func writeIssueNewHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue new <title> [--body <text>|--body -|--body-file <path>|--message <text>] [--kind delivery|decision] [--parent <ref>] [--fog <text>] [--status <status>] [--json]", "Create an issue in SQLite state.",
+	writeUsageHelp(out, "loaf issue new <title> [--ref <authority-ref>] [--body <text>|--body -|--body-file <path>|--message <text>] [--kind delivery|decision] [--parent <ref>] [--fog <text>] [--status <status>] [--json]", "Create a work contract keyed to --ref (linear:, branch:, or pr:), or a legacy issue row when --ref is omitted.",
+		"--ref         Provider-qualified authority ref; writes a work contract instead of an internal issue row",
 		"--body        Inline issue body, or '-' to read from stdin",
 		"--body-file   Read the issue body from a UTF-8 file",
 		"--message     Inline issue body; lower precedence than --body-file and --body -",
 		"--kind        Issue kind: delivery (default) or decision",
-		"--parent      Parent issue ref",
+		"--parent      Parent authority ref (or legacy issue ref when --ref is omitted)",
 		"--fog         Questions not yet sharp enough to be issues",
 		"--status      Write status after create: "+strings.Join(state.IssueWriteStatuses(), ", ")+"; still records the initial triage event",
 		"--json        Output the created issue, global database scope, and project identity as JSON")
 }
 
 func writeIssueShowHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue show <ref> [--json]", "Show one issue by alias or opaque id.", "--json       Output issue details, parent, children, bucket, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf issue show <ref> [--json]", "Show one work contract by authority ref (linear:, branch:, or pr:), or a legacy issue by alias or opaque id.", "--json       Output issue details, parent, children, bucket, global database scope, and project identity as JSON")
 }
 
 func writeIssueListHelp(out io.Writer) {
@@ -213,8 +215,8 @@ func writeIssueTreeHelp(out io.Writer) {
 }
 
 func writeIssueFrontierHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue frontier [--json]", "List non-archived triage/backlog/todo issues that are not blocked. Derived at read time.",
-		"--json       Output frontier issues, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf issue frontier [--json]", "List unblocked pick-up-next work as provider-qualified authority refs, plus remaining legacy issue rows. Derived at read time.",
+		"--json       Output frontier refs, legacy issues, global database scope, and project identity as JSON")
 }
 
 func writeIssueEditHelp(out io.Writer) {
@@ -330,6 +332,9 @@ func (r Runner) runIssueNew(args []string, out io.Writer, runtime state.Runtime)
 	if ok {
 		options.create.Body = body
 	}
+	if options.ref != "" {
+		return r.runIssueNewContract(context.Background(), projectRoot, options, out)
+	}
 	resolver := state.PathResolver{StateHome: r.StateHome}
 	if strings.TrimSpace(options.create.Kind) == state.IssueKindDecision {
 		record, err := state.RecordDecisionQuestion(context.Background(), projectRoot, resolver, state.DecisionRecordOptions{
@@ -437,6 +442,9 @@ func (r Runner) runIssueShow(args []string, out io.Writer, runtime state.Runtime
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueShowContract(context.Background(), projectRoot, ref, jsonOutput, out)
+	}
 	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
 		return err
@@ -531,6 +539,9 @@ func (r Runner) runIssueEdit(args []string, out io.Writer, runtime state.Runtime
 	if !ok {
 		return fmt.Errorf("issue edit requires body content via --body-file, --body -, or --message")
 	}
+	if providerQualifiedRefCommand(options.ref) {
+		return r.runIssueEditContract(context.Background(), projectRoot, options, body, out)
+	}
 	updated, err := state.UpdateIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.IssueUpdateOptions{
 		Ref:     options.ref,
 		Body:    body,
@@ -559,6 +570,9 @@ func (r Runner) runIssueStatus(args []string, out io.Writer, runtime state.Runti
 	projectRoot, err := r.requireIssueSQLiteState("issue status", runtime)
 	if err != nil {
 		return err
+	}
+	if providerQualifiedRefCommand(options.ref) {
+		return r.runIssueStatusContract(context.Background(), projectRoot, options, out)
 	}
 	var updated state.Issue
 	switch options.status {
@@ -622,6 +636,9 @@ func (r Runner) runIssueDodAdd(args []string, out io.Writer, runtime state.Runti
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(options.ref) {
+		return r.runIssueDodAddContract(context.Background(), projectRoot, options, out)
+	}
 	updated, err := state.AddIssueCriterion(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.ref, options.input)
 	if err != nil {
 		return err
@@ -647,6 +664,9 @@ func (r Runner) runIssueDodList(args []string, out io.Writer, runtime state.Runt
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueDodListContract(context.Background(), projectRoot, ref, jsonOutput, out)
+	}
 	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
 		return err
@@ -666,6 +686,9 @@ func (r Runner) runIssueDodRemove(args []string, out io.Writer, runtime state.Ru
 	projectRoot, err := r.requireIssueSQLiteState("issue dod remove", runtime)
 	if err != nil {
 		return err
+	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueDodRemoveContract(context.Background(), projectRoot, ref, position, jsonOutput, out)
 	}
 	updated, err := state.RemoveIssueCriterion(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, position)
 	if err != nil {
@@ -692,6 +715,9 @@ func (r Runner) runIssueDodClaim(args []string, out io.Writer, runtime state.Run
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueDodClaimContract(context.Background(), projectRoot, ref, childPosition, parentPosition, jsonOutput, out)
+	}
 	updated, err := state.ClaimIssueCriterion(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, childPosition, parentPosition)
 	if err != nil {
 		return err
@@ -716,6 +742,9 @@ func (r Runner) runIssueDodUnclaim(args []string, out io.Writer, runtime state.R
 	projectRoot, err := r.requireIssueSQLiteState("issue dod unclaim", runtime)
 	if err != nil {
 		return err
+	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueDodUnclaimContract(context.Background(), projectRoot, ref, childPosition, parentPosition, jsonOutput, out)
 	}
 	updated, err := state.UnclaimIssueCriterion(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, childPosition, parentPosition)
 	if err != nil {
@@ -907,6 +936,12 @@ func parseIssueNewArgs(args []string) (issueNewOptions, error) {
 			endOfOptions = true
 		case "--json":
 			options.jsonOutput = true
+		case "--ref":
+			value, err := consumeFlagValue(args, &i, "--ref")
+			if err != nil {
+				return issueNewOptions{}, err
+			}
+			options.ref = strings.TrimSpace(value)
 		case "--kind":
 			value, err := consumeFlagValue(args, &i, "--kind")
 			if err != nil {
@@ -1343,12 +1378,15 @@ func writeIssueTreeNode(out io.Writer, node state.IssueTreeNode, depth int) {
 
 func writeIssueFrontier(out io.Writer, result state.IssueFrontierResult) {
 	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-	if len(result.Issues) == 0 {
+	if len(result.Refs) == 0 && len(result.Issues) == 0 {
 		fmt.Fprintln(out, "no frontier issues")
 		return
 	}
+	for _, ref := range result.Refs {
+		fmt.Fprintf(out, "%-22s %-10s %s\n", ref.AuthorityRef.String(), ref.Status, ref.Title)
+	}
 	for _, issue := range result.Issues {
-		fmt.Fprintf(out, "%-10s %-10s %s\n", firstNonEmpty(issue.Alias, issue.ID), issue.Status, issue.Title)
+		fmt.Fprintf(out, "%-22s %-10s %s\n", firstNonEmpty(issue.Alias, issue.ID), issue.Status, issue.Title)
 	}
 }
 

@@ -89,6 +89,146 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return nil
 }
 
+// AddWorkContractCriterion appends one criterion to a ref-keyed contract.
+func AddWorkContractCriterion(ctx context.Context, root project.Root, resolver PathResolver, rawRef string, input IssueCriterionInput) (WorkContract, error) {
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	defer store.Close()
+	return store.AddWorkContractCriterion(ctx, root, rawRef, input)
+}
+
+func (s *Store) AddWorkContractCriterion(ctx context.Context, root project.Root, rawRef string, input IssueCriterionInput) (WorkContract, error) {
+	if input.ServesParentPosition != 0 {
+		return WorkContract{}, fmt.Errorf("work-contract dod add does not accept --serves; use loaf issue dod claim <child-ref> <child-position> <parent-position>")
+	}
+	authorityRef, err := ParseAuthorityRef(rawRef)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return WorkContract{}, fmt.Errorf("begin add work contract criterion: %w", err)
+	}
+	defer tx.Rollback()
+
+	contract, err := loadWorkContractByRefTx(ctx, tx, projectID, authorityRef)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	input.Position = len(contract.Criteria) + 1
+	normalized, err := normalizeIssueCriteria([]IssueCriterionInput{input})
+	if err != nil {
+		return WorkContract{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := insertWorkContractCriterionTx(ctx, tx, projectID, contract.ID, normalized[0], now); err != nil {
+		return WorkContract{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE work_contracts SET updated_at = ? WHERE project_id = ? AND id = ?`, now, projectID, contract.ID); err != nil {
+		return WorkContract{}, err
+	}
+	updated, err := loadWorkContractTx(ctx, tx, projectID, contract.ID)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return WorkContract{}, err
+	}
+	return updated, nil
+}
+
+// RemoveWorkContractCriterion deletes the criterion at position and compact-renumbers.
+func RemoveWorkContractCriterion(ctx context.Context, root project.Root, resolver PathResolver, rawRef string, position int) (WorkContract, error) {
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	defer store.Close()
+	return store.RemoveWorkContractCriterion(ctx, root, rawRef, position)
+}
+
+func (s *Store) RemoveWorkContractCriterion(ctx context.Context, root project.Root, rawRef string, position int) (WorkContract, error) {
+	if position < 1 {
+		return WorkContract{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("must be >= 1")}
+	}
+	authorityRef, err := ParseAuthorityRef(rawRef)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return WorkContract{}, fmt.Errorf("begin remove work contract criterion: %w", err)
+	}
+	defer tx.Rollback()
+
+	contract, err := loadWorkContractByRefTx(ctx, tx, projectID, authorityRef)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	remaining := make([]WorkContractCriterion, 0, len(contract.Criteria))
+	removed := false
+	for _, criterion := range contract.Criteria {
+		if criterion.Position == position {
+			removed = true
+			if _, err := tx.ExecContext(ctx, `DELETE FROM work_contract_criteria WHERE project_id = ? AND id = ?`, projectID, criterion.ID); err != nil {
+				return WorkContract{}, fmt.Errorf("delete work contract criterion: %w", err)
+			}
+			continue
+		}
+		remaining = append(remaining, criterion)
+	}
+	if !removed {
+		return WorkContract{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("criterion position %d not found", position)}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for i, criterion := range remaining {
+		want := i + 1
+		if criterion.Position == want {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+UPDATE work_contract_criteria SET position = ?, updated_at = ? WHERE project_id = ? AND id = ?
+`, want, now, projectID, criterion.ID); err != nil {
+			return WorkContract{}, fmt.Errorf("compact work contract criterion: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE work_contracts SET updated_at = ? WHERE project_id = ? AND id = ?`, now, projectID, contract.ID); err != nil {
+		return WorkContract{}, err
+	}
+	updated, err := loadWorkContractTx(ctx, tx, projectID, contract.ID)
+	if err != nil {
+		return WorkContract{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return WorkContract{}, err
+	}
+	return updated, nil
+}
+
+func insertWorkContractCriterionTx(ctx context.Context, tx *sql.Tx, projectID, contractID string, input IssueCriterionInput, now string) error {
+	criterionID, err := newOpaqueStateID("wcc")
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO work_contract_criteria (id, project_id, contract_id, position, text, command, expect, tier, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, criterionID, projectID, contractID, input.Position, input.Text, emptyToNil(strings.TrimSpace(input.Command)), emptyToNil(strings.TrimSpace(input.Expect)), input.Tier, now, now); err != nil {
+		return fmt.Errorf("insert work contract criterion: %w", err)
+	}
+	return nil
+}
+
 func loadWorkContractCriteriaTx(ctx context.Context, tx *sql.Tx, projectID, contractID string) ([]WorkContractCriterion, error) {
 	rows, err := tx.QueryContext(ctx, `
 SELECT id, position, text, COALESCE(command, ''), COALESCE(expect, ''), tier

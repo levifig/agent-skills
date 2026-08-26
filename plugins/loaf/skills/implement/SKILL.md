@@ -2,20 +2,20 @@
 name: implement
 description: >-
   Orchestrates implementation work through agent delegation and batch execution
-  against Loaf issues. Use for all implementation work — features, bug fixes,
-  refactors, and code changes. Picks the next issue from loaf issue frontier,
-  delegates one agent per started worktree, and treats definition-of-done
-  criteria as the completion contract. Logs to the project journal and produces
-  agent spawn plans and progress tracking. Not for shaping or decomposition (use
-  shape), research, or review.
+  against authority refs. Use for all implementation work — features, bug
+  fixes, refactors, and code changes. Picks the next ref from loaf issue
+  frontier (linear:, branch:, or pr:), delegates one agent per started worktree,
+  and treats definition-of-done criteria as the completion contract. Logs to the
+  project journal and produces agent spawn plans and progress tracking. Not for
+  shaping or decomposition (use shape), research, or review.
 user-invocable: true
-argument-hint: '[LOAF-42 | next | description]'
+argument-hint: '[linear:ENG-42 | branch:issue/foo | next | description]'
 version: 0.3.1
 ---
 
 # Implement
 
-You are the coordinator. Work units are issues.
+You are the coordinator. Work units are provider-qualified authority refs.
 
 ## Contents
 - Critical Rules
@@ -41,13 +41,13 @@ You are the coordinator. Work units are issues.
 
 **You are the ORCHESTRATOR, not the implementer.**
 
-- Log `loaf journal log "skill(implement): LOAF-42 — <what>"` as the first action. Substitute the real alias (or opaque id) and a short intent.
-- **Pick-up-next is `loaf issue frontier`.** That view is open (`triage` / `backlog` / `todo`), unblocked, and unclaimed (not `active`, no started worktree). Derived at read time.
-- **The delegation brief is the issue row** — `loaf issue show <ref>` / `loaf issue render <ref>`: body, definition-of-done criteria, children. There is no other packet.
-- **One agent, one worktree.** `loaf issue start <ref>` walks to the shippable root and starts or joins that root workspace (`issue/<root-alias>`). Only the root records `started_branch` / `started_worktree`; a descendant becomes `active` without its own worktree. Before dispatch, run `loaf issue list --started`. Never send two agents into the same worktree.
+- Log `loaf journal log "skill(implement): linear:ENG-42 — <what>"` as the first action. Substitute the real authority ref (`linear:`, `branch:`, or `pr:`) and a short intent.
+- **Pick-up-next is `loaf issue frontier`.** That view lists authority refs (`linear:`, `branch:`, `pr:`) that are open (`triage` / `backlog` / `todo`), unblocked, and unclaimed (not `active`, no started worktree). Derived at read time.
+- **The delegation brief is the work contract** — `loaf issue show <ref>` / `loaf issue render <ref>`: body, definition-of-done criteria, children. Address the contract as `linear:<KEY>`, `branch:<name>`, or `pr:<number>`. There is no other packet.
+- **One agent, one worktree.** Worktree start in v1 is `loaf issue start branch:<name>`. Contract show/check/verify/render/status take the authority ref (`linear:`, `branch:`, or `pr:`). Before dispatch, run `loaf issue list --started`. Never send two agents into the same worktree. Do not start a second workspace on an occupied path.
 - **Definition of done is the completion contract.** `loaf issue verify <ref>` runs V-tier criteria from the repository root and writes nothing. H-tier is reviewed by a human or this orchestrator. Completion is the work landing plus `loaf issue status <ref> done`. Do not flip checkboxes. Provenance is the delivering commits and the PR whose body is `loaf issue render <ref>`.
-- Shape prepares issues. If `loaf issue check <ref>` does not report the delivery issue shaped (or the decision issue ready), stop and send the work to shape. Do not mint a new issue from this skill.
-- **Window-fit is a runtime heuristic, not a tree edge.** Shape sizes slices for verification and revertibility alone. When an executor slice still exceeds one fresh context window, implement sub-decomposes for execution — via handoffs, scratchpad, and agent spawns — without minting child issues. That carving never appears in the issue tree.
+- Shape prepares contracts. If `loaf issue check <ref>` does not report the delivery contract shaped (or the ledger decision ready), stop and send the work to shape. Do not mint an internal issue row from this skill.
+- **Window-fit is a runtime heuristic, not a tree edge.** Shape sizes slices for verification and revertibility alone. When an executor slice still exceeds one fresh context window, implement sub-decomposes for execution — via handoffs, scratchpad, and agent spawns — without minting child contracts. That carving never appears in the contract tree.
 
 ### Orchestrator Can Do Directly
 - Log journal entries, read journal context, create council files
@@ -112,7 +112,7 @@ Parse `$ARGUMENTS` to determine the work:
 
 | Input Pattern | Type | Action |
 |---------------|------|--------|
-| `LOAF-42` or opaque id | Single issue | Load via `loaf issue show <ref>`; fall through to Pick-up and Dispatch |
+| `linear:<KEY>`, `branch:<name>`, or `pr:<N>` | Single contract | Load via `loaf issue show <ref>`; fall through to Pick-up and Dispatch |
 | Parent ref with children | Tree | `loaf issue tree <ref>`; build rounds from children and `blocks` / `blocked_by` edges (see [batch-orchestration.md](references/batch-orchestration.md)) |
 | Multiple refs | Batch | Same round construction across the named set |
 | Empty / "next" | Frontier | `loaf issue frontier`; if one row, pick it; if several, ask (structured question tool if the harness has one); if none, stop |
@@ -121,18 +121,18 @@ Parse `$ARGUMENTS` to determine the work:
 
 ### Missing ref
 
-If input looks like an issue ref but `loaf issue show` cannot resolve it:
+If input looks like an authority ref but `loaf issue show` cannot resolve it:
 
 1. Show error: `"<ref> not found"`
-2. Ask whether they meant a different alias, or to shape a new issue
+2. Ask whether they meant a different ref, or to shape a new contract
 3. **Do not silently create**
 
 ---
 
 ## Pick-up and Dispatch
 
-1. **Confirm the issue is implementable.** `loaf issue check <ref>` must report a delivery issue shaped (or, if the user explicitly asked to resolve a decision issue, that it is ready). Unshaped work goes to shape.
-2. **Honor the frontier.** An issue that is blocked does not appear on `loaf issue frontier`. `loaf issue link A blocks B` means A blocks B; B waits until A is `done`, `cancelled`, or `duplicate`. Do not start a blocked successor. Parent/child structure from `loaf issue tree` is not a sequencing edge — only `blocks` / `blocked_by` are. Use the tree to know who belongs in the batch; use the edges to order rounds.
+1. **Confirm the contract is implementable.** `loaf issue check <ref>` must report a delivery contract shaped (or, if the user explicitly asked to resolve a decision issue, that it is ready). Unshaped work goes to shape.
+2. **Honor the frontier.** A ref that is blocked does not appear on `loaf issue frontier`. `loaf issue link A blocks B` means A blocks B; B waits until A is `done`, `cancelled`, or `duplicate`. Do not start a blocked successor. Parent/child structure from `loaf issue tree` is not a sequencing edge — only `blocks` / `blocked_by` are. Use the tree to know who belongs in the batch; use the edges to order rounds.
 3. **The shippable root owns the branch.** Related slices toward one goal share the parent's workspace and the PR to main. Dispatch leaf delivery children that are on the frontier, but `loaf issue start` on a child starts or joins the root — do not mint a branch per child. A parent is not marked `done` because a child landed; it executes through claimed child criteria.
 4. **Inspect occupied worktrees:**
    ```bash
@@ -141,9 +141,9 @@ If input looks like an issue ref but `loaf issue show` cannot resolve it:
    Columns: alias, title, `started_branch`, `started_worktree`, optional `(missing)`. If this ref is already started, resume in that worktree with one agent. If the path is occupied by another issue, refuse. A `(missing)` marker means the recorded path is gone — `loaf issue stop <ref>` (not from inside the tree) before starting again.
 5. **Start the workspace** (skip if already started and the path exists):
    ```bash
-   loaf issue start <ref>
+   loaf issue start branch:<name>
    ```
-   Walks `parent_id` to the shippable root and creates (or joins) branch `issue/<root-alias-or-id>` in lowercase (`issue/loaf-42`, id suffix when that name is claimed) plus a sibling worktree on the root only. The requested issue becomes `active`. Base is the repository default branch. Start refuses archived rows and terminal statuses (`done`, `cancelled`, `duplicate`) on the requested issue and on the root when the workspace still has to be created. `loaf issue stop` on a descendant that does not own a worktree names the root.
+   v1 worktree start accepts `branch:` refs. For a `linear:` or `pr:` contract, start a `branch:` workspace and keep the authority ref for show/verify/render/status. Start refuses terminal statuses (`done`, `cancelled`, `duplicate`). `loaf issue stop branch:<name>` removes the worktree and keeps the branch.
 6. **Hand the agent the brief** from `loaf issue show <ref>` (body, criteria, children) and, when opening a PR, `loaf issue render <ref>`. Tell the agent to work only in `started_worktree`.
 7. **Batch rounds.** When input is a parent or a set of refs, group unblocked delivery children into dependency-ready rounds from `blocked_by` edges and parent/child structure. Children of one root share that root's worktree, so they run sequentially. Parallel only within a round, max 3, and only when each agent has its own worktree (independent shippable roots). See [batch-orchestration.md](references/batch-orchestration.md) for the round loop, `--dry-run` / `--parallel` / `--continue` / `--skip <ref>` / `--abort`, and blocked-state recovery.
 
@@ -173,13 +173,13 @@ Spawn specialized agents with the appropriate profile:
 There is no session to start — journaling is continuous. Your first action is to log the invocation:
 
 ```bash
-loaf journal log "skill(implement): LOAF-42 — <what>"
+loaf journal log "skill(implement): linear:ENG-42 — <what>"
 ```
 
 Entries are project-scoped and tagged with this conversation's harness id automatically. Continuity from prior conversations may arrive through a supported startup adapter; when the exact current target mode is candidate or unsupported, pull it explicitly with `loaf journal context`. Use `loaf journal recent` when you need a narrower timeline.
 
 Suggest renaming the harness conversation with a meaningful name derived from the issue (use your harness's rename surface if it has one):
-- From issue: `LOAF-42-login-fix`
+- From ref: `linear-ENG-42-login-fix`
 - From ad-hoc match: `{alias}-{short-slug}`
 
 ---
@@ -214,14 +214,14 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 
 ## Startup Checklist
 
-1. [ ] Log the invocation: `loaf journal log "skill(implement): LOAF-42 — <what>"`
+1. [ ] Log the invocation: `loaf journal log "skill(implement): linear:ENG-42 — <what>"`
 2. [ ] Parse input (issue ref, parent, set, frontier, or description)
 3. [ ] Load `loaf issue show <ref>`; if children, `loaf issue tree <ref>`
 4. [ ] `loaf issue check <ref>` — shaped/ready, or stop and send to shape
 5. [ ] Confirm the ref is on `loaf issue frontier` (or already started for resume)
 6. [ ] `loaf issue list --started` — one agent per worktree
 7. [ ] `loaf issue start <ref>` unless already started
-8. [ ] Suggest conversation rename (`LOAF-42-login-fix`)
+8. [ ] Suggest conversation rename (`linear:ENG-42-login-fix`)
 9. [ ] Identify specialized agents; log next steps
 10. [ ] **Get user approval** before spawning
 

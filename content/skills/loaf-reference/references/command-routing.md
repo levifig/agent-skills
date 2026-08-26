@@ -6,8 +6,8 @@ Which command a task needs. For exact flags, run `loaf <command> --help`.
 
 | Intent | Route |
 |--------|-------|
-| Shape new bounded work | `loaf issue new <title>`, then `loaf issue dod add` and `loaf issue check <ref>` |
-| Start implementing new bounded work | the implement workflow: pick from `loaf issue frontier`, then `loaf issue start <ref>` |
+| Shape new bounded work | `loaf issue new --ref linear:<KEY>|branch:<name>|pr:<N> <title>`, then `loaf issue dod add <ref>` and `loaf issue check <ref>` |
+| Start implementing new bounded work | the implement workflow: pick a `linear:`/`branch:`/`pr:` ref from `loaf issue frontier`, then `loaf issue start` on a `branch:` workspace ref |
 | Continue an existing task or spec record | `loaf task` and `loaf spec` remain readable for legacy records; new work is issues |
 | Continue after a restart | `loaf journal context` |
 | Skills or content changed | `loaf build && loaf install --to <target>` |

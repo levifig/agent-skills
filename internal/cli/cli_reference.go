@@ -427,7 +427,8 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Name:        "issue",
 			Description: "Manage issues in native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
-				{Name: "new", Description: "Create an issue", Options: []cliReferenceOption{
+				{Name: "new", Description: "Create a ref-keyed work contract or a legacy issue", Options: []cliReferenceOption{
+					{Flags: "--ref <authority-ref>", Description: "Provider-qualified authority ref; writes a work contract instead of an internal issue row"},
 					{Flags: "--body <text>", Description: "Inline issue body, or '-' to read from stdin"},
 					{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"},
 					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
@@ -444,7 +445,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--dismiss", Description: "Archive the source as superseded without minting an issue"},
 					{Flags: "--json", Description: "Output the absorb result, global database scope, and project identity as JSON"},
 				}},
-				{Name: "show", Description: "Show one issue", Options: []cliReferenceOption{
+				{Name: "show", Description: "Show one work contract or legacy issue by ref", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output issue details, parent, children, bucket, global database scope, and project identity as JSON"},
 				}},
 				{Name: "list", Description: "List project issues", Options: []cliReferenceOption{
@@ -458,8 +459,8 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--archived", Description: "Include archived issues"},
 					{Flags: "--json", Description: "Output the tree, global database scope, and project identity as JSON"},
 				}},
-				{Name: "frontier", Description: "List unblocked pick-up-next issues", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output frontier issues, global database scope, and project identity as JSON"},
+				{Name: "frontier", Description: "List unblocked pick-up-next authority refs", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output frontier refs, legacy issues, global database scope, and project identity as JSON"},
 				}},
 				{Name: "start", Description: "Start or join the shippable root workspace", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output the root issue, requested ref, joined flag, branch, worktree, base, global database scope, and project identity as JSON"},

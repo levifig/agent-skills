@@ -18,16 +18,16 @@ Reading `loaf issue` — the skill teaches reading the CLI, not wrapping it. For
 ## `loaf issue new <title> [options]`
 
 ```text
-loaf issue new <title> [--body <text>|--body -|--body-file <path>|--message <text>]
+loaf issue new <title> [--ref <authority-ref>] [--body <text>|--body -|--body-file <path>|--message <text>]
   [--kind delivery|decision] [--parent <ref>] [--fog <text>] [--status <status>] [--json]
 ```
 
-Creates the issue row. Default kind is `delivery`; default status is `triage`. `--status` accepts the write statuses `triage`, `backlog`, `todo`, `active`, `done` (it still records the initial triage event). `--fog` parks questions not yet sharp enough to be issues; this flag exists only on create — `loaf issue edit` replaces the body and does not mutate `fog`.
+With `--ref linear:<KEY>`, `--ref branch:<name>`, or `--ref pr:<number>`, creates a work contract keyed to that authority ref. Omit `--ref` only for a ledger decision (`--kind decision`) or leftover legacy issue rows. Delivery work after cutover must pass `--ref`. Default kind is `delivery`; default status is `triage`. `--status` accepts the write statuses `triage`, `backlog`, `todo`, `active`, `done` (it still records the initial triage event). `--fog` parks questions not yet sharp enough to be issues; this flag exists only on create — `loaf issue edit` replaces the body and does not mutate `fog`.
 
 `--body -` reads stdin; `--body-file` reads a UTF-8 file; `--message` is inline body at lower precedence than `--body-file` and `--body -`. A hyphen-leading title is positional after `--`:
 
 ```bash
-loaf issue new --parent LOAF-42 --status backlog -- "--help is missing from the man page"
+loaf issue new --ref branch:help-missing --parent linear:ENG-42 --status backlog -- "--help is missing from the man page"
 ```
 
 A delivery body must state the problem and, before `loaf issue check` will pass, contain the substring `out of scope` (case-insensitive). A decision issue needs a sharp question (`?` in the title or body), not a body contract.
@@ -41,7 +41,7 @@ loaf issue tree [<ref>] [--archived] [--json]
 loaf issue frontier [--json]
 ```
 
-`show` prints identity, parent, fog, body, definition of done, and children. `list` hides archived issues unless `--archived`. `--status` filters by `triage`, `backlog`, `todo`, `active`, `done`, `cancelled`, `duplicate`. `tree` prints from a ref, or the whole project when omitted. `frontier` lists non-archived `triage`/`backlog`/`todo` issues that are not blocked — derived at read time, useful when checking whether this work is already covered.
+`show` prints identity, parent, fog, body, definition of done, and children. `list` hides archived issues unless `--archived`. `--status` filters by `triage`, `backlog`, `todo`, `active`, `done`, `cancelled`, `duplicate`. `tree` prints from a ref, or the whole project when omitted. `frontier` lists unblocked pick-up-next work as provider-qualified authority refs (`linear:`, `branch:`, `pr:`), plus remaining legacy issue rows — derived at read time.
 
 Prefer `--json` when diagnosing rather than scraping the human-readable text.
 
@@ -68,7 +68,7 @@ V-tier is used when `--command` is present, otherwise H, unless `--tier` overrid
 
 ## `loaf issue promote <ref> <position> [--json]`
 
-Promotes the criterion at the 1-based position into a child **delivery** issue. The parent criterion stays in place. The child is minted in `triage` with a copy of the criterion and a claim already recorded, so coverage for that parent position holds by construction.
+Legacy `promote` still mints an internal child row. After cutover, mint a child **contract** instead: `loaf issue new --ref <child-ref> --parent <parent-ref>` and `loaf issue dod claim`. Do not use promote to write a second internal store.
 
 ## `loaf issue check <ref> [--json] [--human <reason>]`
 
@@ -76,7 +76,7 @@ Derives readiness from the issue row, not from markdown headings.
 
 - **Delivery** — shaped when the body is nonempty (the problem), at least one criterion exists, and the body contains an explicit out-of-scope statement. Prints `issue <ref> is shaped` when ready.
 - **Decision** — ready when the title or body contains `?`. Prints `issue <ref> is ready`.
-- **Children present** — coverage is a failure (every parent criterion must be claimed). Containment is a report (every child criterion must claim a parent criterion); each orphan prints a ready-to-paste `loaf issue new --parent … --status backlog -- …` remedy.
+- **Children present** — coverage is a failure (every parent criterion must be claimed). Containment is a report (every child criterion must claim a parent criterion); each orphan prints a ready-to-paste `loaf issue new --ref … --parent … --status backlog -- …` remedy.
 
 `--human <reason>` publishes ready-for-human instead of ready-for-agent when a tracker authority is configured. Shape's own gate is the derived verdict, not the publication.
 
