@@ -42,7 +42,7 @@ func (r Runner) runIssueCheck(args []string, out io.Writer, runtime state.Runtim
 		return err
 	}
 	if providerQualifiedRefCommand(options.ref) {
-		return r.runIssueCheckContract(context.Background(), projectRoot, options.ref, options.jsonOutput, out)
+		return r.runIssueCheckContract(context.Background(), projectRoot, options.ref, options.human, options.jsonOutput, out)
 	}
 	resolver := state.PathResolver{StateHome: r.StateHome}
 	readiness, err := state.CheckIssueReadiness(context.Background(), projectRoot, resolver, options.ref)
