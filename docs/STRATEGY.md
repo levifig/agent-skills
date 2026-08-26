@@ -60,8 +60,10 @@ The implication for both personas: Loaf's value is the *framework* -- mechanical
 
 
 > **Revision 2026-08-26 (LOAF-90):** Inserts substrate arc priorities. Supersedes: priorities listing only journal reliability and Loaf Flow without personal-substrate destination.
+>
+> **Revision 2026-08-26 (LOAF-90, schema 25):** LOAF-63/64/72 landed on main. Supersedes: "remaining mutable-core migration" and "LOAF-64 partial".
 
-- **Personal memory substrate (LOAF-62).** Land fact envelope, E2E crypto, sync server/client, and attach-or-refuse (LOAF-66–67, 71, 75–76 shipped on main). Remaining: full mutable-core migration (LOAF-63/72), identity attachment evidence (LOAF-64 partial), grow-only union semantics documentation.
+- **Personal memory substrate (LOAF-62).** Fact envelope, E2E crypto, sync server/client, attach-or-refuse, identity evidence, and mutable-core event facts shipped (LOAF-63–67, 71–72, 75–76). Writers append through the LOAF-71 chokepoint; the `events` table remains local archive (migration 0025). Parent closeout is independent review and ship.
 - **Refs + contracts cutover (LOAF-68).** Contract machinery keys to refs (LOAF-82) and render-out (LOAF-83) shipped; branch/PR bootstrap (LOAF-85), flow-skill ref cutover (LOAF-86), and decision re-home (LOAF-84) remain.
 - **Dead state before sync (LOAF-69).** Delete zero-row schema (LOAF-79), demote document layer (LOAF-80), and inventory lock (LOAF-81) shipped — minimal sync contract enforced.
 - **Scratchpad (LOAF-74).** CLI and closed kind set (LOAF-87) and server SSE/long-poll fanout (LOAF-88) shipped; close/prune (LOAF-89) shipped.
