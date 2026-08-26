@@ -340,6 +340,12 @@ func (s *Store) queryTraceRelationships(ctx context.Context, projectID string, d
 
 	var relationships []TraceRelationship
 	for _, relationship := range raw {
+		// Skip neighbors whose kinds are gone or otherwise unregistered
+		// (e.g. finding/verdict/run fossils left after migration 0018) so a
+		// single historical edge cannot abort the whole trace/link request.
+		if _, ok := entityDescriptorForKind(relationship.otherKind); !ok {
+			continue
+		}
 		other, err := s.entityDetails(ctx, projectID, relationship.otherKind, relationship.otherID)
 		if err != nil {
 			return nil, err
