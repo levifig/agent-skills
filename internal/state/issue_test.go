@@ -62,20 +62,20 @@ func TestIssueCreateMintsLocalAliasFromPrefix(t *testing.T) {
 		t.Fatalf("first = %#v, want LOAF-1 triage delivery", first)
 	}
 
-	second, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Second issue", Kind: IssueKindDecision})
+	second, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Should this mint an alias?", Kind: IssueKindDecision})
 	if err != nil {
 		t.Fatalf("CreateIssue(second) error = %v", err)
 	}
-	if second.Alias != "LOAF-2" {
-		t.Fatalf("second alias = %q, want LOAF-2", second.Alias)
+	if second.Alias != "" {
+		t.Fatalf("second alias = %q, want empty ledger decision", second.Alias)
 	}
 
 	after, err := store.GetIssueIdentity(ctx, root)
 	if err != nil {
 		t.Fatalf("GetIssueIdentity() error = %v", err)
 	}
-	if after.NextNumber != 3 {
-		t.Fatalf("next_number = %d, want 3", after.NextNumber)
+	if after.NextNumber != 2 {
+		t.Fatalf("next_number = %d, want 2 (decision questions skip alias mint)", after.NextNumber)
 	}
 }
 

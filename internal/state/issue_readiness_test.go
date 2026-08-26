@@ -164,7 +164,7 @@ func TestDecisionIssueReadyOnSharpQuestion(t *testing.T) {
 	root, store := issueTestFixture(t)
 	ctx := context.Background()
 
-	blank, err := store.CreateIssue(ctx, root, IssueCreateOptions{
+	blank, err := store.CreateIssueLegacyDecisionRow(ctx, root, IssueCreateOptions{
 		Title: "Pick a store",
 		Kind:  IssueKindDecision,
 		Body:  "Need a direction.",
@@ -183,7 +183,7 @@ func TestDecisionIssueReadyOnSharpQuestion(t *testing.T) {
 		t.Fatalf("blank failures = %#v, want no_question only", notReady.Failures)
 	}
 
-	question, err := store.CreateIssue(ctx, root, IssueCreateOptions{
+	question, err := store.CreateIssueLegacyDecisionRow(ctx, root, IssueCreateOptions{
 		Title: "Should we keep the local store?",
 		Kind:  IssueKindDecision,
 	})
