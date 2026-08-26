@@ -262,7 +262,8 @@ func unknownTopLevelCommandNative(args []string) string {
 
 func knownTopLevelCommandNative(command string) bool {
 	switch command {
-	case "brainstorm",
+	case "auth",
+		"brainstorm",
 		"build",
 		"bundle",
 		"change",

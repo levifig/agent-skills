@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/levifig/loaf/internal/auth"
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
 )
@@ -206,6 +207,17 @@ func (r Runner) Run(args []string) error {
 	}
 	runtime := state.NewRuntime(workingDir)
 
+	if err := r.enforceAttachGate(args, runtime, errOut); err != nil {
+		var unattached *auth.UnattachedError
+		if errors.As(err, &unattached) {
+			if hasFlag(args, "--json") {
+				return writeJSONCommandError(out, jsonErrorCommand(args), err)
+			}
+			return ExitError{Code: 1}
+		}
+		return writeJSONCommandErrorFallback(out, args, err)
+	}
+
 	if len(args) > 0 && args[0] == "__generate-cli-ref" {
 		return r.runGenerateCLIReference(args[1:], out, runtime.RootPath())
 	}
@@ -292,6 +304,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runJournal(args[1:], out, runtime)
 	case "scratchpad":
 		dispatchErr = r.runScratchpad(args[1:], out, runtime)
+	case "auth":
+		dispatchErr = r.runAuth(args[1:], out, runtime)
 	case "serve":
 		dispatchErr = r.runServe(args[1:], out)
 	case "sync":
@@ -367,6 +381,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  render        Maintain durable markdown renders")
 	fmt.Fprintln(out, "  journal       Record and read the project journal")
 	fmt.Fprintln(out, "  scratchpad    Ephemeral agent coordination channel")
+	fmt.Fprintln(out, "  auth          Manage substrate accounts and connection tokens")
 	fmt.Fprintln(out, "  serve         Run the self-hostable sync relay")
 	fmt.Fprintln(out, "  sync          Push and pull facts through the sync relay")
 	fmt.Fprintln(out, "  intent        Show tracked Intent (writes frozen; use issue)")
@@ -11829,6 +11844,12 @@ func writeJSONCommandError(out io.Writer, command string, err error) error {
 		ContractVersion: state.StateJSONContractVersion,
 		Command:         command,
 		Error:           err.Error(),
+	}
+	var unattachedErr *auth.UnattachedError
+	if errors.As(err, &unattachedErr) {
+		output.Code = unattachedErr.Code
+		output.Ref = unattachedErr.ProjectID
+		output.Suggestions = append(output.Suggestions, commandErrorSuggestion{Action: "attach-environment", Command: "loaf auth setup && loaf auth link <name>"})
 	}
 	var identityErr *state.UnregisteredProjectIdentityError
 	if errors.As(err, &identityErr) {

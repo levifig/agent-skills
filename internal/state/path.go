@@ -95,6 +95,11 @@ func (r PathResolver) LegacyDatabasePath(root project.Root) (string, error) {
 	return filepath.Join(stateHome, "loaf", "projects", projectID, databaseFileName), nil
 }
 
+// ResolvedDataHome returns the effective XDG data home used for Loaf state.
+func (r PathResolver) ResolvedDataHome() (string, error) {
+	return r.dataHome()
+}
+
 func (r PathResolver) dataHome() (string, error) {
 	if r.DataHome != "" {
 		return cleanAbsoluteHome("data home", r.DataHome)
