@@ -201,14 +201,14 @@ func (s *Store) durableRenderDocument(ctx context.Context, root project.Root, ki
 			Sources: result.Spec.Sources,
 		}, nil
 	case "report":
-		result, err := s.ShowReport(ctx, root, ref)
+		detail, err := loadFileBackedReportDetail(root, ref)
 		if err != nil {
 			return DurableRenderDocument{}, durableRenderDetail{}, err
 		}
-		return DurableReportRenderDocument(result.Report), durableRenderDetail{
-			Ref:     firstNonEmpty(result.Report.Alias, ref),
-			Title:   result.Report.Title,
-			Sources: result.Report.Sources,
+		return DurableReportRenderDocument(detail), durableRenderDetail{
+			Ref:     firstNonEmpty(detail.Alias, ref),
+			Title:   detail.Title,
+			Sources: detail.Sources,
 		}, nil
 	default:
 		return DurableRenderDocument{}, durableRenderDetail{}, fmt.Errorf("durable render kind %q is not supported", kind)

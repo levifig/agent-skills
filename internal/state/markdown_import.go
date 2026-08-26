@@ -422,21 +422,7 @@ func (m markdownImporter) importShapingDrafts(ctx context.Context, agentsPath st
 		if err != nil {
 			return err
 		}
-		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
-		if err != nil {
-			return err
-		}
-		title := firstNonEmpty(artifact.Frontmatter["title"], artifact.Heading, alias)
-		status, writeStatus, err := m.resolveImportStatus(
-			ctx, "shaping_drafts", "shaping_draft", id, artifact.Frontmatter["status"], "draft", false,
-		)
-		if err != nil {
-			return err
-		}
-		if err := m.upsertSimpleEntity(ctx, "shaping_drafts", id, title, status, writeStatus, sourceID); err != nil {
-			return err
-		}
-		if err := m.upsertArtifactBody(ctx, "shaping_draft", id, sourceID, artifact); err != nil {
+		if _, err := m.upsertSource(ctx, artifact, "markdown"); err != nil {
 			return err
 		}
 		if err := m.upsertAlias(ctx, "shaping_draft", id, "shaping_draft", alias); err != nil {
@@ -506,22 +492,7 @@ func (m markdownImporter) importReports(ctx context.Context, agentsPath string) 
 		if err != nil {
 			return err
 		}
-		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
-		if err != nil {
-			return err
-		}
-		title := firstNonEmpty(artifact.Frontmatter["title"], artifact.Heading, alias)
-		status, writeStatus, err := m.resolveImportStatus(
-			ctx, "reports", LifecycleEntityReport, id, reportSourceStatus(artifact), "unknown", true,
-		)
-		if err != nil {
-			return err
-		}
-		reportKind := firstNonEmpty(artifact.Frontmatter["type"], artifact.Frontmatter["report_kind"], artifact.Frontmatter["kind"], "markdown")
-		if err := m.upsertReport(ctx, id, reportKind, title, status, writeStatus, sourceID); err != nil {
-			return err
-		}
-		if err := m.upsertArtifactBody(ctx, "report", id, sourceID, artifact); err != nil {
+		if _, err := m.upsertSource(ctx, artifact, "markdown"); err != nil {
 			return err
 		}
 		if err := m.upsertAlias(ctx, "report", id, "report", alias); err != nil {
@@ -820,23 +791,6 @@ ON CONFLICT(id) DO UPDATE SET
 `, table, table), id, m.projectID, title, status, sourceID, m.now, m.now, writeStatus)
 	if err != nil {
 		return fmt.Errorf("upsert %s %s: %w", table, id, err)
-	}
-	return nil
-}
-
-func (m markdownImporter) upsertReport(ctx context.Context, id string, reportKind string, title string, status string, writeStatus bool, sourceID string) error {
-	_, err := m.tx.ExecContext(ctx, `
-INSERT INTO reports (id, project_id, report_kind, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-  report_kind = excluded.report_kind,
-  title = excluded.title,
-  status = CASE WHEN ? THEN excluded.status ELSE reports.status END,
-  body_source_id = excluded.body_source_id,
-  updated_at = excluded.updated_at
-`, id, m.projectID, reportKind, title, status, sourceID, m.now, m.now, writeStatus)
-	if err != nil {
-		return fmt.Errorf("upsert report %s: %w", id, err)
 	}
 	return nil
 }

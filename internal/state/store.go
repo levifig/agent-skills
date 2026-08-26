@@ -362,6 +362,11 @@ func applyMigration(ctx context.Context, tx *sql.Tx, migration SchemaMigration) 
 		return fmt.Errorf("read schema migration %d: %w", migration.Version, err)
 	}
 
+	if migration.Version == documentLayerMigrationVersion {
+		if err := exportDocumentLayerBeforeMigration(ctx, tx); err != nil {
+			return fmt.Errorf("export document layer before migration %d: %w", migration.Version, err)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, migration.SQL); err != nil {
 		return fmt.Errorf("apply schema migration %d: %w", migration.Version, err)
 	}

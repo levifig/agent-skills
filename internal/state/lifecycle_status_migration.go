@@ -433,6 +433,13 @@ func rollbackLifecycleStatusMigrationManifest(ctx context.Context, store *Store,
 func countLegacyLifecycleStatuses(ctx context.Context, store *Store, projectID string) (int, error) {
 	total := 0
 	for _, table := range lifecycleStatusTables {
+		exists, err := sqliteTableExists(ctx, store.db, table.table)
+		if err != nil {
+			return 0, err
+		}
+		if !exists {
+			continue
+		}
 		rows, err := store.db.QueryContext(ctx, fmt.Sprintf(`SELECT status FROM %s WHERE project_id = ?`, quoteSQLiteIdentifier(table.table)), projectID)
 		if err != nil {
 			return 0, fmt.Errorf("count legacy %s statuses: %w", table.table, err)

@@ -21,8 +21,6 @@ var markdownImportCanonicalTables = []string{
 	"tasks",
 	"ideas",
 	"brainstorms",
-	"shaping_drafts",
-	"reports",
 	"sparks",
 	"journal_entries",
 	"journal_origins",

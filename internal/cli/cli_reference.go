@@ -568,11 +568,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
 					{Flags: "--json", Description: "Output created report, event, global database scope, and project identity as JSON"},
 				}},
-				{Name: "edit", Description: "Replace a report's SQLite body; run report finalize to update the tracked render", Options: []cliReferenceOption{
+				{Name: "edit", Description: "Replace a report Markdown body under .agents/reports/; run report finalize to update the tracked render", Options: []cliReferenceOption{
 					{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"},
 					{Flags: "--body -", Description: "Read Markdown body from stdin"},
 					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
-					{Flags: "--force", Description: "Proceed when the legacy source file diverges from the SQLite body"},
+					{Flags: "--force", Description: "Proceed when the on-disk report diverges from the expected body"},
 					{Flags: "--json", Description: "Output the edited report, imported flag, content hash, event, global database scope, and project identity as JSON"},
 				}},
 				{Name: "finalize", Description: "Mark a report draft as done and write its deterministic tracked render", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, render path, event, global database scope, and project identity as JSON"}}},
@@ -591,7 +591,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "council",
-			Description: "Manage councils in native SQLite state",
+			Description: "Manage councils as Markdown files under .agents/councils/",
 			Subcommands: nativeArtifactReferenceSubcommands("council"),
 		},
 		{
@@ -1010,10 +1010,18 @@ func nativeArtifactReferenceSubcommands(kind string) []cliReferenceSubcommand {
 		)
 	}
 	options = append(options, cliReferenceOption{Flags: "--json", Description: "Output created artifact, event, global database scope, and project identity as JSON"})
+	createDesc := "Create a " + kind + " in SQLite state"
+	showDesc := "Show one " + kind + " from SQLite state"
+	listDesc := "List " + kind + "s from SQLite state"
+	if kind == "council" {
+		createDesc = "Create a council Markdown file under .agents/councils/"
+		showDesc = "Show one council from .agents/councils/"
+		listDesc = "List councils from .agents/councils/"
+	}
 	return []cliReferenceSubcommand{
-		{Name: "new", Description: "Create a " + kind + " in SQLite state", Options: options},
-		{Name: "show", Description: "Show one " + kind + " from SQLite state", Options: []cliReferenceOption{{Flags: "--json", Description: "Output artifact details, relationships, global database scope, and project identity as JSON"}}},
-		{Name: "list", Description: "List " + kind + "s from SQLite state", Options: []cliReferenceOption{
+		{Name: "new", Description: createDesc, Options: options},
+		{Name: "show", Description: showDesc, Options: []cliReferenceOption{{Flags: "--json", Description: "Output artifact details, relationships, global database scope, and project identity as JSON"}}},
+		{Name: "list", Description: listDesc, Options: []cliReferenceOption{
 			{Flags: "--all", Description: "Include archived artifacts"},
 			{Flags: "--status <status>", Description: "Filter by status"},
 			{Flags: "--json", Description: "Output artifacts, global database scope, and project identity as JSON"},
@@ -1036,7 +1044,7 @@ func supplementalCLIReferenceCommands(commands []cliReferenceCommand) []cliRefer
 		Name:        "report",
 		Description: "Manage report state and generated report output.",
 		Subcommands: []cliReferenceSubcommand{
-			{Name: "list", Description: "List reports from SQLite state or Markdown compatibility files"},
+			{Name: "list", Description: "List reports from .agents/reports/"},
 			{Name: "create", Description: "Create a draft report row in SQLite state"},
 			{Name: "finalize", Description: "Transition a draft report to done"},
 			{Name: "archive", Description: "Transition a done report to archived"},

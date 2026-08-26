@@ -13,6 +13,8 @@ import (
 )
 
 // ArtifactEntityCreateOptions describes a native plan, handoff, or council creation request.
+var errCouncilFileBacked = fmt.Errorf("councils are file-backed under .agents/councils/; SQLite rows were removed in migration 0021")
+
 type ArtifactEntityCreateOptions struct {
 	Kind             string
 	Title            string
@@ -121,6 +123,9 @@ func (s *Store) CreateArtifactEntity(ctx context.Context, root project.Root, opt
 	if err != nil {
 		return ArtifactEntityCreateResult{}, err
 	}
+	if kind == "council" {
+		return ArtifactEntityCreateResult{}, errCouncilFileBacked
+	}
 	projectID, err := s.projectID(ctx, root)
 	if err != nil {
 		return ArtifactEntityCreateResult{}, err
@@ -215,6 +220,9 @@ func (s *Store) ListArtifactEntities(ctx context.Context, root project.Root, opt
 	if err != nil {
 		return ArtifactEntityList{}, err
 	}
+	if kind == "council" {
+		return ArtifactEntityList{}, errCouncilFileBacked
+	}
 	projectID, err := s.projectID(ctx, root)
 	if err != nil {
 		return ArtifactEntityList{}, err
@@ -276,6 +284,9 @@ func (s *Store) ShowArtifactEntity(ctx context.Context, root project.Root, kind 
 	kind, table, err := normalizeArtifactEntityKind(kind)
 	if err != nil {
 		return ArtifactEntityShow{}, err
+	}
+	if kind == "council" {
+		return ArtifactEntityShow{}, errCouncilFileBacked
 	}
 	projectID, err := s.projectID(ctx, root)
 	if err != nil {

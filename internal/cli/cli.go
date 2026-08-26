@@ -1180,7 +1180,12 @@ func (r Runner) runArtifactEntityCommand(kind string, args []string, out io.Writ
 }
 
 func writeArtifactEntityHelp(out io.Writer, kind string) {
-	writeCommandGroupHelp(out, fmt.Sprintf("loaf %s <subcommand> [options]", kind), fmt.Sprintf("Manage %ss in native SQLite state.", kind), []subcommandHelpItem{
+	writeCommandGroupHelp(out, fmt.Sprintf("loaf %s <subcommand> [options]", kind), func() string {
+		if kind == "council" {
+			return "Manage councils as Markdown files under .agents/councils/."
+		}
+		return fmt.Sprintf("Manage %ss in native SQLite state.", kind)
+	}(), []subcommandHelpItem{
 		{Name: "new", Summary: "Create an artifact"},
 		{Name: "show", Summary: "Show one artifact"},
 		{Name: "list", Summary: "List artifacts"},
@@ -1202,15 +1207,27 @@ func writeArtifactEntityNewHelp(out io.Writer, kind string) {
 		options = append(options, "--harness-session-id  Optional conversation correlation tag", "--task       Optional related task")
 	}
 	options = append(options, "--json       Output created artifact, event, global database scope, and project identity as JSON")
-	writeUsageHelp(out, fmt.Sprintf("loaf %s new --title <title> [--body-file <path>|--body -|--message <text>] [--json]", kind), fmt.Sprintf("Create a %s in SQLite state.", kind), options...)
+	action := fmt.Sprintf("Create a %s in SQLite state.", kind)
+	if kind == "council" {
+		action = "Create a council Markdown file under .agents/councils/."
+	}
+	writeUsageHelp(out, fmt.Sprintf("loaf %s new --title <title> [--body-file <path>|--body -|--message <text>] [--json]", kind), action, options...)
 }
 
 func writeArtifactEntityShowHelp(out io.Writer, kind string) {
-	writeUsageHelp(out, fmt.Sprintf("loaf %s show <%s> [--json]", kind, kind), fmt.Sprintf("Show one %s from SQLite state.", kind), "--json       Output artifact details, relationships, global database scope, and project identity as JSON")
+	action := fmt.Sprintf("Show one %s from SQLite state.", kind)
+	if kind == "council" {
+		action = "Show one council from .agents/councils/."
+	}
+	writeUsageHelp(out, fmt.Sprintf("loaf %s show <%s> [--json]", kind, kind), action, "--json       Output artifact details, relationships, global database scope, and project identity as JSON")
 }
 
 func writeArtifactEntityListHelp(out io.Writer, kind string) {
-	writeUsageHelp(out, fmt.Sprintf("loaf %s list [--all|--status <status>] [--json]", kind), fmt.Sprintf("List %ss from SQLite state.", kind), "--all        Include archived artifacts", "--status     Filter by status", "--json       Output artifacts, global database scope, and project identity as JSON")
+	action := fmt.Sprintf("List %ss from SQLite state.", kind)
+	if kind == "council" {
+		action = "List councils from .agents/councils/."
+	}
+	writeUsageHelp(out, fmt.Sprintf("loaf %s list [--all|--status <status>] [--json]", kind), action, "--all        Include archived artifacts", "--status     Filter by status", "--json       Output artifacts, global database scope, and project identity as JSON")
 }
 
 func writeArtifactEntityLinkHelp(out io.Writer, kind string) {
@@ -1262,7 +1279,12 @@ func (r Runner) runArtifactEntityNew(kind string, args []string, out io.Writer, 
 		return err
 	}
 	options.create.Body = body
-	result, err := state.CreateArtifactEntity(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
+	var result state.ArtifactEntityCreateResult
+	if kind == "council" {
+		result, err = markdownCouncilNew(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
+	} else {
+		result, err = state.CreateArtifactEntity(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
+	}
 	if err != nil {
 		if options.jsonOutput {
 			return writeJSONCommandError(out, kind+" new", err)
@@ -1297,9 +1319,29 @@ func (r Runner) runArtifactEntityShow(kind string, args []string, out io.Writer,
 	if mode == state.ModeInvalid {
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
-	result, err := state.ShowArtifactEntity(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, kind, ref)
-	if err != nil {
-		return err
+	var result state.ArtifactEntityShow
+	if kind == "council" {
+		result, err = markdownCouncilShow(projectRoot.Path(), ref)
+		if err != nil {
+			return err
+		}
+		status, statusErr := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
+		if statusErr != nil {
+			return statusErr
+		}
+		if status.Mode == state.ModeSQLiteReady {
+			result.ContractVersion = state.StateJSONContractVersion
+			result.DatabaseScope = status.DatabaseScope
+			result.DatabasePath = status.DatabasePath
+			result.ProjectID = status.ProjectID
+			result.ProjectName = status.ProjectName
+			result.ProjectCurrentPath = status.ProjectCurrentPath
+		}
+	} else {
+		result, err = state.ShowArtifactEntity(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, kind, ref)
+		if err != nil {
+			return err
+		}
 	}
 	if jsonOutput {
 		return writeJSON(out, result)
@@ -1316,6 +1358,28 @@ func (r Runner) runArtifactEntityList(kind string, args []string, out io.Writer,
 	projectRoot, mode, err := r.stateMode(runtime)
 	if err != nil {
 		return err
+	}
+	if kind == "council" {
+		result, err := markdownCouncilList(projectRoot.Path(), options.list)
+		if err != nil {
+			return err
+		}
+		if mode == state.ModeSQLiteReady {
+			status, statusErr := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
+			if statusErr == nil {
+				result.ContractVersion = state.StateJSONContractVersion
+				result.DatabaseScope = status.DatabaseScope
+				result.DatabasePath = status.DatabasePath
+				result.ProjectID = status.ProjectID
+				result.ProjectName = status.ProjectName
+				result.ProjectCurrentPath = status.ProjectCurrentPath
+			}
+		}
+		if options.jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeArtifactEntityList(out, result, options.list)
+		return nil
 	}
 	if mode == state.ModeMarkdownOnly {
 		return sqliteStateRequiredError(kind + " list")
@@ -8471,7 +8535,7 @@ func (r Runner) runReport(args []string, out io.Writer, runtime state.Runtime) e
 func writeReportHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage: loaf report <subcommand> [options]")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Manage durable reports in native SQLite state or markdown compatibility mode.")
+	fmt.Fprintln(out, "Manage durable reports as Markdown files under .agents/reports/.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Subcommands:")
 	fmt.Fprintln(out, "  list      List reports")
@@ -8479,7 +8543,7 @@ func writeReportHelp(out io.Writer) {
 	fmt.Fprintln(out, "  render    Render a report to the XDG cache")
 	fmt.Fprintln(out, "  generate  Generate read-only markdown exports")
 	fmt.Fprintln(out, "  create    Create a report")
-	fmt.Fprintln(out, "  edit      Replace a report's SQLite body")
+	fmt.Fprintln(out, "  edit      Replace a report Markdown body")
 	fmt.Fprintln(out, "  finalize  Finalize a report")
 	fmt.Fprintln(out, "  archive   Archive a report")
 	fmt.Fprintln(out)
@@ -8508,11 +8572,11 @@ func writeReportCreateHelp(out io.Writer) {
 }
 
 func writeReportEditHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf report edit <report> [options]", "Replace a report's SQLite body; run loaf report finalize to update the tracked render.",
+	writeUsageHelp(out, "loaf report edit <report> [options]", "Replace a report Markdown body under .agents/reports/; run loaf report finalize to update the tracked render.",
 		"--body-file  Read the report body from a file",
 		"--body -     Read the report body from stdin",
 		"--message    Use the given text as the report body",
-		"--force      Proceed when the legacy source file diverges from the SQLite body",
+		"--force      Proceed when the on-disk report diverges from the expected body",
 		"--json       Output the edited report, imported flag, content hash, event, global database scope, and project identity as JSON")
 }
 
@@ -8537,25 +8601,14 @@ func (r Runner) runReportList(args []string, out io.Writer, runtime state.Runtim
 	if err != nil {
 		return err
 	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		reports, err := markdownReportList(projectRoot.Path(), options.filters)
-		if err != nil {
-			return err
-		}
-		if options.jsonOutput {
-			return writeJSON(out, reports)
-		}
-		writeReportList(out, reports)
-		return nil
-	case state.ModeInvalid:
+	if status.Mode == state.ModeInvalid {
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
-
-	reports, err := state.ListReports(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.filters)
+	reports, err := markdownReportList(projectRoot.Path(), options.filters)
 	if err != nil {
 		return err
 	}
+	enrichReportList(status, &reports)
 	reports.Diagnostics = stateListWarnings(status.Diagnostics)
 	if options.jsonOutput {
 		return writeJSON(out, reports)
@@ -8573,24 +8626,18 @@ func (r Runner) runReportShow(args []string, out io.Writer, runtime state.Runtim
 	if err != nil {
 		return err
 	}
-	switch mode {
-	case state.ModeMarkdownOnly:
-		result, err := markdownReportShow(projectRoot.Path(), ref)
-		if err != nil {
-			return err
-		}
-		if jsonOutput {
-			return writeJSON(out, result)
-		}
-		writeReportShow(out, result)
-		return nil
-	case state.ModeInvalid:
+	if mode == state.ModeInvalid {
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
-	result, err := state.ShowReport(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
 	if err != nil {
 		return err
 	}
+	result, err := markdownReportShow(projectRoot.Path(), ref)
+	if err != nil {
+		return err
+	}
+	enrichReportShow(status, &result)
 	if jsonOutput {
 		return writeJSON(out, result)
 	}
@@ -8665,44 +8712,30 @@ func (r Runner) runReportCreate(args []string, out io.Writer, runtime state.Runt
 	if err != nil {
 		return err
 	}
-	switch mode {
-	case state.ModeMarkdownOnly:
-		options, err := parseReportCreateArgs(args)
-		if err != nil {
-			return err
-		}
-		if bodyInputProvided(options.body) {
-			return sqliteStateRequiredError("report create with body input")
-		}
-		result, err := markdownReportCreate(projectRoot.Path(), options.create)
-		if err != nil {
-			return err
-		}
-		if options.jsonOutput {
-			return writeJSON(out, result)
-		}
-		writeReportCreate(out, result)
-		return nil
-	case state.ModeInvalid:
+	if mode == state.ModeInvalid {
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
-
 	options, err := parseReportCreateArgs(args)
 	if err != nil {
 		return err
 	}
-	body, ok, err := r.resolveBodyInput("report create", options.body, false)
+	body, hasBody, err := r.resolveBodyInput("report create", options.body, false)
 	if err != nil {
 		return err
 	}
-	if ok {
+	if hasBody {
 		options.create.Body = body
 		options.create.SetBody = true
 	}
-	result, err := state.CreateReport(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
 	if err != nil {
 		return err
 	}
+	result, err := markdownReportCreate(projectRoot.Path(), options.create)
+	if err != nil {
+		return err
+	}
+	enrichReportCreate(status, &result)
 	if options.jsonOutput {
 		return writeJSON(out, result)
 	}
@@ -8715,10 +8748,7 @@ func (r Runner) runReportEdit(args []string, out io.Writer, runtime state.Runtim
 	if err != nil {
 		return err
 	}
-	switch mode {
-	case state.ModeMarkdownOnly:
-		return sqliteStateRequiredError("report edit")
-	case state.ModeInvalid:
+	if mode == state.ModeInvalid {
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
@@ -8733,10 +8763,15 @@ func (r Runner) runReportEdit(args []string, out io.Writer, runtime state.Runtim
 	if !ok {
 		return fmt.Errorf("report edit requires body content via --body-file, --body -, or --message")
 	}
-	result, err := state.EditReportBody(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.ReportEditOptions{Ref: options.ref, Body: body, Force: options.force})
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
 	if err != nil {
 		return err
 	}
+	result, err := markdownReportEdit(projectRoot.Path(), options.ref, body, options.force)
+	if err != nil {
+		return err
+	}
+	enrichReportEdit(status, &result)
 	if options.jsonOutput {
 		return writeJSON(out, result)
 	}
@@ -8753,33 +8788,18 @@ func (r Runner) runReportFinalize(args []string, out io.Writer, runtime state.Ru
 	if err != nil {
 		return err
 	}
-	switch mode {
-	case state.ModeMarkdownOnly:
-		result, err := markdownReportFinalize(projectRoot.Path(), ref)
-		if err != nil {
-			return err
-		}
-		if jsonOutput {
-			return writeJSON(out, result)
-		}
-		writeReportStatus(out, "finalized", result)
-		return nil
-	case state.ModeInvalid:
+	if mode == state.ModeInvalid {
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
-
-	result, err := state.FinalizeReport(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
 	if err != nil {
 		return err
 	}
-	render, err := state.FinalizeDurableArtifact(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.DurableFinalizeOptions{
-		Kind: "report",
-		Ref:  ref,
-	})
+	result, err := markdownReportFinalize(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
 		return err
 	}
-	result.Render = &render
+	enrichReportStatus(status, &result)
 	if jsonOutput {
 		return writeJSON(out, result)
 	}
@@ -8796,25 +8816,18 @@ func (r Runner) runReportArchive(args []string, out io.Writer, runtime state.Run
 	if err != nil {
 		return err
 	}
-	switch mode {
-	case state.ModeMarkdownOnly:
-		result, err := markdownReportArchive(projectRoot.Path(), ref)
-		if err != nil {
-			return err
-		}
-		if jsonOutput {
-			return writeJSON(out, result)
-		}
-		writeReportStatus(out, "archived", result)
-		return nil
-	case state.ModeInvalid:
+	if mode == state.ModeInvalid {
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
-
-	result, err := state.ArchiveReport(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
 	if err != nil {
 		return err
 	}
+	result, err := markdownReportArchive(projectRoot.Path(), ref)
+	if err != nil {
+		return err
+	}
+	enrichReportStatus(status, &result)
 	if jsonOutput {
 		return writeJSON(out, result)
 	}
@@ -9047,6 +9060,41 @@ func markdownReportList(rootPath string, options state.ReportListOptions) (state
 }
 
 func markdownReportShow(rootPath string, ref string) (state.ReportShow, error) {
+	path, item, alias, err := findMarkdownReportIncludingWork(rootPath, ref)
+	if err != nil {
+		if show, showErr := markdownReportShowCommitted(rootPath, ref); showErr == nil {
+			return show, nil
+		}
+		return state.ReportShow{}, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return state.ReportShow{}, fmt.Errorf("read markdown report %s: %w", path, err)
+	}
+	info, _ := os.Stat(path)
+	updatedAt := ""
+	if info != nil {
+		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
+	}
+	body := strings.TrimSpace(markdownContentWithoutFrontmatter(string(content)))
+	return state.ReportShow{
+		Query: ref,
+		Report: state.ReportDetail{
+			ID:        alias,
+			Alias:     alias,
+			Title:     item.Title,
+			Kind:      item.Kind,
+			Status:    item.Status,
+			Sources:   []state.TraceSource{{Path: item.SourcePath}},
+			Body:      body,
+			HasBody:   strings.TrimSpace(body) != "",
+			CreatedAt: updatedAt,
+			UpdatedAt: updatedAt,
+		},
+	}, nil
+}
+
+func markdownReportShowCommitted(rootPath string, ref string) (state.ReportShow, error) {
 	path, item, alias, err := findMarkdownReport(rootPath, ref)
 	if err != nil {
 		return state.ReportShow{}, err
@@ -9060,7 +9108,7 @@ func markdownReportShow(rootPath string, ref string) (state.ReportShow, error) {
 	if info != nil {
 		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
 	}
-	body := markdownContentWithoutFrontmatter(string(content))
+	body := strings.TrimSpace(markdownContentWithoutFrontmatter(string(content)))
 	return state.ReportShow{
 		Query: ref,
 		Report: state.ReportDetail{
@@ -9084,6 +9132,11 @@ func findMarkdownReport(rootPath string, ref string) (string, state.ReportItem, 
 		filepath.Join(agentsDir, "reports", "*.md"),
 		filepath.Join(agentsDir, "reports", "archive", "*.md"),
 	}
+	var matches []struct {
+		path  string
+		item  state.ReportItem
+		alias string
+	}
 	for _, pattern := range patterns {
 		files, err := filepath.Glob(pattern)
 		if err != nil {
@@ -9095,12 +9148,28 @@ func findMarkdownReport(rootPath string, ref string) (string, state.ReportItem, 
 			if err != nil {
 				return "", state.ReportItem{}, "", err
 			}
-			if ref == alias || ref == item.SourcePath || ref == strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) {
-				return path, item, alias, nil
+			stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			if ref == alias || ref == item.SourcePath || ref == stem || strings.Contains(stem, ref) || strings.Contains(alias, ref) {
+				matches = append(matches, struct {
+					path  string
+					item  state.ReportItem
+					alias string
+				}{path, item, alias})
 			}
 		}
 	}
-	return "", state.ReportItem{}, "", fmt.Errorf("report %q not found", ref)
+	switch len(matches) {
+	case 0:
+		return "", state.ReportItem{}, "", fmt.Errorf("report %q not found", ref)
+	case 1:
+		return matches[0].path, matches[0].item, matches[0].alias, nil
+	default:
+		var names []string
+		for _, match := range matches {
+			names = append(names, match.alias)
+		}
+		return "", state.ReportItem{}, "", fmt.Errorf("ambiguous report %q: %s", ref, strings.Join(names, ", "))
+	}
 }
 
 func readMarkdownReport(rootPath string, path string) (state.ReportItem, string, error) {
@@ -9161,90 +9230,6 @@ func reportMatchesFilters(item state.ReportItem, options state.ReportListOptions
 		return false
 	}
 	return true
-}
-
-func markdownReportCreate(rootPath string, options state.ReportCreateOptions) (state.ReportCreateResult, error) {
-	slug := strings.TrimSpace(options.Slug)
-	if slug == "" {
-		return state.ReportCreateResult{}, fmt.Errorf("report create requires a slug")
-	}
-	kind := strings.TrimSpace(options.Kind)
-	if kind == "" {
-		kind = "research"
-	}
-	source := strings.TrimSpace(options.Source)
-	if source == "" {
-		source = "ad-hoc"
-	}
-	reportsDir := filepath.Join(rootPath, ".agents", "reports")
-	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
-		return state.ReportCreateResult{}, fmt.Errorf("create reports directory: %w", err)
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	safeType := sanitizeMarkdownReportPathSegment(kind)
-	safeSlug := sanitizeMarkdownReportPathSegment(slug)
-	if safeSlug == "" {
-		return state.ReportCreateResult{}, fmt.Errorf("report create requires a slug")
-	}
-	filename := fmt.Sprintf("%s-%s-%s.md", time.Now().Format("20060102-150405"), safeType, safeSlug)
-	path := filepath.Join(reportsDir, filename)
-	if _, err := os.Stat(path); err == nil {
-		return state.ReportCreateResult{}, fmt.Errorf("report file %s already exists", filename)
-	} else if err != nil && !os.IsNotExist(err) {
-		return state.ReportCreateResult{}, fmt.Errorf("inspect report file %s: %w", filename, err)
-	}
-	title := markdownReportTitleFromSlug(slug)
-	frontmatter := map[string]frontmatterField{
-		"title":   markdownReportFrontmatterScalar(title),
-		"type":    markdownReportFrontmatterScalar(kind),
-		"created": markdownReportFrontmatterScalar(now),
-		"status":  markdownReportFrontmatterScalar("draft"),
-		"source":  markdownReportFrontmatterScalar(source),
-		"tags":    {Array: true, Set: true},
-	}
-	if err := os.WriteFile(path, []byte(renderMarkdownReport(frontmatter, markdownReportBody(title))), 0o600); err != nil {
-		return state.ReportCreateResult{}, fmt.Errorf("write report %s: %w", filename, err)
-	}
-	alias := strings.TrimSuffix(filename, filepath.Ext(filename))
-	return state.ReportCreateResult{
-		Report: state.TraceEntity{
-			Kind:   "report",
-			ID:     alias,
-			Alias:  alias,
-			Title:  title,
-			Status: "draft",
-		},
-		Kind:   kind,
-		Source: source,
-	}, nil
-}
-
-func markdownReportFinalize(rootPath string, ref string) (state.ReportStatusResult, error) {
-	path, err := resolveMarkdownReportFile(rootPath, ref)
-	if err != nil {
-		return state.ReportStatusResult{}, err
-	}
-	frontmatter, body, alias, err := readMarkdownReportDocument(path)
-	if err != nil {
-		return state.ReportStatusResult{}, err
-	}
-	previousRaw := firstNonEmpty(firstFieldValue(frontmatter["status"]), "draft")
-	previous := state.LifecycleStatusForDisplay(state.LifecycleEntityReport, previousRaw)
-	if !state.LifecycleStatusMatches(state.LifecycleEntityReport, previousRaw, state.LifecycleStatusDraft) {
-		return state.ReportStatusResult{}, fmt.Errorf("report %q is not draft (status: %s)", ref, previous)
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	frontmatter["status"] = markdownReportFrontmatterScalar(state.LifecycleStatusDone)
-	frontmatter["finalized_at"] = markdownReportFrontmatterScalar(now)
-	if err := os.WriteFile(path, []byte(renderMarkdownReport(frontmatter, body)), 0o600); err != nil {
-		return state.ReportStatusResult{}, fmt.Errorf("write finalized report %s: %w", ref, err)
-	}
-	title := firstNonEmpty(firstFieldValue(frontmatter["title"]), firstMarkdownHeading(body), alias)
-	return state.ReportStatusResult{
-		Report:   state.TraceEntity{Kind: "report", ID: alias, Alias: alias, Title: title, Status: state.LifecycleStatusDone},
-		Previous: previous,
-		Status:   state.LifecycleStatusDone,
-	}, nil
 }
 
 func markdownReportArchive(rootPath string, ref string) (state.ReportStatusResult, error) {
@@ -9476,10 +9461,15 @@ _Full analysis goes here._
 }
 
 func sanitizeMarkdownReportPathSegment(input string) string {
-	replacer := strings.NewReplacer("/", "-", "\\", "-", ":", "-", "*", "-", "?", "-", `"`, "-", "<", "-", ">", "-", "|", "-")
-	clean := replacer.Replace(input)
+	replacer := strings.NewReplacer(
+		" ", "-", "/", "-", "\\", "-", ":", "-", "*", "-", "?", "-", `"`, "-", "<", "-", ">", "-", "|", "-",
+	)
+	clean := replacer.Replace(strings.TrimSpace(input))
 	clean = strings.TrimLeft(clean, ".")
-	return clean
+	for strings.Contains(clean, "--") {
+		clean = strings.ReplaceAll(clean, "--", "-")
+	}
+	return strings.Trim(clean, "-")
 }
 
 func markdownReportTitleFromSlug(slug string) string {

@@ -77,7 +77,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, edit, finalize, archive |
 | `loaf plan` | Manage plans in native SQLite state | new, show, list, link |
 | `loaf handoff` | Manage handoffs in native SQLite state | new, show, list, link |
-| `loaf council` | Manage councils in native SQLite state | new, show, list, link |
+| `loaf council` | Manage councils as Markdown files under .agents/councils/ | new, show, list, link |
 | `loaf kb` | Knowledge base management | glossary, validate, status, check, review, init, import |
 | `loaf setup` | One-step bootstrap: init + build + install | — |
 | `loaf version` | Show version info and project statistics | — |

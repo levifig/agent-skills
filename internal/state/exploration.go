@@ -570,7 +570,7 @@ FROM exploration_checkpoints WHERE project_id = ? AND id = ?
 
 // writeExplorationSourceRelationshipsTx maps each source by its kind through
 // the closed matrix: intents get explores edges; journal entries, handoffs,
-// and reports get uses-source edges. Anything else is rejected.
+// Anything else is rejected.
 func writeExplorationSourceRelationshipsTx(ctx context.Context, tx *sql.Tx, projectID, explorationID string, refs []string, now string) error {
 	seen := map[string]bool{}
 	for _, ref := range refs {
@@ -586,10 +586,10 @@ func writeExplorationSourceRelationshipsTx(ctx context.Context, tx *sql.Tx, proj
 		switch entity.Kind {
 		case "intent":
 			relationshipType = "explores"
-		case "journal_entry", "handoff", "report":
+		case "journal_entry", "handoff":
 			relationshipType = "uses-source"
 		default:
-			return &ExplorationValidationError{Field: "from", Err: fmt.Errorf("exploration cannot use %s %q as a source; supported sources are intents, journal entries, handoffs, and reports", entity.Kind, trimmed)}
+			return &ExplorationValidationError{Field: "from", Err: fmt.Errorf("exploration cannot use %s %q as a source; supported sources are intents, journal entries, and handoffs", entity.Kind, trimmed)}
 		}
 		if err := validateRelationshipAgainstRegistry("exploration", relationshipType, entity.Kind); err != nil {
 			return &ExplorationValidationError{Field: "from", Err: err}

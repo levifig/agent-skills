@@ -25,8 +25,22 @@ func TestHousekeepingSummarizesSQLiteLifecycleState(t *testing.T) {
 	insertHousekeepingEntity(t, store, "ideas", projectID, "idea-resolved", "Resolved Idea", "resolved", now)
 	insertHousekeepingSpark(t, store, projectID, "spark-resolved", "resolved spark", "resolved", now)
 	insertHousekeepingEntity(t, store, "brainstorms", projectID, "brainstorm-archived", "Archived Brainstorm", "archived", now)
-	insertHousekeepingEntity(t, store, "shaping_drafts", projectID, "draft-absorbed", "Absorbed Draft", "absorbed", now)
-	insertHousekeepingReport(t, store, projectID, "report-final", "Final Report", "final", now)
+	writeAgentsFile(t, root.Path(), "drafts/draft-absorbed.md", `---
+id: draft-absorbed
+title: Absorbed Draft
+status: absorbed
+kind: shaping
+---
+# Absorbed Draft
+`)
+	writeAgentsFile(t, root.Path(), "reports/report-final.md", `---
+id: report-final
+title: Final Report
+type: audit
+status: final
+---
+# Final Report
+`)
 
 	summary, err := Housekeeping(context.Background(), root, PathResolver{StateHome: stateHome})
 	if err != nil {
@@ -78,8 +92,22 @@ func TestHousekeepingCountsCanonicalDoneAsCleanupCandidate(t *testing.T) {
 	insertHousekeepingSpark(t, store, projectID, "spark-done", "done spark", "done", now)
 	insertHousekeepingEntity(t, store, "brainstorms", projectID, "brainstorm-resolved", "Resolved Brainstorm", "resolved", now)
 	insertHousekeepingEntity(t, store, "brainstorms", projectID, "brainstorm-done", "Done Brainstorm", "done", now)
-	insertHousekeepingReport(t, store, projectID, "report-final", "Final Report", "final", now)
-	insertHousekeepingReport(t, store, projectID, "report-done", "Done Report", "done", now)
+	writeAgentsFile(t, root.Path(), "reports/report-final.md", `---
+id: report-final
+title: Final Report
+type: audit
+status: final
+---
+# Final Report
+`)
+	writeAgentsFile(t, root.Path(), "reports/report-done.md", `---
+id: report-done
+title: Done Report
+type: audit
+status: done
+---
+# Done Report
+`)
 
 	summary, err := Housekeeping(context.Background(), root, PathResolver{StateHome: stateHome})
 	if err != nil {
@@ -107,9 +135,3 @@ func insertHousekeepingSpark(t *testing.T, store *Store, projectID string, id st
 	}
 }
 
-func insertHousekeepingReport(t *testing.T, store *Store, projectID string, id string, title string, status string, now string) {
-	t.Helper()
-	if _, err := store.db.ExecContext(context.Background(), `INSERT INTO reports (id, project_id, report_kind, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, projectID, "audit", title, status, now, now); err != nil {
-		t.Fatalf("insert report %s error = %v", id, err)
-	}
-}

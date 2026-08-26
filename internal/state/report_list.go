@@ -36,79 +36,20 @@ type ReportListOptions struct {
 
 // ListReports returns imported reports from initialized SQLite state.
 func ListReports(ctx context.Context, root project.Root, resolver PathResolver, options ReportListOptions) (ReportList, error) {
-	store, err := openProjectStoreReadExisting(ctx, root, resolver)
-	if err != nil {
-		return ReportList{}, err
-	}
-	defer store.Close()
-	return store.ListReports(ctx, root, options)
+	_ = ctx
+	_ = root
+	_ = resolver
+	_ = options
+	return ReportList{}, fmt.Errorf("reports are file-backed under .agents/reports/; SQLite rows were removed in migration 0021")
 }
 
-// ListReports returns imported reports from an open store.
+// ListReports refuses SQLite authority; reports are file-backed after migration 0021.
 func (s *Store) ListReports(ctx context.Context, root project.Root, options ReportListOptions) (ReportList, error) {
-	projectID, err := s.projectID(ctx, root)
-	if err != nil {
-		return ReportList{}, err
-	}
-	identity, err := s.projectIdentity(ctx, projectID)
-	if err != nil {
-		return ReportList{}, err
-	}
-	rows, err := s.db.QueryContext(ctx, `
-SELECT
-  report_alias.alias,
-  reports.title,
-  reports.report_kind,
-  reports.status,
-  COALESCE(sources.path, '')
-FROM reports
-JOIN aliases report_alias
-  ON report_alias.project_id = reports.project_id
- AND report_alias.entity_kind = 'report'
- AND report_alias.entity_id = reports.id
- AND report_alias.namespace = 'report'
-LEFT JOIN sources ON sources.id = reports.body_source_id
-WHERE reports.project_id = ?
-ORDER BY report_alias.alias
-`, projectID)
-	if err != nil {
-		return ReportList{}, fmt.Errorf("query reports: %w", err)
-	}
-
-	reportList := ReportList{
-		ContractVersion:    StateJSONContractVersion,
-		DatabaseScope:      identity.DatabaseScope,
-		DatabasePath:       identity.DatabasePath,
-		ProjectID:          identity.ID,
-		ProjectName:        identity.FriendlyName,
-		ProjectCurrentPath: identity.CurrentPath,
-		Version:            1,
-		Reports:            map[string]ReportItem{},
-	}
-	for rows.Next() {
-		var alias, title, kind, status, sourcePath string
-		if err := rows.Scan(&alias, &title, &kind, &status, &sourcePath); err != nil {
-			rows.Close()
-			return ReportList{}, fmt.Errorf("scan report: %w", err)
-		}
-		if !includeReport(kind, status, options) {
-			continue
-		}
-		status = LifecycleStatusForDisplay(LifecycleEntityReport, status)
-		reportList.Reports[alias] = ReportItem{
-			Title:      title,
-			Kind:       kind,
-			Status:     status,
-			SourcePath: sourcePath,
-		}
-	}
-	if err := rows.Close(); err != nil {
-		return ReportList{}, fmt.Errorf("close reports: %w", err)
-	}
-	if err := rows.Err(); err != nil {
-		return ReportList{}, fmt.Errorf("iterate reports: %w", err)
-	}
-	return reportList, nil
+	_ = s
+	_ = ctx
+	_ = root
+	_ = options
+	return ReportList{}, errReportFileBacked
 }
 
 func includeReport(kind string, status string, options ReportListOptions) bool {
