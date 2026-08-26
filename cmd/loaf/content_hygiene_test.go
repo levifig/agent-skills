@@ -507,3 +507,43 @@ func relToRoot(t *testing.T, root string, path string) string {
 	}
 	return filepath.ToSlash(rel)
 }
+
+func TestFlowSkillsOperateOnAuthorityRefs(t *testing.T) {
+	root := repoRoot(t)
+	files := []string{
+		"content/skills/shape/SKILL.md",
+		"content/skills/implement/SKILL.md",
+		"content/skills/ship/SKILL.md",
+		"content/skills/loaf-reference/references/command-routing.md",
+	}
+	requiredAny := []string{"linear:", "branch:"}
+	forbidden := []string{
+		"loaf issue dod add LOAF-",
+		"loaf issue check LOAF-",
+		"loaf issue start LOAF-",
+		"loaf issue show LOAF-42",
+		"Work units are issues.",
+	}
+	for _, rel := range files {
+		body := readTextFile(t, filepath.Join(root, filepath.FromSlash(rel)))
+		for _, needle := range requiredAny {
+			if !strings.Contains(body, needle) {
+				t.Fatalf("%s must teach provider-qualified refs; missing %q", rel, needle)
+			}
+		}
+		if !strings.Contains(body, "pr:") && !strings.Contains(body, "pr:<") {
+			t.Fatalf("%s must mention pr: refs", rel)
+		}
+		for _, needle := range forbidden {
+			if strings.Contains(body, needle) {
+				t.Fatalf("%s still addresses work as an internal issue id via %q", rel, needle)
+			}
+		}
+	}
+	if !strings.Contains(readTextFile(t, filepath.Join(root, "content", "skills", "shape", "SKILL.md")), "--ref") {
+		t.Fatal("shape skill must teach loaf issue new --ref")
+	}
+	if !strings.Contains(readTextFile(t, filepath.Join(root, "content", "skills", "implement", "SKILL.md")), "loaf issue frontier") {
+		t.Fatal("implement skill must pick up from loaf issue frontier")
+	}
+}

@@ -1,3 +1,3 @@
 # Claude Code skill configuration
 user-invocable: true
-argument-hint: "[LOAF-42 | next | description]"
+argument-hint: "[linear:ENG-42 | branch:issue/foo | next | description]"

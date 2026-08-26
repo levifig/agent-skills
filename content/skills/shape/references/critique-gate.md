@@ -12,4 +12,4 @@ Run through these before finalizing:
 - **Is the out-of-scope statement doing real work?** Rabbit holes and no-gos belong there as named exclusions. Restating the problem in different words is not an out-of-scope statement.
 - **Did fog graduate, or evaporate?** Every named unknown is parked in create-time `fog`, held in the session register, sitting as a decision child (or sibling) with a sharp question, filed as a new backlog issue (a different problem), or written into the body as a decided answer. Silent deletion is the failure.
 
-Answers that change the issue go back into it — `loaf issue edit` for the body, `loaf issue dod add` / `remove` for criteria, `loaf issue promote` or `loaf issue new` for children — before moving to `loaf issue check`. An answer spoken but not written doesn't count.
+Answers that change the issue go back into it — `loaf issue edit` for the body, `loaf issue dod add` / `remove` for criteria, `loaf issue new --ref <child-ref> --parent <parent-ref>` for children — before moving to `loaf issue check`. An answer spoken but not written doesn't count.

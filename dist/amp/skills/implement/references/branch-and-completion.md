@@ -18,7 +18,7 @@ Detailed reference for branch setup and completion during implementation.
 
 ### Getting Branch Name
 
-`loaf issue start <ref>` is the claim. It walks to the shippable root and creates or joins `issue/<root-alias-or-id>` in lowercase (`issue/loaf-42`, id suffix when that name is claimed) plus a sibling worktree on the root. The requested issue becomes `active`. Descendants do not get their own branch.
+`loaf issue start branch:<name>` is the v1 worktree claim. Contract operations (`show`, `check`, `verify`, `render`, `status`) use the authority ref (`linear:`, `branch:`, or `pr:`). Do not address start/stop with an internal LOAF-* id.
 
 Do not `git checkout -b` as a substitute for start. Check `loaf issue list --started` first. Never send two agents into the same worktree. Do not run `loaf issue stop` from inside that worktree.
 
@@ -26,7 +26,7 @@ Do not `git checkout -b` as a substitute for start. Check `loaf issue list --sta
 
 ```bash
 loaf issue list --started
-loaf issue start <ref>
+loaf issue start branch:<name>
 ```
 
 Work only in `started_worktree`. The branch should be ready for PR when work completes. Journal entries are tagged with the observed branch automatically.
