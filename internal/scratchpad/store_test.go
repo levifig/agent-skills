@@ -2,6 +2,7 @@ package scratchpad_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/scratchpad"
 	"github.com/levifig/loaf/internal/state"
+	"github.com/levifig/loaf/internal/syncserver"
 )
 
 func TestScratchpadKindsUseScratchpadPermanence(t *testing.T) {
@@ -18,6 +20,7 @@ func TestScratchpadKindsUseScratchpadPermanence(t *testing.T) {
 		scratchpad.KindMessage,
 		scratchpad.KindClaim,
 		scratchpad.KindRelease,
+		scratchpad.KindClose,
 	} {
 		permanence, ok := state.FactPermanenceClass(kind)
 		if !ok {
@@ -134,4 +137,92 @@ func testProject(t *testing.T) (project.Root, state.PathResolver) {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 	return root, resolver
+}
+
+func TestCloseHidesChannelOnEveryClient(t *testing.T) {
+	ctx := context.Background()
+	root, resolver := testProject(t)
+
+	if _, err := scratchpad.AppendMessage(ctx, root, resolver, scratchpad.AppendOptions{
+		Channel:    "effort-close",
+		InstanceID: "agent-a",
+		Who:        "Agent A",
+		Text:       "visible before close",
+	}); err != nil {
+		t.Fatalf("AppendMessage() error = %v", err)
+	}
+	if _, err := scratchpad.CloseChannel(ctx, root, resolver, scratchpad.CloseOptions{
+		Channel:    "effort-close",
+		InstanceID: "agent-b",
+	}); err != nil {
+		t.Fatalf("CloseChannel() error = %v", err)
+	}
+
+	view, err := scratchpad.ReadChannel(ctx, root, resolver, "effort-close", 0)
+	if err != nil {
+		t.Fatalf("ReadChannel() error = %v", err)
+	}
+	if len(view.Messages) != 0 || len(view.Roster) != 0 || len(view.ActiveClaims) != 0 {
+		t.Fatalf("closed channel view = %#v, want empty projection", view)
+	}
+
+	if _, err := scratchpad.AppendMessage(ctx, root, resolver, scratchpad.AppendOptions{
+		Channel:    "effort-close",
+		InstanceID: "agent-c",
+		Text:       "should fail",
+	}); err == nil {
+		t.Fatal("AppendMessage() on closed channel error = nil, want ErrChannelClosed")
+	} else if !errors.Is(err, scratchpad.ErrChannelClosed) {
+		t.Fatalf("AppendMessage() error = %v, want ErrChannelClosed", err)
+	}
+}
+
+func TestPruneServerChannelDeletesRelayBlobs(t *testing.T) {
+	ctx := context.Background()
+	root, resolver := testProject(t)
+
+	status, err := state.Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store, err := state.OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	projectID, err := store.ProjectIDForRoot(ctx, root)
+	if err != nil {
+		t.Fatalf("ProjectIDForRoot() error = %v", err)
+	}
+
+	syncPath := filepath.Join(t.TempDir(), "sync.sqlite")
+	syncStore, err := syncserver.OpenStore(syncPath)
+	if err != nil {
+		t.Fatalf("OpenStore(sync) error = %v", err)
+	}
+	defer syncStore.Close()
+
+	channel := "effort-prune"
+	if _, err := syncStore.PublishScratchpadMessage(ctx, projectID, channel, []byte(`{"text":"relay blob"}`)); err != nil {
+		t.Fatalf("PublishScratchpadMessage() error = %v", err)
+	}
+	if _, err := syncStore.PublishScratchpadMessage(ctx, projectID, channel, []byte(`{"text":"second blob"}`)); err != nil {
+		t.Fatalf("PublishScratchpadMessage() second error = %v", err)
+	}
+
+	deleted, err := scratchpad.PruneServerChannel(ctx, syncStore, projectID, channel)
+	if err != nil {
+		t.Fatalf("PruneServerChannel() error = %v", err)
+	}
+	if deleted != 2 {
+		t.Fatalf("deleted = %d, want 2", deleted)
+	}
+
+	remaining, err := syncStore.ListScratchpadSince(ctx, projectID, channel, 0)
+	if err != nil {
+		t.Fatalf("ListScratchpadSince() error = %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("remaining messages = %d, want 0 after prune", len(remaining))
+	}
 }

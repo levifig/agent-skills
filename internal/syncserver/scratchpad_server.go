@@ -171,3 +171,19 @@ func parseScratchpadTimeout(raw string) (int64, error) {
 	}
 	return timeout, nil
 }
+
+func (s *Server) handleScratchpadPrune(w http.ResponseWriter, r *http.Request) {
+	projectID := strings.TrimSpace(r.PathValue("project_id"))
+	channel := strings.TrimSpace(r.PathValue("channel"))
+	if err := s.authorizeAdmin(r.Context(), r); err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	deleted, err := s.store.PruneScratchpadChannel(r.Context(), projectID, channel)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
