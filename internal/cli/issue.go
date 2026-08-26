@@ -830,6 +830,9 @@ func (r Runner) runIssueRender(args []string, out io.Writer, runtime state.Runti
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(ref) {
+		return r.runIssueRenderContract(context.Background(), projectRoot, ref, jsonOutput, out)
+	}
 	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
 		return err

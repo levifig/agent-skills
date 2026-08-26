@@ -364,6 +364,25 @@ func TestExportAllTablesIncludesIssueFoundation(t *testing.T) {
 	}
 }
 
+func TestExportAllTablesIncludesWorkContracts(t *testing.T) {
+	found := map[string]bool{}
+	for _, table := range exportAllTables {
+		found[table.Name] = true
+	}
+	for _, name := range []string{
+		"work_contracts",
+		"work_contract_criteria",
+		"work_contract_criterion_claims",
+		"work_contract_workspace",
+		"work_contract_mappings",
+		"work_contract_receipts",
+	} {
+		if !found[name] {
+			t.Fatalf("exportAllTables missing %s", name)
+		}
+	}
+}
+
 func TestNormalizeIssueLinkType(t *testing.T) {
 	got, err := NormalizeIssueLinkType("relates-to")
 	if err != nil || got != IssueRelationshipRelatesTo {

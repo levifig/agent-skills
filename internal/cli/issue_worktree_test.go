@@ -828,6 +828,29 @@ func TestRollbackIssueWorktreeRemovesAddedWorktree(t *testing.T) {
 	}
 }
 
+func TestRollbackIssueWorktreePreservesPreExistingBranch(t *testing.T) {
+	repo, _ := issueGitFixture(t)
+	branch := "issue/existing"
+	gitCLI(t, repo, "branch", branch)
+	worktree := filepath.Join(filepath.Dir(repo), "repo-wt", "issue-existing")
+	createdBranch, err := addIssueWorktree(repo, worktree, branch, "main")
+	if err != nil {
+		t.Fatalf("addIssueWorktree() error = %v", err)
+	}
+	if createdBranch {
+		t.Fatal("addIssueWorktree() created branch, want attach to pre-existing branch")
+	}
+	if err := rollbackIssueWorktree(repo, worktree, branch, createdBranch); err != nil {
+		t.Fatalf("rollbackIssueWorktree() error = %v", err)
+	}
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Fatalf("worktree %s still exists after rollback: %v", worktree, err)
+	}
+	if !gitRefExists(repo, "refs/heads/"+branch) {
+		t.Fatalf("branch %s was deleted after rollback with createdBranch=false", branch)
+	}
+}
+
 func TestRollbackIssueWorktreeNamesLeftoversWhenCleanupFails(t *testing.T) {
 	dir := t.TempDir()
 	worktree := filepath.Join(dir, "missing-wt")
