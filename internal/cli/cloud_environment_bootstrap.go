@@ -20,21 +20,24 @@ import (
 //   - Optional durable project env var with the same name keeps layout without
 //     relying on start/resume scripts alone.
 //
-// LOAF-67 attach client token (not wired until attach ceremony ships):
+// LOAF-67 attach client token (wired in bootstrap start/resume scripts):
 //   - Mint locally: loaf auth link --project
 //   - Cursor Cloud Agent: add project environment vars LOAF_CLIENT_TOKEN and
-//     preferably LOAF_PROJECT_ENV=1 (project-scoped client token; never the
-//     operator master key)
+//     preferably LOAF_PROJECT_ENV=1 (project-scoped client wire; never the
+//     operator master key). Start script runs `loaf attach` when the token is set.
 //   - Amp Orb: add project env LOAF_CLIENT_TOKEN (and LOAF_PROJECT_ENV=1) via
-//     amp project configuration
+//     amp project configuration. Resume script runs `loaf attach` when set.
 //   - Optional sync endpoint (when configured): LOAF_SYNC_URL
 //
+// Human-review setup guide: docs/cloud/project-environment-attach.md
+// Full walkthrough (Cursor Cloud, Amp, CI): docs/knowledge/cloud-attach-walkthrough.md
+//
 // Cursor Cloud harness install runs in the install/build script so hooks and
-// skills exist before the agent starts. Attach pre-warm in the start script is
-// intentionally deferred until LOAF-67 lands.
+// skills exist before the agent starts. Attach pre-warm runs in start/resume
+// when LOAF_CLIENT_TOKEN is present.
 const (
-	// projectEnvironmentClientTokenEnv is the provisional per-project env var name
-	// for the LOAF-67 client token in Cursor Cloud and Amp Orb environments.
+	// projectEnvironmentClientTokenEnv is the per-project env var name for the
+	// LOAF-67 client wire in Cursor Cloud and Amp Orb environments.
 	projectEnvironmentClientTokenEnv = "LOAF_CLIENT_TOKEN"
 	// projectEnvironmentSyncURLEnv is optional when a project sync endpoint is configured.
 	projectEnvironmentSyncURLEnv = "LOAF_SYNC_URL"
@@ -75,6 +78,7 @@ var requiredCloudBootstrapMarkers = map[string][]string{
 	ampOrbResumeScript: {
 		projectEnvironmentEnv + "=1",
 		"loaf install --to amp",
+		"loaf attach",
 	},
 }
 

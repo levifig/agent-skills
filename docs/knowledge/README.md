@@ -12,5 +12,6 @@ Loaf's domain knowledge — what agents need to understand about this project.
 | [skill-architecture.md](skill-architecture.md) | skills, agent-skills-standard, sidecars | `content/skills/**/*.md`, `content/skills/**/*.yaml`, `config/hooks.yaml` |
 | [task-system.md](task-system.md) | tasks, specs, changes, journal | `docs/changes/**/*.md`, `.agents/specs/**/*.md`, SQLite task state, `internal/cli/cli.go` |
 | [work-model.md](work-model.md) | changes, cohorts, receipts, pipeline | `docs/changes/**/*`, `internal/cli/change_*.go`, pitch/shape/implement/triage skills |
+| [cloud-attach-walkthrough.md](cloud-attach-walkthrough.md) | cloud attach, CI secrets, Cursor Cloud, Amp Orbs | `.cursor/loaf-cloud-*.sh`, `.agents/{setup,resume}`, `internal/auth/`, LOAF-67/78 |
 
 See [../decisions/](../decisions/) for architecture decision records.
