@@ -76,7 +76,7 @@ The fleet agrees on the **fact envelope** (versioned cleartext contract + E2E pa
 
 **Permanence classes:** ledger (permanent), notebook (durable retrieval), scratchpad (effort-scoped ephemeral). Promoted exports (PR bodies, rendered artifacts, tracker rows) are never re-imported as authority.
 
-**Ship status:** LOAF-66–67, 71, 75–76 shipped on main. LOAF-63/72 (full mutable-core migration), LOAF-64 (attachment evidence beyond remote URL normalization), LOAF-88–89 (scratchpad server channel and prune) remain.
+**Ship status:** LOAF-66–67, 71, 75–76 shipped on main. LOAF-63/72 (full mutable-core migration), LOAF-64 (attachment evidence beyond remote URL normalization), LOAF-89 (scratchpad close/prune) remain.
 
 
 ### Recovery Tiers and Restore Safety
@@ -110,7 +110,7 @@ LOAF-79 (migration 0018) deletes zero-row findings/verdicts/runs schema. LOAF-80
 
 > **Revision 2026-08-26 (LOAF-90):** Ephemeral multi-agent coordination without journal pollution.
 
-Permanence taxonomy: **ledger** (journal, decisions, wraps), **notebook** (sparks, ideas), **scratchpad** (effort-scoped agent messages). LOAF-87 ships `loaf scratchpad append|read|list|claim|release` with closed fact kinds. LOAF-88 (server SSE/long-poll fanout) and LOAF-89 (logical close + admin-only `loaf scratchpad prune`) remain pending — fact sync stays poll-shaped.
+Permanence taxonomy: **ledger** (journal, decisions, wraps), **notebook** (sparks, ideas), **scratchpad** (effort-scoped agent messages). LOAF-87 ships `loaf scratchpad append|read|list|claim|release` with closed fact kinds. LOAF-88 ships server SSE/long-poll fanout on `loaf serve` (bucket backends degrade to poll). LOAF-89 (logical close + admin-only `loaf scratchpad prune`) remains pending — fact sync stays poll-shaped.
 
 
 ### Targets
