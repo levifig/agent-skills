@@ -63,6 +63,12 @@ var requiredInitialTables = []string{
 	"issue_criteria",
 	"issue_identity",
 	"issue_criterion_claims",
+	"work_contracts",
+	"work_contract_criteria",
+	"work_contract_criterion_claims",
+	"work_contract_workspace",
+	"work_contract_mappings",
+	"work_contract_receipts",
 	"releases",
 	"release_members",
 	"schema_migrations",
@@ -75,12 +81,18 @@ var requiredInitialTables = []string{
 // Migration 0017 adds started_branch/started_worktree on issues (ALTER TABLE)
 // and introduces no new tables.
 var issueFoundationTables = map[string]bool{
-	"issues":                 true,
-	"issue_criteria":         true,
-	"issue_identity":         true,
-	"issue_criterion_claims": true,
-	"releases":               true,
-	"release_members":        true,
+	"issues":                         true,
+	"issue_criteria":                 true,
+	"issue_identity":                 true,
+	"issue_criterion_claims":         true,
+	"work_contracts":                 true,
+	"work_contract_criteria":         true,
+	"work_contract_criterion_claims": true,
+	"work_contract_workspace":        true,
+	"work_contract_mappings":         true,
+	"work_contract_receipts":         true,
+	"releases":                       true,
+	"release_members":                true,
 }
 
 // userScopedTables are host-local tables without project_id. They are excluded
@@ -95,11 +107,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 17 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 16", len(migrations))
+	if len(migrations) != 18 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 18", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -155,6 +167,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[16].Name != "drop_findings_verdicts_runs" {
 		t.Fatalf("migration[16].Name = %q, want drop_findings_verdicts_runs", migrations[16].Name)
+	}
+	if migrations[17].Name != "work_contracts" {
+		t.Fatalf("migration[17].Name = %q, want work_contracts", migrations[17].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -402,6 +417,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	sqlDoc = readRepoFile(t, "docs", "schema", "0018_drop_findings_verdicts_runs.sql")
 	if sqlDoc != SchemaMigrations()[16].SQL {
 		t.Fatal("docs/schema/0018_drop_findings_verdicts_runs.sql must match embedded migration 0018 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0019_work_contracts.sql")
+	if sqlDoc != SchemaMigrations()[17].SQL {
+		t.Fatal("docs/schema/0019_work_contracts.sql must match embedded migration 0019 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
