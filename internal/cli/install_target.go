@@ -478,6 +478,9 @@ func installSkillsDestination(options targetInstallOptions) string {
 	if options.Target == "amp" && options.AmpSkillsDir != "" {
 		return options.AmpSkillsDir
 	}
+	if projectEnvironmentActive() && options.ProjectRoot != "" {
+		return filepath.Join(options.ProjectRoot, ".agents", "skills")
+	}
 	return filepath.Join(installHomeDir(options), ".agents", "skills")
 }
 

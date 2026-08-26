@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Amp Orb resume script (LOAF-78). Re-runs project-environment install on wake.
+# Attach pre-warm deferred until LOAF-67 attach ceremony ships.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+export PATH="$ROOT/bin:$PATH"
+export LOAF_PROJECT_ENV=1
+exec loaf install --to amp --yes

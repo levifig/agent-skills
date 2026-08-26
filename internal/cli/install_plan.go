@@ -160,7 +160,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	plan.Deprecations = deprecations
 
 	toolByKey := installToolsByKey(tools)
-	defaults := defaultInstallConfigDirs()
+	defaults, layoutHome := resolveInstallLayout(projectRoot)
 	// A plan reads hook enablement and never creates it: a dry run that brought
 	// a state database into existence would be a write, and the plan promises
 	// none.
@@ -193,7 +193,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 			Upgrade:            options.upgrade,
 			CodexBasicCommands: options.codexBasicCommands,
 			Version:            version,
-			HomeDir:            installHome(),
+			HomeDir:            layoutHome,
 			CodexHome:          os.Getenv("CODEX_HOME"),
 			ProjectRoot:        projectRoot,
 			HookState:          hookState,

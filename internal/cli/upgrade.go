@@ -229,7 +229,7 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 	}
 
 	var failed []string
-	defaults := defaultInstallConfigDirs()
+	defaults, layoutHome := resolveInstallLayout(projectRoot)
 	toolByKey := installToolsByKey(tools)
 	hookState, releaseHookState := r.hookStateForApply(projectRoot)
 	defer releaseHookState()
@@ -251,7 +251,7 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 			ConfigDir:      configDir,
 			Upgrade:        true,
 			Version:        version,
-			HomeDir:        installHome(),
+			HomeDir:        layoutHome,
 			CodexHome:      os.Getenv("CODEX_HOME"),
 			ProjectRoot:    projectRoot,
 			SkipSkillsSync: true,
