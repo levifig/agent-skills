@@ -724,3 +724,22 @@ Table fact_env_clocks {
     (project_id, env_id) [pk]
   }
 }
+
+// Client sync engine machine-local state (migration 0023).
+Table sync_outbound_queue {
+  project_id text [not null, ref: > projects.id]
+  fact_id text [not null]
+  enqueued_at text [not null]
+  pushed_at text
+  indexes {
+    (project_id, fact_id) [pk]
+    (project_id, enqueued_at) [note: 'partial where pushed_at IS NULL']
+  }
+}
+
+Table sync_project_cursors {
+  project_id text [pk, not null, ref: > projects.id]
+  arrival_cursor integer [not null, default: 0]
+  updated_at text [not null]
+}
+
