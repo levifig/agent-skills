@@ -763,3 +763,16 @@ Table project_attachment_evidence {
     (evidence_kind, evidence_value)
   }
 }
+
+// Mutable-core replay discrepancies (migration 0025). Machine-local.
+Table fact_replay_discrepancies {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  entity_kind text [not null]
+  entity_id text [not null]
+  reason text [not null]
+  logged_at text [not null]
+  indexes {
+    (project_id, entity_kind, entity_id)
+  }
+}

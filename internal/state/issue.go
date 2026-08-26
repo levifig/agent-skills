@@ -441,6 +441,22 @@ WHERE project_id = ? AND id = ?
 			return Issue{}, err
 		}
 	}
+	if options.SetStarted && (startedBranch != current.StartedBranch || startedWorktree != current.StartedWorktree) {
+		kind := FactKindWorktreeBound
+		if startedBranch == "" && startedWorktree == "" {
+			kind = FactKindWorktreeUnbound
+		}
+		if _, err := appendCoreEventFactTx(ctx, tx, projectID, kind, "", CoreEventPayload{
+			SubjectKind: "issue",
+			SubjectID:   issueID,
+			Branch:      startedBranch,
+			Worktree:    startedWorktree,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}, parseCoreEventTime(now), ""); err != nil {
+			return Issue{}, fmt.Errorf("record issue worktree fact: %w", err)
+		}
+	}
 
 	detail, err := loadIssueTx(ctx, tx, projectID, issueID)
 	if err != nil {

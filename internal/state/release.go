@@ -217,6 +217,23 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	if err != nil {
 		return Release{}, err
 	}
+	members := make([]ReleaseMemberFact, 0, len(detail.Members))
+	for _, member := range detail.Members {
+		members = append(members, ReleaseMemberFact{Kind: member.Kind, MemberID: member.MemberID})
+	}
+	if _, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindReleaseRecorded, "", CoreEventPayload{
+		SubjectKind:  "release",
+		SubjectID:    releaseID,
+		Version:      detail.Version,
+		Tag:          detail.Tag,
+		TaggedCommit: detail.TaggedCommit,
+		Notes:        detail.Notes,
+		Members:      members,
+		CreatedAt:    detail.CreatedAt,
+		UpdatedAt:    detail.UpdatedAt,
+	}, parseCoreEventTime(detail.CreatedAt), ""); err != nil {
+		return Release{}, fmt.Errorf("record release fact: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return Release{}, fmt.Errorf("commit record release: %w", err)
 	}

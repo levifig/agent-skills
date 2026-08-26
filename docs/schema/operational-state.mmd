@@ -626,3 +626,14 @@ erDiagram
   projects ||--o{ sync_project_cursors : scopes
   projects ||--o{ project_conf_labels : scopes
   projects ||--o{ project_attachment_evidence : scopes
+
+  fact_replay_discrepancies {
+    text id PK
+    text project_id FK
+    text entity_kind
+    text entity_id
+    text reason
+    text logged_at
+  }
+
+  projects ||--o{ fact_replay_discrepancies : scopes

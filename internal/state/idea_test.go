@@ -85,14 +85,16 @@ status: open
 	var events int
 	err = store.db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
-FROM events
-WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'done'
+FROM facts
+WHERE project_id = ? AND kind = 'idea.resolved'
+  AND json_extract(payload, '$.from_status') = 'open'
+  AND json_extract(payload, '$.to_status') = 'done'
 `, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count events error = %v", err)
 	}
 	if events != 1 {
-		t.Fatalf("events = %d, want one status_changed event", events)
+		t.Fatalf("facts = %d, want one idea.resolved fact", events)
 	}
 }
 
@@ -401,14 +403,14 @@ func TestCaptureIdeaCreatesOpenIdeaWithAliasAndEvent(t *testing.T) {
 	var events int
 	err = store.db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
-FROM events
-WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status IS NULL AND to_status = 'open'
+FROM facts
+WHERE project_id = ? AND kind = 'idea.created'
 `, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count capture events error = %v", err)
 	}
 	if events != 2 {
-		t.Fatalf("events = %d, want one status event per captured idea", events)
+		t.Fatalf("facts = %d, want one idea.created fact per captured idea", events)
 	}
 }
 
@@ -483,15 +485,17 @@ status: archived
 	var events int
 	var note string
 	err = store.db.QueryRowContext(context.Background(), `
-SELECT COUNT(*), COALESCE(MAX(note), '')
-FROM events
-WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'archived'
+SELECT COUNT(*), COALESCE(MAX(json_extract(payload, '$.note')), '')
+FROM facts
+WHERE project_id = ? AND kind = 'idea.archived'
+  AND json_extract(payload, '$.from_status') = 'open'
+  AND json_extract(payload, '$.to_status') = 'archived'
 `, projectIDForTest(t, store, root)).Scan(&events, &note)
 	if err != nil {
 		t.Fatalf("count archive events error = %v", err)
 	}
 	if events != 1 {
-		t.Fatalf("events = %d, want one status_changed event", events)
+		t.Fatalf("facts = %d, want one idea.archived fact", events)
 	}
 	if note != "covered by SPEC-001" {
 		t.Fatalf("event note = %q, want archive reason", note)

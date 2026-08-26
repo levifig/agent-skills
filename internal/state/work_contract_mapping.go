@@ -34,18 +34,15 @@ func (s *Store) UpsertWorkContractMapping(ctx context.Context, root project.Root
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	mappingID, err := newOpaqueStateID("wcm")
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
-INSERT INTO work_contract_mappings (id, project_id, provider, provider_ref, mapping_kind, mapping_value, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(project_id, provider, provider_ref, mapping_kind) DO UPDATE SET
-  mapping_value = excluded.mapping_value,
-  updated_at = excluded.updated_at
-`, mappingID, projectID, authorityRef.Provider, authorityRef.Key, kind, value, now, now)
-	return err
+	defer tx.Rollback()
+	if err := upsertWorkContractMappingTx(ctx, tx, projectID, authorityRef, kind, value, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func loadWorkContractMappingsTx(ctx context.Context, tx *sql.Tx, projectID string, ref AuthorityRef) ([]WorkContractMapping, error) {

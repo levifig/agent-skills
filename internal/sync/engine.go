@@ -30,13 +30,13 @@ type Engine struct {
 
 // Result summarizes one sync pass.
 type Result struct {
-	Queued      int        `json:"queued"`
-	Pushed      int        `json:"pushed"`
-	Duplicates  int        `json:"duplicates"`
-	Pulled      int        `json:"pulled"`
-	Cursor      int64      `json:"cursor"`
-	Gaps        []EnvSeqGap `json:"gaps,omitempty"`
-	Warnings    []string   `json:"warnings,omitempty"`
+	Queued     int         `json:"queued"`
+	Pushed     int         `json:"pushed"`
+	Duplicates int         `json:"duplicates"`
+	Pulled     int         `json:"pulled"`
+	Cursor     int64       `json:"cursor"`
+	Gaps       []EnvSeqGap `json:"gaps,omitempty"`
+	Warnings   []string    `json:"warnings,omitempty"`
 }
 
 // NewEngine constructs a sync engine from a bundled client credential.
@@ -206,6 +206,9 @@ func (e *Engine) pullSinceCursor(ctx context.Context, projectID string) (pulled 
 }
 
 func refreshProjections(ctx context.Context, store *state.Store, projectID string) error {
-	_, err := state.RebuildJournalProjectionForProject(ctx, store, projectID)
+	if _, err := state.RebuildJournalProjectionForProject(ctx, store, projectID); err != nil {
+		return err
+	}
+	_, err := state.RebuildMutableCoreProjectionsForProject(ctx, store, projectID)
 	return err
 }
