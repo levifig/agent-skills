@@ -1,9 +1,9 @@
 package cli
 
 // Authority-ref routing for issue machinery in LOAF-82.
-// Covered here: check (including --human and readiness publication for branch:/pr: on tracker-backed projects), verify, render, and branch: start/stop against the contract store.
+// Covered here: check (including --human; GitHub-tracker publication for branch:/pr:), verify, render, and branch: start/stop against the contract store.
 // Deferred to later slices: issue show/create/dod/promote for ref-keyed contracts (LOAF-83 migration + LOAF-85 bootstrap); linear:/pr: start/stop semantics (LOAF-85).
-// Readiness publication for linear: refs is deferred to LOAF-83/85 (needs Linear issue mapping for contract-backed rows); --human is still accepted on those refs.
+// Linear readiness publication for all work-contract refs (branch:/pr:/linear:) is deferred to LOAF-83/85 — PublishLinearReadiness requires legacy issue rows/mappings, not wct_* ids. --human is still accepted.
 
 import (
 	"context"
@@ -120,14 +120,15 @@ func (r Runner) runIssueCheckContract(ctx context.Context, projectRoot project.R
 		Failures:           readiness.Failures,
 		Orphans:            readiness.Orphans,
 	}
-	// Publication for linear: refs needs Linear issue mapping and is deferred to LOAF-83/85.
-	// branch:/pr: follow the same tracker-backed publication path as legacy issue check.
-	if readiness.Ready && readiness.Contract.AuthorityRef.Provider != state.AuthorityProviderLinear {
+	// Work-contract Linear publication needs legacy issue mapping (LOAF-83/85).
+	// Never pass wct_* ids into PublishLinearReadiness — that GetIssue path fails and would
+	// turn a ready check into a non-zero exit on Linear-tracker projects.
+	if readiness.Ready {
 		identity, err := state.GetIssueIdentity(ctx, projectRoot, resolver)
 		if err != nil {
 			return err
 		}
-		if trackerAuthority(identity.Authority) {
+		if trackerAuthority(identity.Authority) && identity.Authority != state.IssueAuthorityLinear {
 			publication := ReadinessPublication{
 				IssueID:     issue.ID,
 				IssueRef:    issueDisplayRef(issue),
