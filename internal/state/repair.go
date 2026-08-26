@@ -208,6 +208,292 @@ func inspectJournalSearchParityReadOnly(ctx context.Context, databasePath string
 	return parity, nil
 }
 
+// JournalFactsRepairOptions controls a journal projection rebuild from facts.
+type JournalFactsRepairOptions struct {
+	Apply bool
+}
+
+// JournalFactsRepairError preserves the partial repair result when apply fails.
+type JournalFactsRepairError struct {
+	Result JournalFactsRepairResult
+	Err    error
+}
+
+func (e *JournalFactsRepairError) Error() string {
+	if e == nil || e.Err == nil {
+		return "journal facts repair failed"
+	}
+	message := e.Err.Error()
+	if e.Result.BackupPath != "" {
+		message += fmt.Sprintf("; preserved backup: %s", e.Result.BackupPath)
+	}
+	return message
+}
+
+func (e *JournalFactsRepairError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// JournalFactsRepairResult describes the pre-repair parity and any rebuild.
+type JournalFactsRepairResult struct {
+	ContractVersion    int    `json:"contract_version"`
+	DatabaseScope      string `json:"database_scope"`
+	DatabasePath       string `json:"database_path"`
+	ProjectID          string `json:"project_id"`
+	ProjectName        string `json:"project_name"`
+	ProjectCurrentPath string `json:"project_current_path"`
+	FactRows           int    `json:"fact_rows"`
+	ProjectionRows     int    `json:"projection_rows"`
+	Missing            int    `json:"missing"`
+	Extra              int    `json:"extra"`
+	Changed            int    `json:"changed"`
+	BackupPath         string `json:"backup_path,omitempty"`
+	BackupVerified     bool   `json:"backup_verified"`
+	Applied            bool   `json:"applied"`
+	Rebuilt            int    `json:"rebuilt"`
+	ParityVerified     bool   `json:"parity_verified"`
+	GeneratedAt        string `json:"generated_at"`
+}
+
+// RepairJournalFacts rebuilds journal_entries and journal_search from journal facts.
+func RepairJournalFacts(ctx context.Context, root project.Root, resolver PathResolver, options JournalFactsRepairOptions) (JournalFactsRepairResult, error) {
+	return repairJournalFacts(ctx, root, resolver, options, nil)
+}
+
+type journalFactsRepairHook func(context.Context, *sql.Conn) error
+
+func backupJournalFactsRepairState(ctx context.Context, databasePath string, preParity JournalFactParity) (BackupResult, error) {
+	now := time.Now().UTC()
+	backupDir := filepath.Join(filepath.Dir(databasePath), "backups")
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
+		return BackupResult{}, fmt.Errorf("create state backup directory: %w", err)
+	}
+	backupPath, err := reserveBackupPath(backupDir, now)
+	if err != nil {
+		return BackupResult{}, err
+	}
+	reservationCompleted := false
+	defer func() {
+		if !reservationCompleted {
+			_ = os.Remove(backupPath)
+		}
+	}()
+	if err := vacuumSQLiteInto(ctx, databasePath, backupPath); err != nil {
+		return BackupResult{}, fmt.Errorf("backup state database for journal facts repair: %w", err)
+	}
+	reservationCompleted = true
+	info, err := os.Stat(backupPath)
+	if err != nil {
+		return BackupResult{}, fmt.Errorf("stat journal facts repair backup: %w", err)
+	}
+	sha256Sum, err := fileSHA256(backupPath)
+	if err != nil {
+		return BackupResult{}, fmt.Errorf("checksum journal facts repair backup: %w", err)
+	}
+	backupParity, err := inspectJournalFactParityReadOnly(ctx, backupPath)
+	if err != nil {
+		return BackupResult{}, fmt.Errorf("verify backup journal fact parity: %w", err)
+	}
+	if !journalFactParityEqual(preParity, backupParity) {
+		return BackupResult{}, fmt.Errorf("journal facts repair backup parity mismatch")
+	}
+	store, err := OpenStoreReadOnly(backupPath)
+	if err != nil {
+		return BackupResult{}, fmt.Errorf("open journal facts repair backup: %w", err)
+	}
+	defer store.Close()
+	integrityCheck, err := verifySQLiteIntegrity(ctx, store)
+	if err != nil {
+		return BackupResult{}, err
+	}
+	foreignKeyCheck, err := verifyNoForeignKeyViolations(ctx, store)
+	if err != nil {
+		return BackupResult{}, err
+	}
+	if integrityCheck != "ok" || foreignKeyCheck != "ok" {
+		return BackupResult{}, fmt.Errorf("journal facts repair backup failed integrity checks")
+	}
+	return BackupResult{
+		ContractVersion: StateJSONContractVersion,
+		DatabaseScope:   "global",
+		DatabasePath:    databasePath,
+		BackupPath:      backupPath,
+		Bytes:           info.Size(),
+		SHA256:          sha256Sum,
+		CreatedAt:       now.Format(time.RFC3339Nano),
+		Verified:        true,
+		IntegrityCheck:  integrityCheck,
+		ForeignKeyCheck: foreignKeyCheck,
+	}, nil
+}
+
+func repairJournalFacts(ctx context.Context, root project.Root, resolver PathResolver, options JournalFactsRepairOptions, hook journalFactsRepairHook) (JournalFactsRepairResult, error) {
+	databasePath, err := resolver.DatabasePath(root)
+	if err != nil {
+		return JournalFactsRepairResult{}, err
+	}
+	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
+		return JournalFactsRepairResult{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state init` or `loaf state migrate markdown --apply` first")
+	} else if err != nil {
+		return JournalFactsRepairResult{}, fmt.Errorf("inspect state database: %w", err)
+	}
+
+	result := JournalFactsRepairResult{
+		ContractVersion: StateJSONContractVersion,
+		DatabaseScope:   "global",
+		DatabasePath:    databasePath,
+		GeneratedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if store, err := OpenStoreReadOnly(databasePath); err == nil {
+		if identity, lookupErr := store.LookupProjectIdentityForRoot(ctx, root); lookupErr == nil {
+			result.ProjectID = identity.ID
+			result.ProjectName = identity.FriendlyName
+			result.ProjectCurrentPath = identity.CurrentPath
+		}
+		store.Close()
+	}
+	if !options.Apply {
+		preParity, err := inspectJournalFactParityReadOnly(ctx, databasePath)
+		if err != nil {
+			return JournalFactsRepairResult{}, err
+		}
+		populateJournalFactsRepairParity(&result, preParity)
+		return result, nil
+	}
+
+	store, err := OpenStore(databasePath)
+	if err != nil {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("open state database for journal facts repair: %w", err)}
+	}
+	defer store.Close()
+	conn, err := store.db.Conn(ctx)
+	if err != nil {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("obtain state database connection for journal facts repair: %w", err)}
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("begin immediate journal facts repair: %w", err)}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
+		}
+	}()
+
+	preParity, err := inspectJournalFactParity(ctx, conn)
+	if err != nil {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("inspect pre-repair journal fact parity: %w", err)}
+	}
+	populateJournalFactsRepairParity(&result, preParity)
+
+	if preParity.Ready {
+		if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+			return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("commit journal facts no-op: %w", err)}
+		}
+		committed = true
+		result.Applied = true
+		result.ParityVerified = true
+		return result, nil
+	}
+
+	backup, err := backupJournalFactsRepairState(ctx, databasePath, preParity)
+	if err != nil {
+		result.BackupPath = backup.BackupPath
+		result.BackupVerified = backup.Verified
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("backup state database before journal facts repair: %w", err)}
+	}
+	result.BackupPath = backup.BackupPath
+	result.BackupVerified = backup.Verified
+
+	rebuilt, err := rebuildAllJournalProjectionsFromFactsTx(ctx, conn)
+	if err != nil {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("rebuild journal projection from facts: %w", err)}
+	}
+	result.Rebuilt = rebuilt
+	if hook != nil {
+		if err := hook(ctx, conn); err != nil {
+			return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("journal facts repair hook: %w", err)}
+		}
+	}
+	postParity, err := inspectJournalFactParity(ctx, conn)
+	if err != nil {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("verify journal facts repair parity: %w", err)}
+	}
+	if !postParity.Ready {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("journal facts repair did not produce ready parity: fact_rows=%d, projection_rows=%d, missing=%d, extra=%d, changed=%d", postParity.FactRows, postParity.ProjectionRows, postParity.Missing, postParity.Extra, postParity.Changed)}
+	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		return result, &JournalFactsRepairError{Result: result, Err: fmt.Errorf("commit journal facts repair: %w", err)}
+	}
+	committed = true
+	result.Applied = true
+	result.ParityVerified = true
+	populateJournalFactsRepairParity(&result, postParity)
+	return result, nil
+}
+
+func populateJournalFactsRepairParity(result *JournalFactsRepairResult, parity JournalFactParity) {
+	result.FactRows = parity.FactRows
+	result.ProjectionRows = parity.ProjectionRows
+	result.Missing = parity.Missing
+	result.Extra = parity.Extra
+	result.Changed = parity.Changed
+}
+
+func inspectJournalFactParityReadOnly(ctx context.Context, databasePath string) (JournalFactParity, error) {
+	store, err := OpenStoreReadOnly(databasePath)
+	if err != nil {
+		return JournalFactParity{}, fmt.Errorf("open state database read-only for journal facts repair: %w", err)
+	}
+	defer store.Close()
+	parity, err := InspectJournalFactParity(ctx, store)
+	if err != nil {
+		return JournalFactParity{}, fmt.Errorf("inspect journal fact parity: %w", err)
+	}
+	return parity, nil
+}
+
+func journalFactParityEqual(a, b JournalFactParity) bool {
+	return a.FactRows == b.FactRows &&
+		a.ProjectionRows == b.ProjectionRows &&
+		a.Missing == b.Missing &&
+		a.Extra == b.Extra &&
+		a.Changed == b.Changed &&
+		a.Ready == b.Ready
+}
+
+func rebuildAllJournalProjectionsFromFactsTx(ctx context.Context, execer journalWriteExecer) (int, error) {
+	rows, err := execer.QueryContext(ctx, `SELECT DISTINCT project_id FROM facts WHERE kind = ? ORDER BY project_id`, FactKindJournal)
+	if err != nil {
+		return 0, fmt.Errorf("list journal fact projects: %w", err)
+	}
+	defer rows.Close()
+	projectIDs := []string{}
+	for rows.Next() {
+		var projectID string
+		if err := rows.Scan(&projectID); err != nil {
+			return 0, fmt.Errorf("scan journal fact project id: %w", err)
+		}
+		projectIDs = append(projectIDs, projectID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterate journal fact projects: %w", err)
+	}
+	total := 0
+	for _, projectID := range projectIDs {
+		rebuilt, err := rebuildJournalProjectionFromFactsTx(ctx, execer, projectID)
+		if err != nil {
+			return total, err
+		}
+		total += rebuilt
+	}
+	return total, nil
+}
+
 // Relationship origin repair runs in one of two modes. Reclassify-only is the
 // default because retiring the legacy origins is a mechanical, registry-derived
 // rewrite that needs no operator judgement; backfilling a missing origin does

@@ -637,6 +637,7 @@ WHERE project_id = ?
 
 func projectScopedRekeyTables() []string {
 	tables := append([]string{"project_paths"}, projectScopedMergeTables...)
+	tables = append(tables, "facts", "fact_env_clocks")
 	return tables
 }
 

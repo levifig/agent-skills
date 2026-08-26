@@ -733,3 +733,32 @@ Table hook_trusted_paths {
     (target)
   }
 }
+
+// Grow-only synced facts (migration 0020). Row timestamps are intentionally
+// absent: ordering lives in the envelope HLC, display time in payload.
+Table facts {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  kind text [not null]
+  payload text [not null]
+  env_id text [not null]
+  seq integer [not null]
+  hlc text [not null]
+  envelope_v integer [not null, default: 1]
+  indexes {
+    (project_id, env_id, seq) [unique]
+    (project_id, hlc, env_id, id)
+    (project_id, kind)
+  }
+}
+
+Table fact_env_clocks {
+  project_id text [not null, ref: > projects.id]
+  env_id text [not null]
+  hlc_wall_ms integer [not null]
+  hlc_logical integer [not null, default: 0]
+  next_seq integer [not null, default: 1]
+  indexes {
+    (project_id, env_id) [pk]
+  }
+}

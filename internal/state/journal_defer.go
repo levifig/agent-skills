@@ -187,13 +187,7 @@ WHERE project_id = ? AND operation_key = ?
 	decisionMessage := packet + "\nSpark: " + sparkID
 	sparkText := packet + "\nDecision: " + decisionID
 
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO journal_entries (
-  id, project_id, entry_type, scope, message,
-  observed_branch, observed_worktree, harness_session_id,
-  spec_id, task_id, created_at, updated_at
-) VALUES (?, ?, 'decision', ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)
-`, decisionID, projectID, scope, decisionMessage, now, now); err != nil {
+	if err := appendJournalDecisionFactAndProjectionTx(ctx, tx, projectID, decisionID, scope, decisionMessage, nowTime); err != nil {
 		return JournalDeferResult{}, &JournalDeferTransactionError{Stage: "decision", Err: err}
 	}
 	if err := runJournalDeferHook(hooks, "after decision", func(h *journalDeferHooks) func(*sql.Tx) error { return h.afterDecision }, tx); err != nil {
@@ -398,17 +392,12 @@ WHERE project_id = ? AND operation_key = ?
 	sparkID := stableMigrationID("journal-defer-spark", projectID, normalized.OperationID)
 	alias := "SPARK-DEFER-" + operationDigest[:journalDeferScopePrefixLen]
 	scope := "defer/" + operationDigest[:journalDeferScopePrefixLen]
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	nowTime := time.Now().UTC()
+	now := nowTime.Format(time.RFC3339Nano)
 	decisionMessage := storedPacket + "\nSpark: " + sparkID
 	sparkText := storedPacket + "\nDecision: " + decisionID
 
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO journal_entries (
-  id, project_id, entry_type, scope, message,
-  observed_branch, observed_worktree, harness_session_id,
-  spec_id, task_id, created_at, updated_at
-) VALUES (?, ?, 'decision', ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)
-`, decisionID, projectID, scope, decisionMessage, now, now); err != nil {
+	if err := appendJournalDecisionFactAndProjectionTx(ctx, tx, projectID, decisionID, scope, decisionMessage, nowTime); err != nil {
 		return JournalDeferResult{}, &JournalDeferTransactionError{Stage: "decision", Err: err}
 	}
 	if err := runJournalDeferHook(hooks, "after decision", func(h *journalDeferHooks) func(*sql.Tx) error { return h.afterDecision }, tx); err != nil {

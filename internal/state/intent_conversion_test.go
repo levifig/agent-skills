@@ -24,6 +24,7 @@ VALUES (?, ?, 'decision', 'defer/legacy', ?, ?, ?)
 INSERT INTO journal_search (rowid, journal_entry_id, project_id, session_id, entry_type, scope, message)
 SELECT rowid, id, project_id, '', 'decision', 'defer/legacy', message FROM journal_entries WHERE id = ?
 `, decisionID)
+	mustBackfillJournalFactForTest(t, store, projectID, decisionID)
 	mustExecSchemaSQL(t, store, `
 INSERT INTO sparks (id, project_id, scope, status, text, created_at, updated_at)
 VALUES (?, ?, 'defer/legacy', 'open', ?, ?, ?)

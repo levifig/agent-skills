@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -976,5 +977,81 @@ WHERE project_id = ?
 	}
 	if got != want {
 		t.Fatalf("missing relationship origins = %d, want %d", got, want)
+	}
+}
+
+func TestRepairJournalFactsDryRunApplyAndIdempotency(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if _, err := LogJournal(ctx, root, resolver, JournalLogOptions{Entry: "decision(repair): journal fact repair"}); err != nil {
+		t.Fatalf("LogJournal() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM journal_entries`); err != nil {
+		store.Close()
+		t.Fatalf("delete projection row error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	checkpointSQLiteWAL(t, status.DatabasePath)
+	before := snapshotMainSQLiteFile(t, status.DatabasePath)
+	dryRun, err := RepairJournalFacts(ctx, root, resolver, JournalFactsRepairOptions{})
+	if err != nil {
+		t.Fatalf("RepairJournalFacts(dry-run) error = %v", err)
+	}
+	if dryRun.Applied || dryRun.BackupPath != "" || dryRun.BackupVerified || dryRun.Rebuilt != 0 || dryRun.ParityVerified {
+		t.Fatalf("dry-run result = %#v, want no mutation", dryRun)
+	}
+	if dryRun.FactRows != 1 || dryRun.ProjectionRows != 0 || dryRun.Missing != 1 {
+		t.Fatalf("dry-run parity = %#v, want fact=1/projection=0/missing=1", dryRun)
+	}
+	after := snapshotMainSQLiteFile(t, status.DatabasePath)
+	if !bytes.Equal(before, after) {
+		t.Fatalf("dry-run changed database file")
+	}
+	applied, err := RepairJournalFacts(ctx, root, resolver, JournalFactsRepairOptions{Apply: true})
+	if err != nil {
+		t.Fatalf("RepairJournalFacts(apply) error = %v", err)
+	}
+	if !applied.Applied || !applied.ParityVerified || applied.Rebuilt != 1 || applied.Missing != 0 {
+		t.Fatalf("apply result = %#v, want rebuilt ready parity", applied)
+	}
+	second, err := RepairJournalFacts(ctx, root, resolver, JournalFactsRepairOptions{Apply: true})
+	if err != nil {
+		t.Fatalf("RepairJournalFacts(second apply) error = %v", err)
+	}
+	if !second.Applied || !second.ParityVerified {
+		t.Fatalf("second apply result = %#v, want idempotent ready parity", second)
+	}
+}
+
+func snapshotMainSQLiteFile(t *testing.T, path string) []byte {
+	t.Helper()
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read database snapshot %s: %v", path, err)
+	}
+	return contents
+}
+
+func checkpointSQLiteWAL(t *testing.T, databasePath string) {
+	t.Helper()
+	db, err := sql.Open("sqlite3", databasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	if _, err := db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		db.Close()
+		t.Fatalf("wal_checkpoint error = %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close() error = %v", err)
 	}
 }

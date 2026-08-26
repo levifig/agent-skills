@@ -438,6 +438,16 @@ func RepairPlanForStatus(status Status) []RepairAction {
 				Description:    "Regenerate the stale compatibility export from SQLite state.",
 				Safe:           false,
 			})
+		case JournalFactParityDivergenceCode:
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "repair-journal-facts",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryJournalSearch,
+				Description:    "Rebuild the journal projection from journal facts after creating a verified backup.",
+				Command:        JournalFactParityRepairCommand,
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
 		case JournalSearchDivergenceCode:
 			actions = appendRepairAction(actions, RepairAction{
 				Code:           "repair-journal-search",
@@ -668,6 +678,35 @@ func inspectOperationalInvariants(ctx context.Context, store *Store, options Ins
 	diagnostics = append(diagnostics, backendDiagnostics...)
 	if !backendMappingsValid {
 		valid = false
+	}
+
+	journalFactParity, err := InspectJournalFactParity(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
+	if !journalFactParity.Ready {
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     JournalFactParityDivergenceCode,
+			Category: RepairCategoryJournalSearch,
+			Policy:   DiagnosticPolicyDerivedIndexDiverged,
+			Message: fmt.Sprintf(
+				"journal projection diverged from journal facts (fact_rows=%d, projection_rows=%d, missing=%d, extra=%d, changed=%d)",
+				journalFactParity.FactRows,
+				journalFactParity.ProjectionRows,
+				journalFactParity.Missing,
+				journalFactParity.Extra,
+				journalFactParity.Changed,
+			),
+			Details: map[string]any{
+				"fact_rows":       journalFactParity.FactRows,
+				"projection_rows": journalFactParity.ProjectionRows,
+				"missing":         journalFactParity.Missing,
+				"extra":           journalFactParity.Extra,
+				"changed":         journalFactParity.Changed,
+			},
+		})
 	}
 
 	journalSearchParity, err := InspectJournalSearchParity(ctx, store)
