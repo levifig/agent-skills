@@ -76,7 +76,7 @@ The fleet agrees on the **fact envelope** (versioned cleartext contract + E2E pa
 
 **Permanence classes:** ledger (permanent), notebook (durable retrieval), scratchpad (effort-scoped ephemeral). Promoted exports (PR bodies, rendered artifacts, tracker rows) are never re-imported as authority.
 
-**Ship status:** LOAF-64, 66–67, 71–72, 75–76, 87–89 shipped on main. LOAF-63 parent closeout follows LOAF-72 landing; LOAF-62 parent remains open for its own verify/review/ship.
+**Ship status:** LOAF-63–67, 71–72, 75–76, 87–89 shipped on main. Writers append through the LOAF-71 chokepoint; the `events` table is local archive (migration 0025). LOAF-62 parent closeout is independent review and ship.
 
 
 ### Recovery Tiers and Restore Safety
