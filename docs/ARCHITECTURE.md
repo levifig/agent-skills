@@ -54,11 +54,30 @@ General workflow skills call `loaf` for Loaf-owned state and route user-scoped e
 
 ### Operational State Identity
 
+> **Revision 2026-08-26 (LOAF-90):** The XDG SQLite file is a local replica of the personal substrate, not the complete destination store. See Personal Memory Substrate below.
+
 Loaf stores operational state in one global SQLite database at `$XDG_DATA_HOME/loaf/loaf.sqlite`, partitioned by project ID. New project IDs are generated and stored in SQLite; they are not derived from checkout path or friendly name. The `projects` row carries the friendly display name and current path, while `project_paths` records path mappings so a checkout can move without changing identity. Legacy path-hash IDs remain only as an adoption key for migrated pre-stable-identity data.
 
 Entity identity follows the same discipline one level down (ADR-028). Derived entity IDs are mint-once opaque keys: computed at first creation, never recomputed for resolution. The aliases table — with the schema's only content-meaningful unique constraint, `UNIQUE (project_id, namespace, alias)` — is the identity registry, and the markdown importer resolves through it before deriving an ID for anything. Unaliased kinds resolve by natural key: journal entries by (entry type, scope, message) for markdown-origin rows, sources by project and path. Sparks whose message normalizes to an empty slug receive a deterministic content-hash alias so no row is born unreachable.
 
 The standing invariant is alias parity: for every project and every aliased entity table, raw row counts equal alias-reachable counts, with zero dead aliases. `loaf state doctor` checks it on demand (read-only, error severity without invalidating the database, naming `loaf state migrate alias-orphans` as the repair). The June-24 identity fork — a project rekey silently invalidating every derived ID, repaired by the state-dedupe Change — is the incident this invariant exists to catch on day one instead of week six.
+
+### Personal Memory Substrate
+
+> **Revision 2026-08-26 (LOAF-90):** New section. Supersedes: implicit single-machine SQLite as sufficient for Loaf-flow work.
+
+One operator's substrate is **identical across every environment** they operate. Local SQLite on a trusted machine is a full replica (local-first). A self-hostable sync relay (`loaf serve`, LOAF-75) converges facts between environments; the server holds opaque ciphertext blobs and auth tokens only — never keys, never plaintext semantics. The client sync engine (LOAF-76) queues, pulls by cursor, and detects env-seq gaps with loud warnings. Environments that cannot attach hard-refuse substrate-touching commands (LOAF-67); there is no detached override in v1.
+
+**Synced minimal core:** project identity and attachment evidence, ref mappings and work contracts, ledger facts (journal, sparks, wraps, handoffs, decisions), verification-run records, releases. **Never synced:** FTS indexes, hook trust, conversation handles, vocabulary fossils (local archive).
+
+The fleet agrees on the **fact envelope** (versioned cleartext contract + E2E payload), not the SQLite schema. Schema evolves per machine; facts replay into projections via latest-event-wins folds ordered by `(hlc, env_id, id)` (LOAF-71, ADR-029).
+
+**Credentials (two-mode):** admin credentials (master key + account access key/secret) live on trusted machines only; client credentials bundle endpoint + project-scoped token + derived project key in per-project harness secrets. Repo `.agents/loaf.conf` carries project ID and tracker binding — never the sync endpoint.
+
+**Permanence classes:** ledger (permanent), notebook (durable retrieval), scratchpad (effort-scoped ephemeral). Promoted exports (PR bodies, rendered artifacts, tracker rows) are never re-imported as authority.
+
+**Ship status:** LOAF-66–67, 71, 75–76 shipped on main. LOAF-63/72 (full mutable-core migration), LOAF-64 (attachment evidence beyond remote URL normalization), LOAF-88–89 (scratchpad server channel and prune) remain.
+
 
 ### Recovery Tiers and Restore Safety
 
@@ -80,6 +99,19 @@ Four rules the third instance made explicit:
 - **FTS mirrors are derived data.** Rollback re-derives index state from restored content rows rather than restoring captured index bytes, and delete paths tolerate a desynced mirror instead of aborting (an unindexed FTS5 external-content delete raises SQLITE_CORRUPT — the tolerance probe exists because a pre-existing desync once made a repair unrunnable).
 
 The operational gate is rehearsal on a disposable production copy: `LOAF_DB` and `XDG_DATA_HOME` redirected to a sandbox, first apply must exit 0, second must no-op, and the acceptance queries must hold before the same invocation touches the real database. The state-dedupe ceremony (2026-08-09, receipts in the Change folder) ran exactly as rehearsed, including catching a generated-flags bug in preview that never reached apply.
+
+### Dead State Retirement and Document Demotion
+
+> **Revision 2026-08-26 (LOAF-90):** Supersedes: reports/councils/shaping_drafts as SQLite authority; findings/verdicts/runs as live schema.
+
+LOAF-79 (migration 0018) deletes zero-row findings/verdicts/runs schema. LOAF-80 (migration 0021) demotes document-layer rows to files; CLI serves file-backed reports/councils/drafts. LOAF-81 classifies every project-scoped table (sync, local-archive, machine-local, gone) and prunes fossil relationship edges. Handoffs remain in the synced core as ledger facts.
+
+### Scratchpad Coordination
+
+> **Revision 2026-08-26 (LOAF-90):** Ephemeral multi-agent coordination without journal pollution.
+
+Permanence taxonomy: **ledger** (journal, decisions, wraps), **notebook** (sparks, ideas), **scratchpad** (effort-scoped agent messages). LOAF-87 ships `loaf scratchpad append|read|list|claim|release` with closed fact kinds. LOAF-88 (server SSE/long-poll fanout) and LOAF-89 (logical close + admin-only `loaf scratchpad prune`) remain pending — fact sync stays poll-shaped.
+
 
 ### Targets
 
@@ -132,6 +164,8 @@ Fresh installs pre-create an empty root canonical so the Claude symlink is never
 This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. ADR-010 records the consolidation from per-harness writes to one canonical file.
 
 ### Work Records and Optional Linear Coordination
+
+> **Revision 2026-08-26 (LOAF-90):** Contract machinery keys to provider-qualified refs (LOAF-82 shipped). Internal issue rows retire after render-out (LOAF-83 shipped); decision-kind issues re-home to ledger facts (LOAF-84 pending); flow skills on refs (LOAF-86 pending).
 
 New bounded work is a Loaf issue, with authored shaping and implementation artifacts kept beside the code and operational issue state stored in project-scoped SQLite. Existing specs and task records remain supported compatibility surfaces until their named removal boundaries.
 
@@ -186,7 +220,7 @@ Principles that shape how Loaf is designed and operated. Unlike ADRs, these are 
 
 Authored durable artifacts — Changes, plans, research, specs, ADRs, knowledge, reports, code, and generated deliverables — live in Git and are edited in place. Operational, queryable state — the journal, Intent, Exploration, checkpoints, conversation provenance, relationships, deferrals, and derived indexes — lives in project-scoped SQLite. Neither store mirrors the other: SQLite never becomes a hidden Markdown repository, and Git never holds per-conversation operational facts. An elected tracker may own explicitly bounded issue identity and workflow fields, but it never owns either durable store; publication and reconciliation remain explicit.
 
-The intent-exploration-foundation Change proved the operational side as append-only facts rather than mutable lifecycle state. An Intent's disposition (`tracked`, `deferred`, `resolved`) and an Exploration's latest portable checkpoint are derived from transactionally sequenced immutable records — the row with the greatest committed per-aggregate sequence wins, never a timestamp and never a status column. Compound writes are retry-safe through one canonical per-project operation-key mapping (`intent_operations`), which the transitional `journal defer` adapter and legacy conversion share with the native commands, so no entry point can mint a parallel canonical record. Machine-local conversation handles and log locators are optional provenance with observed availability; portable context is exclusively the checkpoint's four required fields, and their presence is reported honestly (`portable_context_present`) rather than inferred from handles.
+The intent-exploration-foundation Change proved the operational side as append-only facts rather than mutable lifecycle state. An Intent's disposition (`tracked`, `deferred`, `resolved`) and an Exploration's latest portable checkpoint are derived from transactionally sequenced immutable records — the row with the greatest committed per-aggregate sequence wins, never a timestamp and never a status column. **Revision 2026-08-26 (LOAF-90):** Synced-core projections fold latest-event-wins using HLC total order `(hlc, env_id, id)` (LOAF-71); legacy Intent/Exploration sequence semantics remain until LOAF-72 migrates those entities. Compound writes are retry-safe through one canonical per-project operation-key mapping (`intent_operations`), which the transitional `journal defer` adapter and legacy conversion share with the native commands, so no entry point can mint a parallel canonical record. Machine-local conversation handles and log locators are optional provenance with observed availability; portable context is exclusively the checkpoint's four required fields, and their presence is reported honestly (`portable_context_present`) rather than inferred from handles.
 
 The judgment boundary follows from the storage boundary: humans and Skills interpret, classify, and choose operations; the CLI validates, proves, and performs Loaf state transitions deterministically. General Loaf workflow skills do not branch on provider configuration, call providers directly, or maintain lifecycle flags. Dedicated provider skills may select an already-configured provider MCP for user-scoped external collaboration, but they neither configure nor authenticate it and never take ownership of Loaf issue identity/state, provider mappings, retries, conflict resolution, or reconciliation. The CLI never decides whether input is a Spark, Idea, Intent, Exploration, or Change.
 
