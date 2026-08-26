@@ -51,6 +51,9 @@ func (r Runner) runIssueRetitle(args []string, out io.Writer, runtime state.Runt
 	if err != nil {
 		return err
 	}
+	if providerQualifiedRefCommand(options.ref) {
+		return r.runIssueRetitleContract(context.Background(), projectRoot, options, out)
+	}
 	updated, err := state.UpdateIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.IssueUpdateOptions{
 		Ref:      options.ref,
 		Title:    options.title,

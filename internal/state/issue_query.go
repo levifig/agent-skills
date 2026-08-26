@@ -111,13 +111,14 @@ type IssueTreeResult struct {
 
 // IssueFrontierResult is the derived pick-up-next view.
 type IssueFrontierResult struct {
-	ContractVersion    int            `json:"contract_version,omitempty"`
-	DatabaseScope      string         `json:"database_scope,omitempty"`
-	DatabasePath       string         `json:"database_path,omitempty"`
-	ProjectID          string         `json:"project_id,omitempty"`
-	ProjectName        string         `json:"project_name,omitempty"`
-	ProjectCurrentPath string         `json:"project_current_path,omitempty"`
-	Issues             []IssueSummary `json:"issues"`
+	ContractVersion    int                   `json:"contract_version,omitempty"`
+	DatabaseScope      string                `json:"database_scope,omitempty"`
+	DatabasePath       string                `json:"database_path,omitempty"`
+	ProjectID          string                `json:"project_id,omitempty"`
+	ProjectName        string                `json:"project_name,omitempty"`
+	ProjectCurrentPath string                `json:"project_current_path,omitempty"`
+	Issues             []IssueSummary        `json:"issues"`
+	Refs               []WorkContractSummary `json:"refs,omitempty"`
 }
 
 // IssueCriterionExport is one criterion row in an issue export.
@@ -370,6 +371,10 @@ ORDER BY i.created_at, i.id
 	if err := rows.Err(); err != nil {
 		return IssueFrontierResult{}, fmt.Errorf("iterate issue frontier: %w", err)
 	}
+	refs, err := s.listWorkContractFrontier(ctx, identity.ID)
+	if err != nil {
+		return IssueFrontierResult{}, err
+	}
 	return IssueFrontierResult{
 		ContractVersion:    StateJSONContractVersion,
 		DatabaseScope:      identity.DatabaseScope,
@@ -378,6 +383,7 @@ ORDER BY i.created_at, i.id
 		ProjectName:        identity.FriendlyName,
 		ProjectCurrentPath: identity.CurrentPath,
 		Issues:             issues,
+		Refs:               refs,
 	}, nil
 }
 

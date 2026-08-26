@@ -16,7 +16,7 @@ Shaping's tail, not a separate ceremony: dependency awareness, granularity judgm
 
 A parent gets children only when its DoD needs more than one coherent slice. One criterion that is already right-sized stays on the parent. A checkbox becomes a sub-issue the moment it earns its own DoD — its own problem statement, its own out-of-scope, its own criteria.
 
-Same problem, another slice → another criterion on this issue, or a promoted child if that slice now has its own DoD. A different problem discovered mid-shaping → a new backlog issue (`loaf issue new --status backlog`), not a child of this one.
+Same problem, another slice → another criterion on this issue, or a promoted child if that slice now has its own DoD. A different problem discovered mid-shaping → a new backlog contract (`loaf issue new --ref <ref> --status backlog`), not a child of this one.
 
 ## The sizing rule
 
@@ -48,12 +48,12 @@ Then shape the child: give it a problem body and an out-of-scope statement (`loa
 `loaf issue promote` always mints a delivery child. Decision children are created separately:
 
 ```bash
-loaf issue new --kind decision --parent <ref> "Should the store be append-only?"
+loaf issue new --kind decision "Should the store be append-only?"
 ```
 
 A decision child is ready when the title or body contains `?`. It does not claim a parent criterion.
 
-Once **any** child exists — delivery or decision — `loaf issue check` requires every parent criterion to be claimed. A leaf parent that grows a decision child without promoted (or otherwise claimed) criteria will fail coverage. Sequence the tail as: write DoD → promote every slice that will not execute on the parent → then add decision children. If the parent stays a leaf, leave remaining unsharp questions in create-time `fog` (there is no `--fog` on edit) or file sharpened ones as sibling decision issues (`loaf issue new --kind decision --status backlog`, no `--parent`).
+Once **any** child contract exists, `loaf issue check` requires every parent criterion to be claimed. Sequence the tail as: write DoD → mint a child contract (`loaf issue new --ref <child-ref> --parent <parent-ref>`) for every slice that will not execute on the parent → then record ledger decisions (`loaf issue new --kind decision`, no `--ref`). If the parent stays a leaf, leave remaining unsharp questions in create-time `fog` (there is no `--fog` on edit) or file sharpened ones as sibling ledger decisions.
 
 Manual claims, when a child criterion was added rather than promoted:
 
@@ -73,7 +73,7 @@ loaf issue dod unclaim <child> <child-position> <parent-position>
 - **Containment** (report, not a failure) — every child criterion must claim a parent criterion. An orphan is printed with a ready-to-paste remedy that files it as a **sibling** backlog issue:
 
   ```bash
-  loaf issue new --parent '<parent>' --status backlog -- '<orphan text>'
+  loaf issue new --ref '<child-ref>' --parent '<parent>' --status backlog -- '<orphan text>'
   ```
 
   Run the printed remedy. Do not fold the orphan back onto the parent, and do not treat it as in-scope work that somehow escaped the DoD — it is a new backlog row under the same parent.
@@ -92,9 +92,9 @@ loaf issue dod add <ref> <text> [--command <cmd>] [--expect <expect>] [--tier V|
 `--expect` is optional and enforced when present, with a deliberately minimal grammar: atoms join with ` and ` — `exit <N>` is the required exit code (an absent `--expect`, or one with no exit atom, means `exit 0`) and `` contains `text` `` requires the combined stdout+stderr to contain that backtick-delimited text (repeatable). Any other clause is unenforceable: verify warns naming the criterion and the clause and records it as advisory, so an expectation is either checked or loudly not — never quietly decorative.
 
 ```bash
-loaf issue dod add LOAF-42 "Package tests pass" --command "go test ./..." --expect "exit 0"
-loaf issue dod add LOAF-42 "Check names the uncovered criterion" --command "loaf issue check LOAF-42" --expect "exit 0 and contains \`uncovered\`"
-loaf issue dod add LOAF-42 "The writeup is readable by someone new to the area" --tier H
+loaf issue dod add linear:ENG-42 "Package tests pass" --command "go test ./..." --expect "exit 0"
+loaf issue dod add linear:ENG-42 "Check names the uncovered criterion" --command "loaf issue check linear:ENG-42" --expect "exit 0 and contains \`uncovered\`"
+loaf issue dod add linear:ENG-42 "The writeup is readable by someone new to the area" --tier H
 ```
 
 A criterion whose check only restates the implementation (recomputing the expected value the way the code does) is vacuous — it can never disagree with the code under test. Prefer criteria with an independent source of truth.

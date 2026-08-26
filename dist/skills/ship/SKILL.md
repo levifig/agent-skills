@@ -4,11 +4,11 @@ description: >-
   Reviews, verifies, and lands one pull request — the sole quality gate before
   work can appear in a later release cut. Use when the user says "ship it,"
   "merge this PR," "ready to merge," "land this branch," or asks for a final
-  merge gate. Binds the PR to an issue: the body is `loaf issue render` output,
-  definition-of-done criteria are the review checklist, and landing marks the
-  issue done and stops its worktree. Produces a reviewed, squash-merged PR and
-  post-merge cleanup. Not for version bumps, tags, GitHub Releases, or install
-  verification (use release).
+  merge gate. Binds the PR to an authority ref: the body is `loaf issue render`
+  output, definition-of-done criteria are the review checklist, and landing
+  marks the ref done and stops its worktree. Produces a reviewed, squash-merged
+  PR and post-merge cleanup. Not for version bumps, tags, GitHub Releases, or
+  install verification (use release).
 ---
 
 # Ship
@@ -40,8 +40,8 @@ Review, verify, and land one PR. Ship's review is the quality gate for everythin
 1. **Log invocation first** — `loaf journal log "skill(ship): shipping <ref or PR or current branch>"` before doing anything else. After merge, log `loaf journal log "decision(ship): PR #N landed via squash merge; <ref> done"`.
 2. **Rigor is load-bearing** — this review is the only quality gate. Releases cut from landed work; they do not re-check. If the review is thin, the next cut still publishes it.
 3. **Ship is not release** — do not bump versions, create tags, publish GitHub Releases, or verify package installation here. Use the release skill for that.
-4. **Bind the PR to an issue** — the PR body is `loaf issue render <ref>` (paste-ready, no manual editing). The issue's definition-of-done criteria are the review checklist. `loaf issue verify <ref>` runs the executable (V-tier) rows and writes nothing. Landing means `loaf issue status <ref> done`. Then `loaf issue stop <ref>` removes the started worktree.
-5. **Detect-first** — auto-detect the PR from the current branch, and the issue from `$ARGUMENTS` or the started workspace, before asking for a PR number or issue ref.
+4. **Bind the PR to an authority ref** — the PR body is `loaf issue render <ref>` (paste-ready, no manual editing). The issue's definition-of-done criteria are the review checklist. `loaf issue verify <ref>` runs the executable (V-tier) rows and writes nothing. Landing means `loaf issue status <ref> done`. Then `loaf issue stop <ref>` removes the started worktree.
+5. **Detect-first** — auto-detect the PR from the current branch, and the authority ref from `$ARGUMENTS` or the started workspace, before asking for a PR number or issue ref.
 6. **Review before merge** — inspect code, docs, tests, changelog, the rendered issue body, definition of done, and CI state before approval.
 7. **Never merge without explicit confirmation** — present the PR, checks, review notes, and squash body first, using your harness's structured question tool if it has one.
 8. **Detect the stack before merging** — another open PR may use this PR's head branch as its base. Find out before merge, never after, and never delete a head branch while a child PR still points at it.
@@ -54,7 +54,7 @@ Review, verify, and land one PR. Ship's review is the quality gate for everythin
 
 - Invocation is logged to the project journal before review work begins
 - PR identity, base branch, and head branch are confirmed
-- The PR is bound to one issue; `loaf issue show <ref>` is the issue surface
+- The PR is bound to one authority ref; `loaf issue show <ref>` is the contract surface
 - PR body matches `loaf issue render <ref>` with no manual editing
 - Every definition-of-done criterion was reviewed against the diff; H-tier by reading, V-tier by `loaf issue verify <ref>` (writes nothing; exit non-zero blocks)
 - CI status is passing or the user explicitly accepts named non-blocking checks
@@ -99,7 +99,7 @@ Log the invocation, then detect the PR and the issue.
    git branch --show-current
    gh repo view --json defaultBranchRef -q .defaultBranchRef.name
    ```
-2. Parse `$ARGUMENTS`: may be an issue ref (`LOAF-42`), a PR number, a PR URL, a branch name, or empty.
+2. Parse `$ARGUMENTS`: may be an authority ref (`linear:ENG-42`, `branch:issue/foo`, `pr:99`), a PR number, a PR URL, a branch name, or empty.
 3. If `$ARGUMENTS` is empty or is not a PR identity, auto-detect from the current branch:
    ```bash
    gh pr view --json number,title,url,headRefName,baseRefName,state,mergeStateStatus,isDraft
@@ -107,11 +107,11 @@ Log the invocation, then detect the PR and the issue.
 4. If no PR exists for the current branch, stop and offer to create one via `git-workflow` rather than silently merging a branch.
 5. If already on the default branch, stop. There is no PR to ship from the current branch.
 
-### Issue
+### Authority ref
 
-Issue commands require initialized SQLite state. Bind exactly one issue:
+Contract commands require initialized SQLite state. Bind exactly one authority ref:
 
-1. If `$ARGUMENTS` (or a remaining token) is an issue ref, load it:
+1. If `$ARGUMENTS` (or a remaining token) is an authority ref (`linear:`, `branch:`, or `pr:`), load it:
    ```bash
    loaf issue show <ref>
    ```
@@ -119,12 +119,12 @@ Issue commands require initialized SQLite state. Bind exactly one issue:
    ```bash
    loaf issue list --started
    ```
-   Columns are alias, title, `started_branch`, `started_worktree`. Only the shippable root records a workspace. The started branch from `loaf issue start` is `issue/<root-alias-or-id>` in lowercase (`issue/loaf-42`), disambiguated with an id suffix when that name is already claimed. Bind the PR to that root, not to each child slice.
+   Columns are alias, title, `started_branch`, `started_worktree`. Only the shippable root records a workspace. The started workspace from `loaf issue start branch:<name>` is that branch's worktree. Bind the PR to the authority ref (`linear:`, `branch:`, or `pr:`), not to an internal LOAF-* id.
 3. Confirm with `loaf issue show <ref>` — `started_branch` / `started_worktree` should match this PR when the issue was started.
 
-If nothing binds, stop and ask for the issue ref. Do not invent a row during ship. If `loaf issue show` reports the issue archived (`cancelled` or `duplicate`), stop.
+If nothing binds, stop and ask for the authority ref. Do not invent an internal issue row during ship. If `loaf issue show` reports the issue archived (`cancelled` or `duplicate`), stop.
 
-Confirm PR identity and the bound issue with the user before merge actions.
+Confirm PR identity and the bound authority ref with the user before merge actions.
 
 ---
 
