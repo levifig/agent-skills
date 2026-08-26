@@ -290,6 +290,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runIssue(args[1:], out, runtime)
 	case "journal":
 		dispatchErr = r.runJournal(args[1:], out, runtime)
+	case "scratchpad":
+		dispatchErr = r.runScratchpad(args[1:], out, runtime)
 	case "task":
 		dispatchErr = r.runTask(args[1:], out, runtime)
 	case "housekeeping":
@@ -360,6 +362,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  migrate       Run migration workflows")
 	fmt.Fprintln(out, "  render        Maintain durable markdown renders")
 	fmt.Fprintln(out, "  journal       Record and read the project journal")
+	fmt.Fprintln(out, "  scratchpad    Ephemeral agent coordination channel")
 	fmt.Fprintln(out, "  intent        Show tracked Intent (writes frozen; use issue)")
 	fmt.Fprintln(out, "  exploration   Manage Exploration continuity")
 	fmt.Fprintln(out, "  conversation  Manage conversation provenance")
