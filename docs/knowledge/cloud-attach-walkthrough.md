@@ -32,7 +32,7 @@ Complete these steps once on a trusted operator machine before configuring cloud
 Self-host the sync server (`loaf serve`) or use your deployed relay. The endpoint must be HTTPS in production (TLS-terminated reverse proxy is fine).
 
 ```bash
-loaf serve --listen :8443 --db /path/to/sync.sqlite
+loaf serve --listen :8080 --db /path/to/sync.sqlite
 ```
 
 ### 2. Create the substrate account

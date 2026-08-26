@@ -177,8 +177,12 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	projectID := strings.TrimSpace(r.PathValue("project_id"))
 	factID := strings.TrimSpace(r.PathValue("fact_id"))
-	if err := s.authorizeAdmin(r.Context(), r); err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+	if err := s.authorizeAdminForProject(r.Context(), r, projectID); err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errAdminProjectForbidden) {
+			status = http.StatusForbidden
+		}
+		writeError(w, status, err)
 		return
 	}
 	deleted, err := s.store.DeleteFact(r.Context(), projectID, factID)
@@ -230,6 +234,14 @@ func (s *Server) authorizeAdmin(ctx context.Context, r *http.Request) error {
 		return err
 	}
 	return s.store.AuthenticateAdmin(ctx, accessKeyID, accessSecret)
+}
+
+func (s *Server) authorizeAdminForProject(ctx context.Context, r *http.Request, projectID string) error {
+	accessKeyID, accessSecret, err := parseAdminAuthorization(r.Header.Get("Authorization"))
+	if err != nil {
+		return err
+	}
+	return s.store.AuthenticateAdminForProject(ctx, accessKeyID, accessSecret, projectID)
 }
 
 func parseConnectionAuthorization(authHeader string) (string, string, error) {
