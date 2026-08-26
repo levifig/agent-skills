@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/levifig/loaf/internal/syncserver"
 )
@@ -250,4 +252,92 @@ func getPullStatus(t *testing.T, url, auth string) int {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode
+}
+
+func TestScratchpadSSEAndLongPollFanout(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t)
+	defer store.Close()
+	srv := syncserver.NewServer(store)
+	httpSrv := httptest.NewServer(srv.Handler())
+	defer httpSrv.Close()
+
+	projectID := "proj_scratchpad_fanout"
+	_, clientAuth := bootstrapCredentials(t, store, projectID, "scratchpad-host")
+	channel := "effort-alpha"
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req, _ := http.NewRequest(http.MethodGet, httpSrv.URL+"/v1/projects/"+projectID+"/scratchpad/"+channel+"/stream?since=0", nil)
+		req.Header.Set("Authorization", clientAuth)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Errorf("stream request: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.Header.Get("Content-Type") != "text/event-stream" {
+			t.Errorf("stream content-type = %q, want text/event-stream", resp.Header.Get("Content-Type"))
+		}
+		buf := make([]byte, 4096)
+		n, err := resp.Body.Read(buf)
+		if err != nil && err != io.EOF {
+			t.Errorf("stream read: %v", err)
+			return
+		}
+		body := string(buf[:n])
+		if !strings.Contains(body, "event: message") || !strings.Contains(body, "eyJ0ZXh0IjoiaGVsbG8tZnJvbS1yZW1vdGUifQ==") {
+			t.Errorf("stream body = %q, want scratchpad SSE payload", body)
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	payload := base64.StdEncoding.EncodeToString([]byte(`{"text":"hello-from-remote"}`))
+	req, _ := http.NewRequest(http.MethodPost, httpSrv.URL+"/v1/projects/"+projectID+"/scratchpad/"+channel, bytes.NewReader(mustJSON(t, map[string]string{"payload": payload})))
+	req.Header.Set("Authorization", clientAuth)
+	req.Header.Set("Content-Type", "application/json")
+	pub, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	defer pub.Body.Close()
+	if pub.StatusCode != http.StatusOK {
+		t.Fatalf("publish status = %d, want 200", pub.StatusCode)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for SSE fanout")
+	}
+
+	pollReq, _ := http.NewRequest(http.MethodGet, httpSrv.URL+"/v1/projects/"+projectID+"/scratchpad/"+channel+"/poll?since=0&timeout_ms=1000", nil)
+	pollReq.Header.Set("Authorization", clientAuth)
+	pollResp, err := http.DefaultClient.Do(pollReq)
+	if err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	defer pollResp.Body.Close()
+	var decoded struct {
+		Messages []struct {
+			Seq     int64  `json:"seq"`
+			Payload string `json:"payload"`
+		} `json:"messages"`
+	}
+	if err := json.NewDecoder(pollResp.Body).Decode(&decoded); err != nil {
+		t.Fatalf("decode poll: %v", err)
+	}
+	if len(decoded.Messages) != 1 {
+		t.Fatalf("poll messages = %d, want 1", len(decoded.Messages))
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
