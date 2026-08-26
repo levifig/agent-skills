@@ -23,6 +23,9 @@ const (
 )
 
 func (r Runner) runOpenCodeSessionStartContext(out io.Writer, runtime state.Runtime, options journalContextCLIOptions) error {
+	if err := r.enforceSessionStartAttach(r.Stderr, options.jsonOutput); err != nil {
+		return err
+	}
 	if !options.fromHook {
 		return errors.New("OpenCode session start context requires --from-hook")
 	}

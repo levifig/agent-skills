@@ -65,7 +65,8 @@ This audit is generated from the Go-native dispatch in `internal/cli/cli.go`, wi
 | `setup` | Native Go | Go dispatcher only | One-step bootstrap is native: target directory creation, native project init, package build invocation, and native install orchestration. The TypeScript command registration has been removed. |
 | `spark` | Native Go | Go dispatcher only | SQLite-only knowledge-object lifecycle. |
 | `spec` | Native Go | Go dispatcher only | Top-level help and unknown-subcommand handling are native; SQLite-backed list/show/archive are native; markdown-only `spec list`, `spec show`, and `spec archive` are native. The TypeScript command registration and obsolete TS implementation have been removed. |
-| `auth` | Native Go | Go dispatcher only | Substrate attach ceremony: admin setup/link/list/revoke and fail-loud gate for unattached environments. |
+| `attach` | Native Go | Go dispatcher only | Unattended attach ceremony: conf ID + client credential, relay health/auth probe, decrypt/capability/HLC skew checks, then persist attach state. |
+| `auth` | Native Go | Go dispatcher only | Substrate attach ceremony: admin setup/link/list/revoke/attach and fail-loud gate for unattached environments. |
 | `sync` | Native Go | Go dispatcher only | Client sync engine: enqueue local facts, E2E-sealed push, cursor pull, journal projection refresh, and loud env-seq gap detection via bundled project credentials. |
 | `state` | Native Go | Go dispatcher only | Native operational-state control plane. |
 | `tag` | Native Go | Go dispatcher only | SQLite-backed tag operations. |

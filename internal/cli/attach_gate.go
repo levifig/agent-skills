@@ -55,6 +55,35 @@ func (r Runner) enforceAttachGate(args []string, errOut io.Writer) error {
 	return ExitError{Code: 1}
 }
 
+func (r Runner) enforceSessionStartAttach(errOut io.Writer, jsonOutput bool) error {
+	store, err := r.authStore()
+	if err != nil {
+		return err
+	}
+	active, err := store.EnforcementActive()
+	if err != nil || !active {
+		return err
+	}
+	attached, err := store.IsAttached()
+	if err != nil || attached {
+		return err
+	}
+	refusal := auth.NewUnattachedRefusal("journal context")
+	if jsonOutput {
+		payload, err := refusal.JSON()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(errOut, string(payload))
+	} else {
+		fmt.Fprintln(errOut, refusal.Error())
+		if suggestion := strings.TrimSpace(refusal.Suggestion); suggestion != "" {
+			fmt.Fprintln(errOut, suggestion)
+		}
+	}
+	return ExitError{Code: 1}
+}
+
 func argsRequestHelp(args []string) bool {
 	for _, arg := range args {
 		switch arg {
@@ -64,3 +93,24 @@ func argsRequestHelp(args []string) bool {
 	}
 	return false
 }
+
+
+func writeAttachRefusal(errOut io.Writer, refusal *auth.RefusalError, jsonOutput bool) error {
+	if refusal == nil {
+		return ExitError{Code: 1}
+	}
+	if jsonOutput {
+		payload, err := refusal.JSON()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(errOut, string(payload))
+	} else {
+		fmt.Fprintln(errOut, refusal.Error())
+		if suggestion := strings.TrimSpace(refusal.Suggestion); suggestion != "" {
+			fmt.Fprintln(errOut, suggestion)
+		}
+	}
+	return ExitError{Code: 1}
+}
+
