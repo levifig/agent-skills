@@ -4,7 +4,7 @@ The last shaping step, before `loaf issue check` and any review offer. An agent 
 
 Run through these before finalizing:
 
-- **Is scope still bounded?** Has the draft crept beyond what the problem statement justifies? Could this issue be smaller and still be verifiable in one fresh context window?
+- **Is scope still bounded?** Has the draft crept beyond what the problem statement justifies? Could this issue be smaller and still be verifiable alone and revertible alone?
 - **Does every new command, state, or lifecycle verb name its ceremony?** If a command or state can't name the ceremony that exercises it, cut it — don't build it now and hope a use appears.
 - **Is a second progress flag creeping into the body?** `readiness`, `phase`, `stage`, or anything else that reintroduces a declared progress flag. Status lives on the issue row (`loaf issue status`). Shaped, covered, and ready are derived by `loaf issue check`. `loaf issue bucket` is a label only and is never read as a constraint.
 - **Is the CLI/skill boundary drawn correctly?** Is the skill doing deterministic work that belongs in the CLI, or is the CLI claiming judgment that belongs in the skill?

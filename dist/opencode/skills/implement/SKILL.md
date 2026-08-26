@@ -46,6 +46,7 @@ You are the coordinator. Work units are issues.
 - **One agent, one worktree.** `loaf issue start <ref>` walks to the shippable root and starts or joins that root workspace (`issue/<root-alias>`). Only the root records `started_branch` / `started_worktree`; a descendant becomes `active` without its own worktree. Before dispatch, run `loaf issue list --started`. Never send two agents into the same worktree.
 - **Definition of done is the completion contract.** `loaf issue verify <ref>` runs V-tier criteria from the repository root and writes nothing. H-tier is reviewed by a human or this orchestrator. Completion is the work landing plus `loaf issue status <ref> done`. Do not flip checkboxes. Provenance is the delivering commits and the PR whose body is `loaf issue render <ref>`.
 - Shape prepares issues. If `loaf issue check <ref>` does not report the delivery issue shaped (or the decision issue ready), stop and send the work to shape. Do not mint a new issue from this skill.
+- **Window-fit is a runtime heuristic, not a tree edge.** Shape sizes slices for verification and revertibility alone. When an executor slice still exceeds one fresh context window, implement sub-decomposes for execution — via handoffs, scratchpad, and agent spawns — without minting child issues. That carving never appears in the issue tree.
 
 ### Orchestrator Can Do Directly
 - Log journal entries, read journal context, create council files
