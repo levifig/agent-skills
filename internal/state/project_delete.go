@@ -41,6 +41,8 @@ var projectScopedDeleteTables = []string{
 	"intents",
 	"journal_deferrals",
 	"journal_origins",
+	"facts",
+	"fact_env_clocks",
 	"journal_entries",
 	"handoffs",
 	"councils",

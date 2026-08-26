@@ -365,6 +365,9 @@ func (s *Store) mergeProjectDatabaseWithOps(ctx context.Context, sourcePath stri
 	if err := copyProjectProvenanceRows(ctx, tx, projectID); err != nil {
 		return err
 	}
+	if err := backfillMissingJournalFactsForProjectTx(ctx, tx, projectID); err != nil {
+		return fmt.Errorf("backfill merged journal facts: %w", err)
+	}
 	if err := registerMergedProjectTx(ctx, tx, root, projectID); err != nil {
 		return err
 	}

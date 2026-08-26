@@ -435,6 +435,9 @@ func TestAliasOrphanRepointsSparkProvenanceAtTheTwin(t *testing.T) {
 INSERT INTO journal_entries (id, project_id, entry_type, scope, message, created_at, updated_at)
 VALUES (?, ?, 'spark', 'scope', 'defer this thought', ?, ?)
 `, "journal:deferral0000000001", projectID, "2026-06-13T10:00:00Z", "2026-06-13T10:00:00Z")
+	store := openTestStore(t, root, stateHome)
+	mustBackfillJournalFactForTest(t, store, projectID, "journal:deferral0000000001")
+	store.Close()
 	mustExecOpen(t, stateHome, root, `
 INSERT INTO journal_deferrals (project_id, operation_key, journal_entry_id, spark_id, stored_digest, created_at)
 VALUES (?, 'op-defer-1', ?, ?, ?, ?)

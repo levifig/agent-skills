@@ -285,7 +285,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?)
 			t.Fatalf("rekey %s: %v", table, err)
 		}
 	}
-	for _, table := range []string{"artifact_bodies", "journal_origins"} {
+	for _, table := range []string{"artifact_bodies", "journal_origins", "facts", "fact_env_clocks"} {
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET project_id = ? WHERE project_id = ?`, table), nextID, legacyID); err != nil {
 			t.Fatalf("rekey %s: %v", table, err)
 		}

@@ -2483,6 +2483,7 @@ func (r Runner) runStateRepair(args []string, out io.Writer, runtime state.Runti
 		"legacy-project-database": writeStateRepairLegacyProjectDatabaseHelp,
 		"relationship-origin":     writeStateRepairRelationshipOriginHelp,
 		"journal-search":          writeStateRepairJournalSearchHelp,
+		"journal-facts":           writeStateRepairJournalFactsHelp,
 	}) {
 		return nil
 	}
@@ -2493,6 +2494,8 @@ func (r Runner) runStateRepair(args []string, out io.Writer, runtime state.Runti
 		return r.runStateRepairRelationshipOrigin(args[1:], out, runtime)
 	case "journal-search":
 		return r.runStateRepairJournalSearch(args[1:], out, runtime)
+	case "journal-facts":
+		return r.runStateRepairJournalFacts(args[1:], out, runtime)
 	default:
 		return fmt.Errorf("state repair target %q is not implemented yet", args[0])
 	}
@@ -2510,6 +2513,70 @@ func writeStateRepairJournalSearchHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf state repair journal-search [--dry-run|--apply] [--json]", "Rebuild the derived journal search index from canonical journal entries.", "--dry-run    Preview canonical/index parity counts without writing", "--apply      Create a verified backup, rebuild the index, and verify exact parity", "--json       Output parity counts, backup verification, and repair result as JSON")
 }
 
+func writeStateRepairJournalFactsHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf state repair journal-facts [--dry-run|--apply] [--json]", "Rebuild the journal projection and search index from journal facts.", "--dry-run    Preview fact/projection parity counts without writing", "--apply      Create a verified backup, rebuild the projection, and verify exact parity", "--json       Output parity counts, backup verification, and repair result as JSON")
+}
+
+func (r Runner) runStateRepairJournalFacts(args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	options, err := parseJournalFactsRepairArgs(args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "state repair journal-facts", err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state repair journal-facts", err)
+		}
+		return err
+	}
+	result, err := state.RepairJournalFacts(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.JournalFactsRepairOptions{Apply: options.apply})
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state repair journal-facts", err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+
+	fmode := "--dry-run"
+	if options.apply {
+		fmode = "--apply"
+	}
+	fmt.Fprintf(out, "loaf state repair journal-facts %s\n", fmode)
+	fmt.Fprintf(out, "scope: %s database\n", result.DatabaseScope)
+	fmt.Fprintf(out, "database: %s\n", result.DatabasePath)
+	if result.ProjectID != "" {
+		fmt.Fprintf(out, "project: %s\n", result.ProjectID)
+	}
+	if result.ProjectName != "" {
+		fmt.Fprintf(out, "project name: %s\n", result.ProjectName)
+	}
+	if result.ProjectCurrentPath != "" {
+		fmt.Fprintf(out, "project path: %s\n", result.ProjectCurrentPath)
+	}
+	fmt.Fprintf(out, "fact rows: %d\n", result.FactRows)
+	fmt.Fprintf(out, "projection rows: %d\n", result.ProjectionRows)
+	fmt.Fprintf(out, "missing: %d\n", result.Missing)
+	fmt.Fprintf(out, "extra: %d\n", result.Extra)
+	fmt.Fprintf(out, "changed: %d\n", result.Changed)
+	fmt.Fprintf(out, "applied: %t\n", result.Applied)
+	if result.BackupPath != "" {
+		fmt.Fprintf(out, "backup: %s\n", result.BackupPath)
+	}
+	fmt.Fprintf(out, "backup verified: %t\n", result.BackupVerified)
+	fmt.Fprintf(out, "rebuilt: %d\n", result.Rebuilt)
+	fmt.Fprintf(out, "parity verified: %t\n", result.ParityVerified)
+	if !options.apply && (result.Missing > 0 || result.Extra > 0 || result.Changed > 0 || result.FactRows != result.ProjectionRows) {
+		fmt.Fprintln(out, "next: loaf state repair journal-facts --apply")
+	}
+	return nil
+}
 func (r Runner) runStateRepairLegacyProjectDatabase(args []string, out io.Writer, runtime state.Runtime) error {
 	jsonRequested := hasFlag(args, "--json")
 	options, err := parseLegacyProjectDatabaseRepairArgs(args)
@@ -11604,6 +11671,32 @@ func parseJournalSearchRepairArgs(args []string) (journalSearchRepairOptions, er
 	}
 	if options.apply && options.dryRun {
 		return journalSearchRepairOptions{}, fmt.Errorf("state repair journal-search cannot combine --apply and --dry-run")
+	}
+	return options, nil
+}
+
+type journalFactsRepairOptions struct {
+	apply      bool
+	dryRun     bool
+	jsonOutput bool
+}
+
+func parseJournalFactsRepairArgs(args []string) (journalFactsRepairOptions, error) {
+	var options journalFactsRepairOptions
+	for _, arg := range args {
+		switch arg {
+		case "--dry-run":
+			options.dryRun = true
+		case "--json":
+			options.jsonOutput = true
+		case "--apply":
+			options.apply = true
+		default:
+			return journalFactsRepairOptions{}, fmt.Errorf("unknown option %q", arg)
+		}
+	}
+	if options.apply && options.dryRun {
+		return journalFactsRepairOptions{}, fmt.Errorf("state repair journal-facts cannot combine --apply and --dry-run")
 	}
 	return options, nil
 }

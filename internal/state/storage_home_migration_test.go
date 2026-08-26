@@ -671,6 +671,10 @@ VALUES (?, ?, 'decision', 'merge', 'preexisting nil origin', NULL, NULL, NULL, N
 		globalStore.Close()
 		t.Fatalf("insert preexisting journal: %v", err)
 	}
+	if err := backfillJournalFactForTest(ctx, globalStore, logged.ProjectID, preexistingJournalID); err != nil {
+		globalStore.Close()
+		t.Fatalf("backfill preexisting journal fact: %v", err)
+	}
 	if _, err := globalStore.db.ExecContext(ctx, `
 INSERT INTO project_paths (id, project_id, path, is_current, first_seen_at, last_seen_at, created_at, updated_at)
 VALUES (?, ?, ?, 1, ?, ?, ?, ?)`, sourcePathID, logged.ProjectID, root.Path(), sourcePathFirstSeenAt, sourcePathLastSeenAt, sourcePathCreatedAt, sourcePathUpdatedAt); err != nil {
@@ -924,6 +928,10 @@ func TestApplyProjectDatabaseMergeRejectsCrossProjectEntityCollision(t *testing.
 	if _, err := globalStore.db.ExecContext(ctx, `INSERT INTO journal_entries (id, project_id, entry_type, scope, message, created_at, updated_at) VALUES (?, ?, 'decision', 'collision', 'other project row', ?, ?)`, logged.ID, otherID, now, now); err != nil {
 		globalStore.Close()
 		t.Fatalf("insert cross-project entity collision: %v", err)
+	}
+	if err := backfillJournalFactForTest(ctx, globalStore, otherID, logged.ID); err != nil {
+		globalStore.Close()
+		t.Fatalf("backfill cross-project journal fact: %v", err)
 	}
 	if err := globalStore.Close(); err != nil {
 		t.Fatalf("Close(global) error = %v", err)

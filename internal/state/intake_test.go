@@ -89,6 +89,7 @@ VALUES ('journal:legacy-intake', ?, 'decision', 'defer/x', 'Intent: legacy body'
 INSERT INTO journal_search (rowid, journal_entry_id, project_id, session_id, entry_type, scope, message)
 SELECT rowid, id, project_id, '', 'decision', 'defer/x', 'Intent: legacy body' FROM journal_entries WHERE id = 'journal:legacy-intake'
 `)
+	mustBackfillJournalFactForTest(t, store, projectID, "journal:legacy-intake")
 	mustExecSchemaSQL(t, store, `
 INSERT INTO sparks (id, project_id, scope, status, text, created_at, updated_at)
 VALUES ('spark:legacy-intake', ?, 'defer/x', 'open', 'Intent: legacy body' || char(10) || 'Decision: journal:legacy-intake', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')

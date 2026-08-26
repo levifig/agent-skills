@@ -749,6 +749,9 @@ SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entit
 		return err
 	}
 
+	if err := captureAndDeleteJournalDuplicateTx(ctx, tx, "facts", `WHERE id = ?`, []any{entryID}, manifest, order); err != nil {
+		return err
+	}
 	if err := captureAndDeleteJournalDuplicateTx(ctx, tx, "journal_entries", `WHERE project_id = ? AND id = ?`, []any{projectID, entryID}, manifest, order); err != nil {
 		return err
 	}

@@ -71,6 +71,8 @@ var requiredInitialTables = []string{
 	"work_contract_receipts",
 	"releases",
 	"release_members",
+	"facts",
+	"fact_env_clocks",
 	"schema_migrations",
 }
 
@@ -107,11 +109,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 18 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 18", len(migrations))
+	if len(migrations) != 19 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 19", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -171,6 +173,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if migrations[17].Name != "work_contracts" {
 		t.Fatalf("migration[17].Name = %q, want work_contracts", migrations[17].Name)
 	}
+	if migrations[18].Name != "facts_and_journal_envelope" {
+		t.Fatalf("migration[18].Name = %q, want facts_and_journal_envelope", migrations[18].Name)
+	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
 			t.Fatalf("migration %d SQL is empty", migration.Version)
@@ -225,7 +230,7 @@ func TestOperationalTablesHaveStableIDsAndTimestamps(t *testing.T) {
 	}
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
-		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" || table == "release_members" {
+		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" || table == "release_members" || table == "facts" || table == "fact_env_clocks" {
 			continue
 		}
 		body := tableBody(t, sql, table)
@@ -421,6 +426,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	sqlDoc = readRepoFile(t, "docs", "schema", "0019_work_contracts.sql")
 	if sqlDoc != SchemaMigrations()[17].SQL {
 		t.Fatal("docs/schema/0019_work_contracts.sql must match embedded migration 0019 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0020_facts_and_journal_envelope.sql")
+	if normalizeMigrationSQL(sqlDoc) != normalizeMigrationSQL(factsAndJournalEnvelopeSQL) {
+		t.Fatal("docs/schema/0020_facts_and_journal_envelope.sql must match embedded migration 0020 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
