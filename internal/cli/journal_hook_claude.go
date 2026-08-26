@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/levifig/loaf/internal/project"
@@ -38,6 +39,9 @@ var claudeSessionStartSources = map[string]bool{
 }
 
 func (r Runner) runClaudeSessionStartContext(out io.Writer, runtime state.Runtime, options journalContextCLIOptions) error {
+	if err := r.enforceSessionStartAttach(os.Stderr, options.jsonOutput); err != nil {
+		return err
+	}
 	if !options.fromHook {
 		return errors.New("Claude Code SessionStart context requires --from-hook")
 	}
