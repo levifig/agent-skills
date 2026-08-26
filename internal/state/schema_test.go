@@ -37,9 +37,6 @@ var requiredInitialTables = []string{
 	"session_state_snapshots",
 	"artifact_bodies",
 	"docs_index",
-	"runs",
-	"findings",
-	"verdicts",
 	"plans",
 	"handoffs",
 	"councils",
@@ -98,11 +95,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 16 {
+	if len(migrations) != 17 {
 		t.Fatalf("len(SchemaMigrations()) = %d, want 16", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -156,6 +153,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if migrations[15].Name != "issue_started_workspace" {
 		t.Fatalf("migration[15].Name = %q, want issue_started_workspace", migrations[15].Name)
 	}
+	if migrations[16].Name != "drop_findings_verdicts_runs" {
+		t.Fatalf("migration[16].Name = %q, want drop_findings_verdicts_runs", migrations[16].Name)
+	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
 			t.Fatalf("migration %d SQL is empty", migration.Version)
@@ -180,7 +180,7 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 }
 
 func TestInitialSchemaContainsRequiredTableSet(t *testing.T) {
-	got := tableNames(currentSchemaSQL())
+	got := effectiveTableNames(currentSchemaSQL())
 	want := append([]string(nil), requiredInitialTables...)
 	sort.Strings(want)
 
@@ -240,9 +240,6 @@ func TestInitialSchemaPreservesLineageAndExports(t *testing.T) {
 		"session_state_snapshots": {"content", "observed_branch", "observed_worktree"},
 		"artifact_bodies":         {"entity_kind", "entity_id", "body_kind", "content", "content_hash", "source_id"},
 		"docs_index":              {"path", "content", "content_hash", "indexed_ref", "indexed_worktree", "indexed_at"},
-		"runs":                    {"generator_ref", "generator_version", "generator_hash", "metadata", "started_at", "completed_at"},
-		"findings":                {"report_id", "run_id", "severity", "confidence", "dimension", "line_start", "line_end", "metadata"},
-		"verdicts":                {"finding_id", "run_id", "outcome", "rationale", "reproduction_notes", "metadata"},
 		"plans":                   {"spec_id", "body_source_id"},
 		"handoffs":                {"session_id", "task_id", "body_source_id"},
 		"councils":                {"spec_id", "body_source_id"},
@@ -294,7 +291,7 @@ func TestUserScopedHookTablesHaveNoProjectID(t *testing.T) {
 }
 
 func TestInitialSchemaDoesNotDefineSecretStorageColumns(t *testing.T) {
-	columnsByTable := schemaColumnNames(t, currentSchemaSQL())
+	columnsByTable := schemaColumnNames(t, effectiveSchemaSQL())
 	for _, forbidden := range []string{
 		"token",
 		"password",
@@ -318,7 +315,7 @@ func TestInitialSchemaDoesNotDefineSecretStorageColumns(t *testing.T) {
 }
 
 func TestBackendMappingsStoreOnlyExternalIdentityMetadata(t *testing.T) {
-	columns := schemaColumnNames(t, currentSchemaSQL())["backend_mappings"]
+	columns := schemaColumnNames(t, effectiveSchemaSQL())["backend_mappings"]
 	want := []string{
 		"id",
 		"project_id",
@@ -402,10 +399,14 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[15].SQL {
 		t.Fatal("docs/schema/0017_issue_started_workspace.sql must match embedded migration 0017 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0018_drop_findings_verdicts_runs.sql")
+	if sqlDoc != SchemaMigrations()[16].SQL {
+		t.Fatal("docs/schema/0018_drop_findings_verdicts_runs.sql must match embedded migration 0018 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
-	sqlColumnsByTable := schemaColumnNames(t, currentSchemaSQL())
+	sqlColumnsByTable := schemaColumnNames(t, effectiveSchemaSQL())
 	dbmlColumnsByTable := dbmlColumnNames(t, dbmlDoc)
 	mermaidColumnsByTable := mermaidColumnNames(t, mermaidDoc)
 	for _, table := range requiredInitialTables {
@@ -434,7 +435,6 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"exploration_checkpoints ||--o{ exploration_checkpoint_items : contains",
 		"explorations ||--o{ exploration_checkpoints : checkpoints",
 		"explorations ||--o{ exploration_conversations : spans",
-		"findings ||--o{ verdicts : adjudicates",
 		"intent_deferrals ||--o{ intent_dispositions : anchors",
 		"intents ||--o{ intent_deferrals : defers",
 		"intents ||--o{ intent_dispositions : disposes",
@@ -459,7 +459,6 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ exploration_conversations : scopes",
 		"projects ||--o{ explorations : scopes",
 		"projects ||--o{ exports : scopes",
-		"projects ||--o{ findings : scopes",
 		"projects ||--o{ handoffs : scopes",
 		"projects ||--o{ hook_events : scopes",
 		"projects ||--o{ ideas : scopes",
@@ -477,7 +476,6 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ project_paths : locates",
 		"projects ||--o{ relationships : scopes",
 		"projects ||--o{ reports : scopes",
-		"projects ||--o{ runs : scopes",
 		"projects ||--o{ session_state_snapshots : scopes",
 		"projects ||--o{ sessions : scopes",
 		"projects ||--o{ shaping_drafts : scopes",
@@ -487,10 +485,6 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ specs : scopes",
 		"projects ||--o{ tags : scopes",
 		"projects ||--o{ tasks : scopes",
-		"projects ||--o{ verdicts : scopes",
-		"reports ||--o{ findings : contains",
-		"runs ||--o{ findings : produces",
-		"runs ||--o{ verdicts : records",
 		"sessions ||--o{ handoffs : transfers",
 		"sessions ||--o{ journal_entries : records",
 		"sessions ||--o{ session_state_snapshots : summarizes",
@@ -649,6 +643,25 @@ SELECT path, id FROM docs_search WHERE docs_search MATCH 'needle'
 	}
 }
 
+
+func effectiveTableNames(sql string) []string {
+	tables := map[string]bool{}
+	createRe := regexp.MustCompile(`(?im)^CREATE TABLE IF NOT EXISTS ([a-z_]+) \(`)
+	dropRe := regexp.MustCompile(`(?im)^DROP TABLE IF EXISTS ([a-z_]+)`)
+	for _, match := range createRe.FindAllStringSubmatch(sql, -1) {
+		tables[match[1]] = true
+	}
+	for _, match := range dropRe.FindAllStringSubmatch(sql, -1) {
+		delete(tables, match[1])
+	}
+	names := make([]string, 0, len(tables))
+	for name := range tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func tableNames(sql string) []string {
 	re := regexp.MustCompile(`(?im)^CREATE TABLE IF NOT EXISTS ([a-z_]+) \(`)
 	matches := re.FindAllStringSubmatch(sql, -1)
@@ -658,6 +671,16 @@ func tableNames(sql string) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+
+func effectiveSchemaSQL() string {
+	sql := currentSchemaSQL()
+	for _, table := range GoneTables() {
+		re := regexp.MustCompile(`(?is)CREATE TABLE IF NOT EXISTS ` + regexp.QuoteMeta(table) + ` \(.*?\);\s*`)
+		sql = re.ReplaceAllString(sql, "")
+	}
+	return sql
 }
 
 func currentSchemaSQL() string {

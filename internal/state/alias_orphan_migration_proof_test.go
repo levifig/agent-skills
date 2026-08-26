@@ -363,26 +363,35 @@ func TestAliasOrphanSourceSaltRefusesManyOrphansToOneHolder(t *testing.T) {
 	}
 }
 
-// Retiring a report used to abort the whole migration at COMMIT: findings hold
-// a NOT NULL foreign key that no polymorphic sweep reaches.
-func TestAliasOrphanRetiresReportFindingsAndVerdicts(t *testing.T) {
+
+
+// Schema 18 dropped findings/verdicts; retiring an orphan report must not
+// query those tables. The polymorphic sweep alone is enough.
+func TestAliasOrphanRetiresOrphanReportAtSchema18(t *testing.T) {
 	ctx := context.Background()
 	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
 	legacyID := hex.EncodeToString(sha256Sum(path))
-	alias := "report-findings"
+	alias := "report-schema18"
 	twinID := stableMigrationID("report", projectID, alias)
 	orphanID := stableMigrationID("report", legacyID, alias)
 
-	seedReport(t, stateHome, root, projectID, twinID, "Findings Report", "2026-06-24T13:03:00Z", alias)
-	seedReport(t, stateHome, root, projectID, orphanID, "Findings Report", "2026-06-13T10:00:00Z", "")
-	mustExecOpen(t, stateHome, root, `
-INSERT INTO findings (id, project_id, report_id, title, status, severity, confidence, created_at, updated_at)
-VALUES (?, ?, ?, 'Orphan finding', 'open', 'high', 'confirmed', ?, ?)
-`, "finding:orphan00000000001", projectID, orphanID, "2026-06-13T10:00:00Z", "2026-06-13T10:00:00Z")
-	mustExecOpen(t, stateHome, root, `
-INSERT INTO verdicts (id, project_id, finding_id, outcome, rationale, created_at, updated_at)
-VALUES (?, ?, ?, 'confirmed', 'fixture', ?, ?)
-`, "verdict:orphan00000000001", projectID, "finding:orphan00000000001", "2026-06-13T10:00:00Z", "2026-06-13T10:00:00Z")
+	seedReport(t, stateHome, root, projectID, twinID, "Schema 18 Report", "2026-06-24T13:03:00Z", alias)
+	seedReport(t, stateHome, root, projectID, orphanID, "Schema 18 Report", "2026-06-13T10:00:00Z", "")
+
+	store := openTestStore(t, root, stateHome)
+	schemaVersion, err := store.SchemaVersion(ctx)
+	if err != nil {
+		store.Close()
+		t.Fatalf("SchemaVersion() error = %v", err)
+	}
+	if err := validateGoneTablesAbsent(ctx, store.db); err != nil {
+		store.Close()
+		t.Fatalf("validateGoneTablesAbsent() error = %v", err)
+	}
+	store.Close()
+	if schemaVersion != CurrentSchemaVersion() || schemaVersion != 18 {
+		t.Fatalf("schema version = %d, want 18", schemaVersion)
+	}
 
 	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
@@ -391,21 +400,15 @@ VALUES (?, ?, ?, 'confirmed', 'fixture', ?, ?)
 	if entityExists(t, stateHome, root, "reports", orphanID) {
 		t.Fatal("orphan report survived apply")
 	}
-	if entityExists(t, stateHome, root, "findings", "finding:orphan00000000001") {
-		t.Fatal("finding for retired report survived apply")
-	}
-	if entityExists(t, stateHome, root, "verdicts", "verdict:orphan00000000001") {
-		t.Fatal("verdict for retired finding survived apply")
+	if !entityExists(t, stateHome, root, "reports", twinID) {
+		t.Fatal("the alias-holding report was retired")
 	}
 
 	if _, err := RollbackAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, applied.RollbackManifestPath); err != nil {
 		t.Fatalf("RollbackAliasOrphanMigration() error = %v", err)
 	}
-	if !entityExists(t, stateHome, root, "findings", "finding:orphan00000000001") {
-		t.Fatal("finding not restored by rollback")
-	}
-	if !entityExists(t, stateHome, root, "verdicts", "verdict:orphan00000000001") {
-		t.Fatal("verdict not restored by rollback")
+	if !entityExists(t, stateHome, root, "reports", orphanID) {
+		t.Fatal("orphan report not restored by rollback")
 	}
 }
 

@@ -92,14 +92,11 @@ func TestCanonicalLifecycleStatusMapsLegacySpellings(t *testing.T) {
 }
 
 func TestNonLifecycleStatusVocabulariesAreExplicit(t *testing.T) {
-	expected := []string{"finding_status", "verdict_outcome", "run_status"}
+	expected := []string{}
 	if got := NonLifecycleStatusVocabularies(); !reflect.DeepEqual(got, expected) {
 		t.Fatalf("NonLifecycleStatusVocabularies() = %#v, want %#v", got, expected)
 	}
 	if canonical, ok := CanonicalLifecycleStatus("finding", "confirmed"); ok {
 		t.Fatalf("CanonicalLifecycleStatus(finding, confirmed) = %q, true; want excluded", canonical)
-	}
-	if !ValidFindingStatus("confirmed") || !ValidRunStatus("running") || !ValidVerdictOutcome("partial") {
-		t.Fatal("domain-specific status vocabularies are not valid through their explicit registries")
 	}
 }
