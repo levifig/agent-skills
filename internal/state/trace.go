@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -340,14 +341,13 @@ func (s *Store) queryTraceRelationships(ctx context.Context, projectID string, d
 
 	var relationships []TraceRelationship
 	for _, relationship := range raw {
-		// Skip neighbors whose kinds are gone or otherwise unregistered
-		// (e.g. finding/verdict/run fossils left after migration 0018) so a
-		// single historical edge cannot abort the whole trace/link request.
-		if _, ok := entityDescriptorForKind(relationship.otherKind); !ok {
-			continue
-		}
 		other, err := s.entityDetails(ctx, projectID, relationship.otherKind, relationship.otherID)
 		if err != nil {
+			// Skip gone/unknown neighbor kinds (e.g. finding/verdict/run fossils)
+			// so one historical edge cannot abort the whole trace/link request.
+			if isUnsupportedTraceEntityKind(err) {
+				continue
+			}
 			return nil, err
 		}
 		if alias, err := s.entityAlias(ctx, projectID, relationship.otherKind, relationship.otherID); err == nil {
@@ -361,6 +361,10 @@ func (s *Store) queryTraceRelationships(ctx context.Context, projectID string, d
 		})
 	}
 	return relationships, nil
+}
+
+func isUnsupportedTraceEntityKind(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "unsupported trace entity kind")
 }
 
 func (s *Store) entityAlias(ctx context.Context, projectID string, kind string, id string) (string, error) {
