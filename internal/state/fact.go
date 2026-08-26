@@ -200,3 +200,21 @@ WHERE project_id = ? AND env_id = ?
 	}
 	return rows.Err()
 }
+
+const PermanenceScratchpad = "scratchpad"
+
+// RegisterFactKind registers a closed fact kind and its permanence class.
+func RegisterFactKind(kind, permanence string) {
+	registeredFactKinds[strings.TrimSpace(kind)] = strings.TrimSpace(permanence)
+}
+
+// FactPermanenceClass returns the permanence class for a registered kind.
+func FactPermanenceClass(kind string) (string, bool) {
+	permanence, ok := registeredFactKinds[strings.TrimSpace(kind)]
+	return permanence, ok
+}
+
+// LocalFactEnvID returns the pre-auth environment identity for fact writes.
+func LocalFactEnvID() string {
+	return localFactEnvID()
+}
