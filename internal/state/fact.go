@@ -60,6 +60,9 @@ func AppendFact(ctx context.Context, store *Store, input AppendFactInput) (FactE
 	if err := tx.Commit(); err != nil {
 		return FactEnvelope{}, fmt.Errorf("commit fact transaction: %w", err)
 	}
+	if err := invokeSyncEnqueueHook(ctx, store, envelope.ProjectID, envelope.ID); err != nil {
+		return FactEnvelope{}, fmt.Errorf("enqueue fact for sync: %w", err)
+	}
 	return envelope, nil
 }
 
