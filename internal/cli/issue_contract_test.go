@@ -269,3 +269,47 @@ func TestRunnerIssueContractCheckDefersLinearPublicationButAcceptsHuman(t *testi
 		t.Fatalf("publication = %#v, want omitted for deferred linear: path", result.Publication)
 	}
 }
+
+func TestRunnerIssueContractVerifyEmitsAdvisoryWarnings(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	ctx := context.Background()
+	resolver := state.PathResolver{StateHome: stateHome}
+	initStatus, err := state.Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store, err := state.OpenStore(initStatus.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	authorityRef := state.AuthorityRef{Provider: state.AuthorityProviderBranch, Key: "issue/verify-advisory"}
+	if _, err := store.CreateWorkContract(ctx, root, state.WorkContractCreateOptions{
+		AuthorityRef: authorityRef,
+		Title:        "Verify advisory contract",
+		Body:         "Body.\n\nOut of scope: n/a.",
+		Criteria: []state.IssueCriterionInput{{
+			Text:    "Exit ok with prose expect",
+			Command: "true",
+			Expect:  "exit 0 and the output reads well",
+			Tier:    state.IssueCriterionTierV,
+		}},
+	}); err != nil {
+		t.Fatalf("CreateWorkContract() error = %v", err)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "verify", authorityRef.String())
+	if err != nil {
+		t.Fatalf("issue verify error = %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `unenforceable Expect clause "the output reads well"`) {
+		t.Fatalf("verify output = %q, want advisory warning for unenforceable Expect clause", out)
+	}
+	if !strings.Contains(out, "warn") {
+		t.Fatalf("verify output = %q, want yellow warn label", out)
+	}
+}
