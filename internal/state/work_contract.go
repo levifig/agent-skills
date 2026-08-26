@@ -286,6 +286,20 @@ func (s *Store) UpdateWorkContract(ctx context.Context, root project.Root, optio
 		if err := upsertWorkContractWorkspaceTx(ctx, tx, projectID, contract.ID, branch, worktree, now); err != nil {
 			return WorkContract{}, err
 		}
+		kind := FactKindWorktreeBound
+		if branch == "" && worktree == "" {
+			kind = FactKindWorktreeUnbound
+		}
+		if _, err := appendCoreEventFactTx(ctx, tx, projectID, kind, "", CoreEventPayload{
+			SubjectKind: "work_contract",
+			SubjectID:   contract.ID,
+			Branch:      branch,
+			Worktree:    worktree,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}, parseCoreEventTime(now), ""); err != nil {
+			return WorkContract{}, fmt.Errorf("record work-contract worktree fact: %w", err)
+		}
 	}
 
 	if _, err := tx.ExecContext(ctx, `

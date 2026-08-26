@@ -265,6 +265,19 @@ ON CONFLICT(project_id, provider, provider_ref, mapping_kind) DO UPDATE SET
   mapping_value = excluded.mapping_value,
   updated_at = excluded.updated_at
 `, mappingID, projectID, ref.Provider, ref.Key, kind, value, now, now)
+	if err != nil {
+		return err
+	}
+	_, err = appendCoreEventFactTx(ctx, tx, projectID, FactKindRefRegistered, "", CoreEventPayload{
+		SubjectKind:  "ref",
+		SubjectID:    mappingID,
+		Provider:     ref.Provider,
+		ProviderRef:  ref.Key,
+		MappingKind:  kind,
+		MappingValue: value,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}, parseCoreEventTime(now), "")
 	return err
 }
 

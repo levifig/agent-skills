@@ -381,6 +381,11 @@ func applyMigration(ctx context.Context, tx *sql.Tx, migration SchemaMigration) 
 	if _, err := tx.ExecContext(ctx, migration.SQL); err != nil {
 		return fmt.Errorf("apply schema migration %d: %w", migration.Version, err)
 	}
+	if migration.Version == mutableCoreEventFactMigrationVersion {
+		if err := migrateMutableCoreFactsTx(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema migration %d replay: %w", migration.Version, err)
+		}
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = tx.ExecContext(
 		ctx,
