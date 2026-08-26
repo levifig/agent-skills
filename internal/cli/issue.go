@@ -74,6 +74,7 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		"bucket":    writeIssueBucketHelp,
 		"link":      writeIssueLinkHelp,
 		"render":    writeIssueRenderHelp,
+		"render-out": writeIssueRenderOutHelp,
 		"identity":  writeIssueIdentityHelp,
 		"export":    writeIssueExportHelp,
 		"pull":      writeIssuePullHelp,
@@ -128,6 +129,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueLink(args[1:], out, runtime)
 	case "render":
 		return r.runIssueRender(args[1:], out, runtime)
+	case "render-out":
+		return r.runIssueRenderOut(args[1:], out, runtime)
 	case "identity":
 		return r.runIssueIdentity(args[1:], out, runtime)
 	case "export":
@@ -163,6 +166,7 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "bucket", Summary: "Set an advisory Now/Next/Later label"},
 		{Name: "link", Summary: "Create or remove an issue relationship"},
 		{Name: "render", Summary: "Emit a paste-ready PR body"},
+		{Name: "render-out", Summary: "Render an internal issue row onto a durable authority ref"},
 		{Name: "identity", Summary: "Show, define, or align the local issue prefix"},
 		{Name: "export", Summary: "Export issues, identity, criteria, claims, and relationships as JSON"},
 		{Name: "pull", Summary: "Adopt an existing Linear issue"},
