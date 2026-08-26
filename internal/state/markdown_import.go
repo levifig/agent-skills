@@ -880,19 +880,21 @@ func (m markdownImporter) upsertJournalEntry(ctx context.Context, id string, ent
 		return false, nil
 	}
 
-	_, err = m.tx.ExecContext(ctx, `
-INSERT INTO journal_entries (id, project_id, entry_type, scope, message, observed_branch, observed_worktree, harness_session_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-  entry_type = excluded.entry_type,
-  scope = excluded.scope,
-  message = excluded.message,
-  observed_branch = excluded.observed_branch,
-  observed_worktree = excluded.observed_worktree,
-  harness_session_id = excluded.harness_session_id,
-  updated_at = excluded.updated_at
-`, id, m.projectID, entryType, emptyToNil(scope), message, emptyToNil(observedBranch), emptyToNil(observedWorktree), emptyToNil(harnessSessionID), m.now, m.now)
+	nowTime, err := time.Parse(time.RFC3339Nano, m.now)
 	if err != nil {
+		return false, fmt.Errorf("parse import timestamp: %w", err)
+	}
+	payload := JournalFactPayload{
+		EntryType:        entryType,
+		Scope:            scope,
+		Message:          message,
+		ObservedBranch:   observedBranch,
+		ObservedWorktree: observedWorktree,
+		HarnessSessionID: harnessSessionID,
+		CreatedAt:        m.now,
+		UpdatedAt:        m.now,
+	}
+	if err := upsertJournalViaFactsTx(ctx, m.tx, m.projectID, id, payload, nowTime); err != nil {
 		return false, fmt.Errorf("upsert journal entry %s: %w", id, err)
 	}
 	if err := m.writeMigrationJournalOrigin(ctx, id, observedBranch, observedWorktree, harnessSessionID, origin != nil); err != nil {

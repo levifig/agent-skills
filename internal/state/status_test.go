@@ -1468,3 +1468,38 @@ func findRepairAction(t *testing.T, actions []RepairAction, code string) RepairA
 	t.Fatalf("repair action %q not found in %#v", code, actions)
 	return RepairAction{}
 }
+func TestInspectJournalFactParityDivergenceInvalidatesMode(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	if _, err := Initialize(ctx, root, resolver); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if _, err := LogJournal(ctx, root, resolver, JournalLogOptions{Entry: "decision(status): fact parity invalidates mode"}); err != nil {
+		t.Fatalf("LogJournal() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM journal_entries`); err != nil {
+		store.Close()
+		t.Fatalf("delete projection row error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	status, err := Inspect(root, resolver)
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if status.Mode != ModeInvalid {
+		t.Fatalf("Mode = %q, want %q", status.Mode, ModeInvalid)
+	}
+	diagnostic := findDiagnostic(t, status.Diagnostics, JournalFactParityDivergenceCode)
+	if diagnostic.Severity != "error" || diagnostic.Category != RepairCategoryJournalSearch {
+		t.Fatalf("diagnostic = %#v, want journal fact parity divergence", diagnostic)
+	}
+	action := findRepairAction(t, RepairPlanForStatus(status), "repair-journal-facts")
+	if action.Command != JournalFactParityRepairCommand || action.Safe {
+		t.Fatalf("repair action = %#v, want journal facts repair command", action)
+	}
+}

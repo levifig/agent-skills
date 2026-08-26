@@ -504,6 +504,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?)
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit journal_search for %s: %v", id, err)
 	}
+	mustBackfillJournalFactForTest(t, store, projectID, id)
 }
 
 func seedJournalDuplicateOrigin(t *testing.T, stateHome string, root project.Root, projectID, entryID, createdAt string) {

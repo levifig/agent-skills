@@ -609,3 +609,22 @@ erDiagram
   logical_conversations ||--o{ exploration_conversations : joins
   conversation_handles ||--o{ conversation_log_refs : locates
   conversation_handles ||--o{ journal_conversation_handles : correlates
+
+  facts {
+    text id PK
+    text project_id FK
+    text kind
+    text payload
+    text env_id
+    integer seq
+    text hlc
+    integer envelope_v
+  }
+
+  fact_env_clocks {
+    text project_id FK
+    text env_id PK
+    integer hlc_wall_ms
+    integer hlc_logical
+    integer next_seq
+  }

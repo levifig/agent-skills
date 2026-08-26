@@ -684,6 +684,7 @@ INSERT INTO journal_entries (
 `, decisionID, projectID, scope, "Intent: "+intentText, emptyToNil(branch), createdAt, createdAt); err != nil {
 		t.Fatalf("seed legacy decision: %v", err)
 	}
+	mustBackfillJournalFactForTest(t, store, projectID, decisionID)
 	if _, err := store.db.ExecContext(ctx, `
 INSERT INTO sparks (id, project_id, scope, status, text, source_id, created_at, updated_at)
 VALUES (?, ?, ?, 'open', ?, NULL, ?, ?)

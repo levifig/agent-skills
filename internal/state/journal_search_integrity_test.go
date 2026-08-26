@@ -580,6 +580,7 @@ VALUES ('legacy-session', ?, NULL, 'main', 'active', NULL, ?, ?)`, preStatus.Pro
 		postStoreBefore.Close()
 		t.Fatalf("post harness journal insert error = %v", err)
 	}
+	mustBackfillJournalFactForTest(t, postStoreBefore, postStatus.ProjectID, "post-harness-entry")
 	postStoreBefore.Close()
 	if _, err := ApplyJournalFirstMigration(ctx, postRoot, postResolver); err != nil {
 		t.Fatalf("ApplyJournalFirstMigration() error = %v", err)

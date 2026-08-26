@@ -2714,6 +2714,7 @@ func TestRunnerStateHelpIsNative(t *testing.T) {
 		{name: "state repair legacy-project-database", args: []string{"state", "repair", "legacy-project-database", "--help"}, want: "Usage: loaf state repair legacy-project-database [--dry-run|--apply] [--json]"},
 		{name: "state repair relationship-origin", args: []string{"state", "repair", "relationship-origin", "--help"}, want: "Usage: loaf state repair relationship-origin [--origin <imported|manual>] [--dry-run|--apply] [--json]"},
 		{name: "state repair journal-search", args: []string{"state", "repair", "journal-search", "--help"}, want: "Usage: loaf state repair journal-search [--dry-run|--apply] [--json]"},
+		{name: "state repair journal-facts", args: []string{"state", "repair", "journal-facts", "--help"}, want: "Usage: loaf state repair journal-facts [--dry-run|--apply] [--json]"},
 		{name: "state migrate", args: []string{"state", "migrate", "--help"}, want: "Usage: loaf state migrate <source> [options]"},
 		{name: "project list", args: []string{"project", "list", "--help"}, want: "Usage: loaf project list [--json]"},
 		{name: "project identity", args: []string{"project", "identity", "--help"}, want: "Usage: loaf project show|identity [--json]"},
