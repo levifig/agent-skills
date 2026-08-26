@@ -606,6 +606,23 @@ erDiagram
     text updated_at
   }
 
+  project_conf_labels {
+    text conf_id PK
+    text project_id FK
+    text first_seen_at
+    text last_seen_at
+  }
+
+  project_attachment_evidence {
+    text id PK
+    text project_id FK
+    text evidence_kind
+    text evidence_value
+    text first_seen_at
+    text last_seen_at
+  }
+
   projects ||--o{ sync_outbound_queue : scopes
   projects ||--o{ sync_project_cursors : scopes
-
+  projects ||--o{ project_conf_labels : scopes
+  projects ||--o{ project_attachment_evidence : scopes

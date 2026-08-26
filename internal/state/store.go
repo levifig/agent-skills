@@ -210,6 +210,9 @@ func Initialize(ctx context.Context, root project.Root, resolver PathResolver) (
 	if err := store.ApplyIssueProjectConfig(ctx, root); err != nil {
 		return Status{}, err
 	}
+	if err := store.BootstrapProjectConf(ctx, root); err != nil {
+		return Status{}, err
+	}
 	return Inspect(root, resolver)
 }
 

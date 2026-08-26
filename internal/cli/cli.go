@@ -2406,7 +2406,7 @@ func (r Runner) runStateDoctor(args []string, out io.Writer, runtime state.Runti
 		}
 		return err
 	}
-	status, err := r.inspectStateWithOptions(runtime, state.InspectOptions{AliasParity: true, LeftoverAbsorb: true})
+	status, err := r.inspectStateWithOptions(runtime, state.InspectOptions{AliasParity: true, LeftoverAbsorb: true, DuplicateUniverse: true})
 	if err != nil {
 		if jsonOutput {
 			return writeJSONCommandError(out, "state doctor", err)

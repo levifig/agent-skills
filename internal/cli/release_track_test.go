@@ -23,6 +23,7 @@ func releaseTrackFixture(t *testing.T) (repo, stateHome string) {
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
 		t.Fatalf("state init error = %v", err)
 	}
+	commitBootstrapAgentsFiles(t, repo)
 	return repo, stateHome
 }
 
@@ -889,6 +890,7 @@ func releaseTrackUntaggedFixture(t *testing.T) (repo, stateHome string) {
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
 		t.Fatalf("state init error = %v", err)
 	}
+	commitBootstrapAgentsFiles(t, repo)
 	return repo, stateHome
 }
 

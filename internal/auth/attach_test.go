@@ -26,7 +26,11 @@ func TestUnattendedAttachRoundTrip(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	conf := map[string]string{"conf_id": "conf_attach_test", "project_id": h.projectID}
+	confID := "conf_attach_test"
+	if err := h.projectStore.RegisterConfLabel(ctx, confID, h.projectID); err != nil {
+		t.Fatal(err)
+	}
+	conf := map[string]string{"conf_id": confID, "project_id": h.projectID}
 	rawConf, _ := json.Marshal(conf)
 	if err := os.WriteFile(filepath.Join(confDir, "loaf.conf"), rawConf, 0o644); err != nil {
 		t.Fatal(err)
@@ -188,7 +192,11 @@ func TestUnattendedAttachRefusesHLCSkew(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	rawConf, _ := json.Marshal(map[string]string{"project_id": h.projectID})
+	confID := "conf_hlc_skew"
+	if err := h.projectStore.RegisterConfLabel(ctx, confID, h.projectID); err != nil {
+		t.Fatal(err)
+	}
+	rawConf, _ := json.Marshal(map[string]string{"conf_id": confID, "project_id": h.projectID})
 	if err := os.WriteFile(filepath.Join(confDir, "loaf.conf"), rawConf, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -219,11 +227,13 @@ func TestUnattendedAttachRefusesHLCSkew(t *testing.T) {
 	if _, err := h.serverStore.PushFacts(ctx, h.projectID, []syncserver.PushInput{{FactID: fact.ID, Blob: sealed}}); err != nil {
 		t.Fatalf("push relay: %v", err)
 	}
+	baselineNow := time.Now().UTC()
+	baselineHLC := fmt.Sprintf("%020d:%06d", baselineNow.UnixMilli(), 0)
 	if _, err := state.ReceiveFact(ctx, h.projectStore, state.FactEnvelope{
 		ID: "018f5c2a-0000-7000-8000-000000000010", ProjectID: h.projectID,
 		Kind: state.FactKindJournal,
-		Payload: `{"entry_type":"discover","message":"baseline","created_at":"2026-08-26T12:00:00Z","updated_at":"2026-08-26T12:00:00Z"}`,
-		EnvID: "receiver-env", Seq: 1, HLC: "00000000000000170000:000000", EnvelopeV: 1,
+		Payload: fmt.Sprintf(`{"entry_type":"discover","message":"baseline","created_at":%q,"updated_at":%q}`, baselineNow.Format(time.RFC3339), baselineNow.Format(time.RFC3339)),
+		EnvID: "receiver-env", Seq: 1, HLC: baselineHLC, EnvelopeV: 1,
 	}, state.ReceiveFactOptions{}); err != nil {
 		t.Fatalf("seed baseline: %v", err)
 	}
