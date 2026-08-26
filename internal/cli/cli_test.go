@@ -5532,56 +5532,36 @@ func TestRunnerReportGenerateRejectsMissingInvalidUnsupportedState(t *testing.T)
 	}
 }
 
-func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
+func TestRunnerReportLifecycleUsesFileBackedReportsWhenInitialized(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
 		t.Fatalf("state init error = %v", err)
 	}
-	beforeFiles := repoFileList(t, workingDir)
 
 	var createOut bytes.Buffer
 	if err := (Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "create", "release-readiness", "--type", "audit", "--source", "manual", "--json"}); err != nil {
 		t.Fatalf("report create error = %v", err)
 	}
 	created := decodeReportCreateResult(t, createOut.Bytes())
-	if created.Report.Alias != "report-release-readiness" || created.Report.Status != "draft" || created.Kind != "audit" || created.Source != "manual" {
-		t.Fatalf("created = %#v, want draft report", created)
+	if created.Report.Status != "draft" || created.Kind != "audit" || created.Source != "manual" || !strings.HasSuffix(created.Report.Alias, "-audit-release-readiness") {
+		t.Fatalf("created = %#v, want file-backed draft report", created)
 	}
 	assertCLIReportContext(t, created.ContractVersion, created.DatabaseScope, created.DatabasePath, created.ProjectID, created.ProjectName, created.ProjectCurrentPath, workingDir)
-
-	var draftListOut bytes.Buffer
-	if err := (Runner{Stdout: &draftListOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "list", "--json"}); err != nil {
-		t.Fatalf("report list after create error = %v", err)
-	}
-	draftReports := decodeReportList(t, draftListOut.Bytes())
-	if draftReports.Reports["report-release-readiness"].Status != "draft" {
-		t.Fatalf("draft reports = %#v, want draft report", draftReports.Reports)
-	}
-	assertCLIReportContext(t, draftReports.ContractVersion, draftReports.DatabaseScope, draftReports.DatabasePath, draftReports.ProjectID, draftReports.ProjectName, draftReports.ProjectCurrentPath, workingDir)
+	reportAlias := created.Report.Alias
 
 	var finalizeOut bytes.Buffer
-	if err := (Runner{Stdout: &finalizeOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "finalize", "report-release-readiness", "--json"}); err != nil {
+	if err := (Runner{Stdout: &finalizeOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "finalize", "release-readiness", "--json"}); err != nil {
 		t.Fatalf("report finalize error = %v", err)
 	}
 	finalized := decodeReportStatusResult(t, finalizeOut.Bytes())
-	if finalized.Previous != "draft" || finalized.Status != "done" {
-		t.Fatalf("finalized = %#v, want done transition", finalized)
+	if finalized.Previous != "draft" || finalized.Status != "done" || finalized.Report.Alias != reportAlias {
+		t.Fatalf("finalized = %#v, want draft to done", finalized)
 	}
 	assertCLIReportContext(t, finalized.ContractVersion, finalized.DatabaseScope, finalized.DatabasePath, finalized.ProjectID, finalized.ProjectName, finalized.ProjectCurrentPath, workingDir)
-	if finalized.Render == nil || finalized.Render.RelativePath != ".agents/reports/report-release-readiness.md" {
-		t.Fatalf("finalized render = %#v, want tracked report render", finalized.Render)
-	}
-	reportRender, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(finalized.Render.RelativePath)))
-	if err != nil {
-		t.Fatalf("ReadFile(finalized report render) error = %v", err)
-	}
-	if !strings.Contains(string(reportRender), "<!-- loaf:render kind=report contract=durable-doc-v1 -->") {
-		t.Fatalf("finalized report render = %q, want durable render stamp", string(reportRender))
-	}
 
 	var archiveOut bytes.Buffer
-	if err := (Runner{Stdout: &archiveOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "archive", "report-release-readiness", "--json"}); err != nil {
+	if err := (Runner{Stdout: &archiveOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "archive", reportAlias, "--json"}); err != nil {
 		t.Fatalf("report archive error = %v", err)
 	}
 	archived := decodeReportStatusResult(t, archiveOut.Bytes())
@@ -5595,16 +5575,10 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("report list archived error = %v", err)
 	}
 	archivedReports := decodeReportList(t, archivedListOut.Bytes())
-	if archivedReports.Reports["report-release-readiness"].Status != "archived" {
+	if archivedReports.Reports[reportAlias].Status != "archived" {
 		t.Fatalf("archived reports = %#v, want archived report", archivedReports.Reports)
 	}
 	assertCLIReportContext(t, archivedReports.ContractVersion, archivedReports.DatabaseScope, archivedReports.DatabasePath, archivedReports.ProjectID, archivedReports.ProjectName, archivedReports.ProjectCurrentPath, workingDir)
-
-	afterFiles := repoFileList(t, workingDir)
-	wantFiles := append(append([]string{}, beforeFiles...), ".agents/reports/report-release-readiness.md")
-	if strings.Join(afterFiles, "\n") != strings.Join(wantFiles, "\n") {
-		t.Fatalf("report lifecycle repository files:\nwant=%v\nafter=%v", wantFiles, afterFiles)
-	}
 }
 
 func TestRunnerReportLifecycleUsesMarkdownFilesWhenMarkdownOnly(t *testing.T) {
@@ -11585,12 +11559,12 @@ func TestRunnerReportListWarnsWhenGlobalDatabaseHasUnimportedMarkdown(t *testing
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
 		t.Fatalf("state init working project error = %v", err)
 	}
-	writeCLIAgentsFile(t, workingDir, "reports/local.md", `---
-title: Local Markdown Report
-type: audit
-status: final
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-LOCAL.md", `---
+id: SPEC-LOCAL
+title: Local Markdown Spec
+status: drafting
 ---
-# Local Markdown Report
+# Local Markdown Spec
 `)
 
 	var jsonOut bytes.Buffer

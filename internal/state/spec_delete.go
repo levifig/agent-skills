@@ -115,7 +115,7 @@ func (s *Store) DeleteSpec(ctx context.Context, root project.Root, ref string) (
 	}
 
 	// Preserve first-class entities that merely reference the spec by clearing the link.
-	for _, table := range []string{"tasks", "journal_entries", "plans", "councils"} {
+	for _, table := range []string{"tasks", "journal_entries", "plans"} {
 		count, err := execCountTx(ctx, tx, fmt.Sprintf(`UPDATE %s SET spec_id = NULL WHERE project_id = ? AND spec_id = ?`, quoteSQLiteIdentifier(table)), projectID, spec.ID)
 		if err != nil {
 			return SpecDeleteResult{}, fmt.Errorf("unlink %s from spec: %w", table, err)
@@ -255,11 +255,8 @@ func sourceStillReferencedTx(ctx context.Context, tx *sql.Tx, projectID string, 
 		{"ideas", "body_source_id"},
 		{"sparks", "source_id"},
 		{"brainstorms", "body_source_id"},
-		{"shaping_drafts", "body_source_id"},
-		{"reports", "body_source_id"},
 		{"plans", "body_source_id"},
 		{"handoffs", "body_source_id"},
-		{"councils", "body_source_id"},
 		{"artifact_bodies", "source_id"},
 		{"relationships", "source_id"},
 	}

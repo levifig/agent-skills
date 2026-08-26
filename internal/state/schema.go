@@ -67,6 +67,9 @@ var workContractsSQL string
 //go:embed migrations/0020_facts_and_journal_envelope.sql
 var factsAndJournalEnvelopeSQL string
 
+//go:embed migrations/0021_drop_document_layer.sql
+var dropDocumentLayerSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -179,6 +182,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 20,
 			Name:    "facts_and_journal_envelope",
 			SQL:     normalizeMigrationSQL(factsAndJournalEnvelopeSQL),
+		},
+		{
+			Version: 21,
+			Name:    "drop_document_layer",
+			SQL:     normalizeMigrationSQL(dropDocumentLayerSQL),
 		},
 	}
 }

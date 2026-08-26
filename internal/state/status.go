@@ -824,9 +824,8 @@ func markdownMigrationImportableCount(plan MarkdownMigrationPlan) int {
 		plan.Ideas +
 		plan.Sparks +
 		plan.Brainstorms +
-		plan.ShapingDrafts +
+
 		plan.Sessions +
-		plan.Reports +
 		plan.Relationships
 }
 
@@ -1224,11 +1223,8 @@ WHERE entity_kind NOT IN (
   'idea',
   'spark',
   'brainstorm',
-  'shaping_draft',
-  'report',
   'plan',
   'handoff',
-  'council',
   'journal_entry',
   'event',
   'relationship',
@@ -1314,11 +1310,8 @@ WITH local_entities(entity_kind, project_id, entity_id) AS (
   UNION ALL SELECT 'idea', project_id, id FROM ideas
   UNION ALL SELECT 'spark', project_id, id FROM sparks
   UNION ALL SELECT 'brainstorm', project_id, id FROM brainstorms
-  UNION ALL SELECT 'shaping_draft', project_id, id FROM shaping_drafts
-  UNION ALL SELECT 'report', project_id, id FROM reports
   UNION ALL SELECT 'plan', project_id, id FROM plans
   UNION ALL SELECT 'handoff', project_id, id FROM handoffs
-  UNION ALL SELECT 'council', project_id, id FROM councils
   UNION ALL SELECT 'journal_entry', project_id, id FROM journal_entries
   UNION ALL SELECT 'event', project_id, id FROM events
   UNION ALL SELECT 'relationship', project_id, id FROM relationships
@@ -1346,12 +1339,9 @@ WHERE local_entities.entity_id IS NULL
     'idea',
     'spark',
     'brainstorm',
-    'shaping_draft',
-    'report',
-    'plan',
+        'plan',
     'handoff',
-    'council',
-    'journal_entry',
+      'journal_entry',
     'event',
     'relationship',
     'tag',
@@ -1537,12 +1527,6 @@ FROM exports JOIN sparks ON exports.source_entity_kind = 'spark' AND sparks.proj
 UNION ALL
 SELECT exports.id, exports.path, exports.source_entity_kind, exports.source_entity_id, exports.generated_at, brainstorms.updated_at
 FROM exports JOIN brainstorms ON exports.source_entity_kind = 'brainstorm' AND brainstorms.project_id = exports.project_id AND brainstorms.id = exports.source_entity_id
-UNION ALL
-SELECT exports.id, exports.path, exports.source_entity_kind, exports.source_entity_id, exports.generated_at, shaping_drafts.updated_at
-FROM exports JOIN shaping_drafts ON exports.source_entity_kind = 'shaping_draft' AND shaping_drafts.project_id = exports.project_id AND shaping_drafts.id = exports.source_entity_id
-UNION ALL
-SELECT exports.id, exports.path, exports.source_entity_kind, exports.source_entity_id, exports.generated_at, reports.updated_at
-FROM exports JOIN reports ON exports.source_entity_kind = 'report' AND reports.project_id = exports.project_id AND reports.id = exports.source_entity_id
 UNION ALL
 SELECT exports.id, exports.path, exports.source_entity_kind, exports.source_entity_id, exports.generated_at, journal_entries.updated_at
 FROM exports JOIN journal_entries ON exports.source_entity_kind = 'journal_entry' AND journal_entries.project_id = exports.project_id AND journal_entries.id = exports.source_entity_id

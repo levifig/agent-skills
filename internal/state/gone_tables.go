@@ -15,6 +15,9 @@ var goneTables = []string{
 	"findings",
 	"verdicts",
 	"runs",
+	"reports",
+	"councils",
+	"shaping_drafts",
 }
 
 // GoneTables returns the closed set of tables that must stay absent.

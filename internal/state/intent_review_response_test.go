@@ -155,11 +155,21 @@ func matrixFixture(t *testing.T, root project.Root, store *Store) map[string]str
 		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
 	}
 	refs["handoff"] = handoff.Entity.ID
-	report, err := store.CreateReport(ctx, root, ReportCreateOptions{Slug: "matrix-report", Kind: "review", Body: "body", SetBody: true})
-	if err != nil {
-		t.Fatalf("CreateReport() error = %v", err)
-	}
-	refs["report"] = report.Report.ID
+	alias := "report-matrix-report"
+	writeAgentsFile(t, root.Path(), "reports/.work/"+alias+".md", `---
+id: report-matrix-report
+title: Matrix Report
+type: review
+status: draft
+---
+body
+`)
+	projectID := projectIDForTest(t, store, root)
+	entityID := stableMigrationID("report", projectID, alias)
+	now := "2026-06-25T00:00:00Z"
+	mustExec(t, store, `INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at) VALUES (?, ?, 'report', ?, 'report', ?, ?, ?)`,
+		stableMigrationID("alias", projectID, "report", alias), projectID, entityID, alias, now, now)
+	refs["report"] = entityID
 	return refs
 }
 

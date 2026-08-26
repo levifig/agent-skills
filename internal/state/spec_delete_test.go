@@ -49,7 +49,6 @@ spec: SPEC-001
 	mustExec(t, store, `INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, sync_status, created_at, updated_at) VALUES (?, ?, 'linear', 'spec', ?, 'issue', 'EXT-1', 'synced', ?, ?)`, "bmap-1", projectID, specID, now, now)
 	mustExec(t, store, `INSERT INTO exports (id, project_id, export_kind, format, path, source_entity_kind, source_entity_id, generated_at, created_at, updated_at) VALUES (?, ?, 'render', 'markdown', 'out.md', 'spec', ?, ?, ?, ?)`, "exp-1", projectID, specID, now, now, now)
 	mustExec(t, store, `INSERT INTO plans (id, project_id, spec_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'Plan', 'open', ?, ?)`, "plan-1", projectID, specID, now, now)
-	mustExec(t, store, `INSERT INTO councils (id, project_id, spec_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'Council', 'open', ?, ?)`, "council-1", projectID, specID, now, now)
 	mustExec(t, store, `INSERT INTO journal_entries (id, project_id, entry_type, message, spec_id, created_at, updated_at) VALUES (?, ?, 'decision', 'noted', ?, ?, ?)`, "je-1", projectID, specID, now, now)
 
 	result, err := store.DeleteSpec(ctx, root, "SPEC-001")
@@ -101,7 +100,6 @@ spec: SPEC-001
 	}{
 		{"tasks", "tasks"},
 		{"plans", "plans"},
-		{"councils", "councils"},
 		{"journal_entries", "journal_entries"},
 	}
 	for _, s := range survivors {

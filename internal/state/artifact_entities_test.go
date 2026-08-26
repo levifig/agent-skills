@@ -20,17 +20,17 @@ func TestArtifactEntityCreateShowListAndLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateArtifactEntity(plan) error = %v", err)
 	}
-	council, err := CreateArtifactEntity(context.Background(), root, PathResolver{StateHome: stateHome}, ArtifactEntityCreateOptions{
-		Kind:  "council",
-		Title: "Design Council",
-		Body:  "# Design Council\n\nCouncil body.",
+	handoff, err := CreateArtifactEntity(context.Background(), root, PathResolver{StateHome: stateHome}, ArtifactEntityCreateOptions{
+		Kind:  "handoff",
+		Title: "Design Handoff",
+		Body:  "# Design Handoff\n\nHandoff body.",
 	})
 	if err != nil {
-		t.Fatalf("CreateArtifactEntity(council) error = %v", err)
+		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
 	}
 	if _, err := CreateLink(context.Background(), root, PathResolver{StateHome: stateHome}, LinkMutationOptions{
 		From: plan.Entity.Alias,
-		To:   council.Entity.Alias,
+		To:   handoff.Entity.Alias,
 		Type: "reviewed_by",
 	}); err != nil {
 		t.Fatalf("CreateLink() error = %v", err)
@@ -43,8 +43,8 @@ func TestArtifactEntityCreateShowListAndLink(t *testing.T) {
 	if show.Entity.Body != "# SQLite Body Plan\n\nPlan body." || len(show.Entity.Sources) != 0 {
 		t.Fatalf("show.Entity = %#v, want SQLite body without source", show.Entity)
 	}
-	if !hasStateTraceRelationship(show.Entity.Relationships, "outbound", "reviewed_by", "council", council.Entity.Alias) {
-		t.Fatalf("Relationships = %#v, want reviewed_by council", show.Entity.Relationships)
+	if !hasStateTraceRelationship(show.Entity.Relationships, "outbound", "reviewed_by", "handoff", handoff.Entity.Alias) {
+		t.Fatalf("Relationships = %#v, want reviewed_by handoff", show.Entity.Relationships)
 	}
 
 	list, err := ListArtifactEntities(context.Background(), root, PathResolver{StateHome: stateHome}, ArtifactEntityListOptions{Kind: "plan"})

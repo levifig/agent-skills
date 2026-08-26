@@ -77,12 +77,12 @@ func (s *Store) Housekeeping(ctx context.Context, root project.Root, databasePat
 		return HousekeepingSummary{}, err
 	}
 	sections["brainstorms"] = brainstorms
-	reports, err := s.housekeepingStatusSection(ctx, "reports", projectID, "done", "final", "archived")
+	reports, err := fileBackedHousekeepingSection(root.Path(), "reports", "done", "final", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
 	}
 	sections["reports"] = reports
-	shapingDrafts, err := s.housekeepingStatusSection(ctx, "shaping_drafts", projectID, "absorbed", "archived")
+	shapingDrafts, err := fileBackedHousekeepingSection(root.Path(), "drafts", "absorbed", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
 	}

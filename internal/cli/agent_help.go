@@ -219,7 +219,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Name: "show", Description: "Show one report", Options: []agentHelpOption{{Flags: "--json", Description: "Output report details, relationships, global database scope, and project identity as JSON"}}},
 				{Name: "generate", Description: "Generate a report from state", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: markdown"}, {Flags: "--json", Description: "Output contract, command, project context, and markdown content as JSON"}}},
 				{Name: "create", Description: "Create a report draft", Options: []agentHelpOption{{Flags: "--type <type>", Description: "Report type"}, {Flags: "--source <source>", Description: "Report source"}, {Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--body -", Description: "Read Markdown body from stdin"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--json", Description: "Output created report, event, global database scope, and project identity as JSON"}}},
-				{Name: "edit", Description: "Replace a report's SQLite body; run report finalize to update the tracked render", Options: []agentHelpOption{{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--body -", Description: "Read Markdown body from stdin"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--force", Description: "Proceed when the legacy source file diverges from the SQLite body"}, {Flags: "--json", Description: "Output the edited report, imported flag, content hash, event, global database scope, and project identity as JSON"}}},
+				{Name: "edit", Description: "Replace a report Markdown body under .agents/reports/; run report finalize to update the tracked render", Options: []agentHelpOption{{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--body -", Description: "Read Markdown body from stdin"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--force", Description: "Proceed when the on-disk report diverges from the expected body"}, {Flags: "--json", Description: "Output the edited report, imported flag, content hash, event, global database scope, and project identity as JSON"}}},
 				{Name: "finalize", Description: "Mark a report draft as done", Options: []agentHelpOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 				{Name: "archive", Description: "Archive a done report", Options: []agentHelpOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 			},
@@ -396,13 +396,23 @@ func nativeArtifactAgentHelpCommand(kind string) agentHelpCommand {
 		)
 	}
 	options = append(options, agentHelpOption{Flags: "--json", Description: "Output created artifact, event, global database scope, and project identity as JSON"})
+	desc := "Manage " + kind + "s in native SQLite state"
+	createDesc := "Create a " + kind + " in SQLite state"
+	showDesc := "Show one " + kind + " from SQLite state"
+	listDesc := "List " + kind + "s from SQLite state"
+	if kind == "council" {
+		desc = "Manage councils as Markdown files under .agents/councils/"
+		createDesc = "Create a council Markdown file under .agents/councils/"
+		showDesc = "Show one council from .agents/councils/"
+		listDesc = "List councils from .agents/councils/"
+	}
 	return agentHelpCommand{
 		Name:        kind,
-		Description: "Manage " + kind + "s in native SQLite state",
+		Description: desc,
 		Subcommands: []agentHelpSubcommand{
-			{Name: "new", Description: "Create a " + kind + " in SQLite state", Options: options},
-			{Name: "show", Description: "Show one " + kind + " from SQLite state", Options: []agentHelpOption{{Flags: "--json", Description: "Output artifact details, relationships, global database scope, and project identity as JSON"}}},
-			{Name: "list", Description: "List " + kind + "s from SQLite state", Options: []agentHelpOption{{Flags: "--all", Description: "Include archived artifacts"}, {Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--json", Description: "Output artifacts, global database scope, and project identity as JSON"}}},
+			{Name: "new", Description: createDesc, Options: options},
+			{Name: "show", Description: showDesc, Options: []agentHelpOption{{Flags: "--json", Description: "Output artifact details, relationships, global database scope, and project identity as JSON"}}},
+			{Name: "list", Description: listDesc, Options: []agentHelpOption{{Flags: "--all", Description: "Include archived artifacts"}, {Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--json", Description: "Output artifacts, global database scope, and project identity as JSON"}}},
 			{Name: "link", Description: "Link a " + kind + " to another entity", Options: []agentHelpOption{{Flags: "--type <type>", Description: "Relationship type; defaults to related_to"}, {Flags: "--reason <text>", Description: "Relationship reason"}, {Flags: "--json", Description: "Output relationship ID, source/target, global database scope, and project identity as JSON"}}},
 		},
 	}

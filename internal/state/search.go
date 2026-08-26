@@ -105,6 +105,11 @@ func (s *Store) Search(ctx context.Context, root project.Root, options SearchOpt
 	if err != nil {
 		return SearchResult{}, err
 	}
+	reportHits, err := s.searchFileBackedReports(ctx, root, projectID, options.AllProjects, queryTokens)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	hits = append(hits, reportHits...)
 	journalHits, err := s.searchJournalEntries(ctx, projectID, options.AllProjects, ftsQuery)
 	if err != nil {
 		return SearchResult{}, err
