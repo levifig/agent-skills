@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -175,8 +176,12 @@ func parseScratchpadTimeout(raw string) (int64, error) {
 func (s *Server) handleScratchpadPrune(w http.ResponseWriter, r *http.Request) {
 	projectID := strings.TrimSpace(r.PathValue("project_id"))
 	channel := strings.TrimSpace(r.PathValue("channel"))
-	if err := s.authorizeAdmin(r.Context(), r); err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+	if err := s.authorizeAdminForProject(r.Context(), r, projectID); err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errAdminProjectForbidden) {
+			status = http.StatusForbidden
+		}
+		writeError(w, status, err)
 		return
 	}
 	deleted, err := s.store.PruneScratchpadChannel(r.Context(), projectID, channel)
@@ -186,4 +191,3 @@ func (s *Server) handleScratchpadPrune(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
-
