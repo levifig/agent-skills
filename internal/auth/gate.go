@@ -3,6 +3,7 @@ package auth
 import "strings"
 
 var exemptTopLevelCommands = map[string]bool{
+	"attach":  true,
 	"auth":    true,
 	"build":   true,
 	"install": true,

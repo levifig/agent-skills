@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,7 +33,7 @@ func (r Runner) runAuth(args []string, out io.Writer, runtime state.Runtime) err
 	case "revoke":
 		return r.runAuthRevoke(args[1:], out)
 	case "attach":
-		return r.runAuthAttach(args[1:], out)
+		return r.runAuthAttach(args[1:], out, runtime)
 	default:
 		return fmt.Errorf("auth: unknown subcommand %q", args[0])
 	}
@@ -247,14 +248,15 @@ func (r Runner) runAuthRevoke(args []string, out io.Writer) error {
 	return nil
 }
 
-func (r Runner) runAuthAttach(args []string, out io.Writer) error {
+func (r Runner) runAuthAttach(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 1 && isHelpArg(args) {
-		writeUsageHelp(out, "loaf auth attach --name <connection> [--endpoint <url>]", "Record successful attach for this environment.")
+		writeUsageHelp(out, "loaf auth attach [--name <connection>] [--wire <credential>] [--json]", "Run the unattended attach sequence for this environment.")
 		return nil
 	}
 	name := ""
-	endpoint := ""
+	wire := ""
 	jsonOutput := false
+	allowHTTP := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--name":
@@ -263,40 +265,60 @@ func (r Runner) runAuthAttach(args []string, out io.Writer) error {
 			}
 			i++
 			name = strings.TrimSpace(args[i])
-		case "--endpoint":
+		case "--wire":
 			if i+1 >= len(args) {
-				return fmt.Errorf("auth attach --endpoint requires a value")
+				return fmt.Errorf("auth attach --wire requires a value")
 			}
 			i++
-			endpoint = strings.TrimSpace(args[i])
+			wire = strings.TrimSpace(args[i])
+		case "--allow-insecure-http":
+			allowHTTP = true
 		case "--json":
 			jsonOutput = true
 		default:
 			return fmt.Errorf("auth attach: unknown option %q", args[i])
 		}
 	}
-	if name == "" {
-		return fmt.Errorf("auth attach requires --name")
-	}
 	store, err := r.authStore()
 	if err != nil {
 		return err
 	}
-	if endpoint == "" {
-		var err error
-		endpoint, err = auth.AdminEndpoint(store)
-		if err != nil {
-			return err
-		}
+	root, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		return err
 	}
-	if err := auth.MarkAttached(store, endpoint, name); err != nil {
+	resolver := state.PathResolver{StateHome: r.StateHome}
+	databasePath, err := resolver.DatabasePath(root)
+	if err != nil {
+		return err
+	}
+	probeStore, err := state.OpenStore(databasePath)
+	if err != nil {
+		return err
+	}
+	defer probeStore.Close()
+	if err := probeStore.ApplyMigrations(context.Background()); err != nil {
+		return err
+	}
+	result, err := auth.UnattendedAttach(context.Background(), auth.AttachInput{
+		Root:              root,
+		Store:             store,
+		ClientWire:        wire,
+		ConnectionName:    name,
+		AllowInsecureHTTP: allowHTTP,
+		ProbeStore:        probeStore,
+	})
+	if err != nil {
+		var refusal *auth.RefusalError
+		if errors.As(err, &refusal) {
+			return writeAttachRefusal(r.Stderr, refusal, jsonOutput)
+		}
 		return err
 	}
 	if jsonOutput {
-		state, _ := store.LoadAttachState()
-		return json.NewEncoder(out).Encode(state)
+		return json.NewEncoder(out).Encode(result)
 	}
-	fmt.Fprintf(out, "attached as %q via %s\n", name, endpoint)
+	fmt.Fprintf(out, "attached project %s as %q via %s\n", result.ProjectID, result.ConnectionName, result.Endpoint)
 	return nil
 }
 

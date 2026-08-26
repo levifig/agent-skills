@@ -12,6 +12,7 @@ import (
 const (
 	attachStateFileName = "attach.json"
 	adminWireFileName   = "admin.wire"
+	clientWireFileName  = "client.wire"
 	localConfigFileName = "local.json"
 )
 
@@ -55,6 +56,10 @@ func (s Store) adminWirePath() string {
 
 func (s Store) localConfigPath() string {
 	return filepath.Join(s.Dir, localConfigFileName)
+}
+
+func (s Store) clientWirePath() string {
+	return filepath.Join(s.Dir, clientWireFileName)
 }
 
 // LoadAttachState reads persisted attach state. Missing file means unattached.
@@ -164,13 +169,55 @@ func (s Store) SaveLocalConfig(cfg LocalConfig) error {
 	}
 	return os.Rename(tmp, s.localConfigPath())
 }
+
+// LoadClientWire returns the stored bundled client credential when present.
+func (s Store) LoadClientWire() (string, error) {
+	raw, err := os.ReadFile(s.clientWirePath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrClientNotConfigured
+		}
+		return "", fmt.Errorf("read client wire: %w", err)
+	}
+	wire := strings.TrimSpace(string(raw))
+	if wire == "" {
+		return "", ErrClientNotConfigured
+	}
+	return wire, nil
+}
+
+// SaveClientWire stores the bundled client credential for this environment.
+func (s Store) SaveClientWire(wire string) error {
+	wire = strings.TrimSpace(wire)
+	if wire == "" {
+		return errors.New("client wire is empty")
+	}
+	if err := s.ensureDir(); err != nil {
+		return err
+	}
+	tmp := s.clientWirePath() + ".tmp"
+	if err := os.WriteFile(tmp, []byte(wire+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write client wire: %w", err)
+	}
+	return os.Rename(tmp, s.clientWirePath())
+}
+
 // EnforcementActive reports whether attach refusal should gate substrate commands.
-// Gate engages once auth setup created admin wire or attach state exists on this machine.
+// Gate engages once auth setup created admin wire, a client credential is present,
+// or attach state exists on this machine.
 func (s Store) EnforcementActive() (bool, error) {
 	if _, err := os.Stat(s.adminWirePath()); err == nil {
 		return true, nil
 	} else if !os.IsNotExist(err) {
 		return false, err
+	}
+	if _, err := os.Stat(s.clientWirePath()); err == nil {
+		return true, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	if strings.TrimSpace(os.Getenv(ClientTokenEnv)) != "" {
+		return true, nil
 	}
 	if _, err := os.Stat(s.attachStatePath()); err == nil {
 		return true, nil

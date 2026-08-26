@@ -296,6 +296,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runJournal(args[1:], out, runtime)
 	case "scratchpad":
 		dispatchErr = r.runScratchpad(args[1:], out, runtime)
+	case "attach":
+		dispatchErr = r.runAttach(args[1:], out, runtime)
 	case "auth":
 		dispatchErr = r.runAuth(args[1:], out, runtime)
 	case "serve":
