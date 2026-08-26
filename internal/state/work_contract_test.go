@@ -93,6 +93,149 @@ func TestWorkContractReceiptAndMapping(t *testing.T) {
 	_ = resolver
 }
 
+func TestRepeatedWorkContractUpsertsRebuildSingleProjection(t *testing.T) {
+	ctx, root, store, ref := workContractFixture(t)
+	projectID, err := store.projectID(ctx, root)
+	if err != nil {
+		t.Fatalf("projectID() error = %v", err)
+	}
+
+	if err := store.UpsertWorkContractMapping(ctx, root, ref.String(), "linear_url", "https://linear.app/issue/ENG-82"); err != nil {
+		t.Fatalf("UpsertWorkContractMapping(first) error = %v", err)
+	}
+	if err := store.UpsertWorkContractMapping(ctx, root, ref.String(), "linear_url", "https://linear.app/issue/ENG-82-updated"); err != nil {
+		t.Fatalf("UpsertWorkContractMapping(second) error = %v", err)
+	}
+	if err := store.UpsertWorkContractReceipt(ctx, root, ref.String(), "export", "first"); err != nil {
+		t.Fatalf("UpsertWorkContractReceipt(first) error = %v", err)
+	}
+	if err := store.UpsertWorkContractReceipt(ctx, root, ref.String(), "export", "second"); err != nil {
+		t.Fatalf("UpsertWorkContractReceipt(second) error = %v", err)
+	}
+
+	if _, err := RebuildMutableCoreProjectionsForProject(ctx, store, projectID); err != nil {
+		t.Fatalf("RebuildMutableCoreProjectionsForProject() error = %v", err)
+	}
+
+	var mappings, receipts int
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM work_contract_mappings
+WHERE project_id = ? AND provider = ? AND provider_ref = ? AND mapping_kind = ?
+`, projectID, ref.Provider, ref.Key, "linear_url").Scan(&mappings); err != nil {
+		t.Fatalf("count mappings: %v", err)
+	}
+	if mappings != 1 {
+		t.Fatalf("mapping rows = %d, want 1", mappings)
+	}
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM work_contract_receipts
+WHERE project_id = ? AND provider = ? AND provider_ref = ? AND receipt_kind = ?
+`, projectID, ref.Provider, ref.Key, "export").Scan(&receipts); err != nil {
+		t.Fatalf("count receipts: %v", err)
+	}
+	if receipts != 1 {
+		t.Fatalf("receipt rows = %d, want 1", receipts)
+	}
+
+	var mappingValue, receiptValue string
+	if err := store.db.QueryRowContext(ctx, `
+SELECT mapping_value FROM work_contract_mappings
+WHERE project_id = ? AND provider = ? AND provider_ref = ? AND mapping_kind = ?
+`, projectID, ref.Provider, ref.Key, "linear_url").Scan(&mappingValue); err != nil {
+		t.Fatalf("read mapping: %v", err)
+	}
+	if mappingValue != "https://linear.app/issue/ENG-82-updated" {
+		t.Fatalf("mapping_value = %q, want updated URL", mappingValue)
+	}
+	if err := store.db.QueryRowContext(ctx, `
+SELECT receipt_value FROM work_contract_receipts
+WHERE project_id = ? AND provider = ? AND provider_ref = ? AND receipt_kind = ?
+`, projectID, ref.Provider, ref.Key, "export").Scan(&receiptValue); err != nil {
+		t.Fatalf("read receipt: %v", err)
+	}
+	if receiptValue != "second" {
+		t.Fatalf("receipt_value = %q, want second", receiptValue)
+	}
+
+	assertDistinctFactSubjects(t, store, projectID, FactKindRefRegistered, "mapping_kind", "linear_url", 2, 1)
+	assertDistinctFactSubjects(t, store, projectID, FactKindVerificationRecorded, "receipt_kind", "export", 2, 1)
+}
+
+func TestRepeatedRenderOutRebuildsSingleProjection(t *testing.T) {
+	root, store := issueTestFixture(t)
+	ctx := context.Background()
+	issue, err := store.CreateIssue(ctx, root, IssueCreateOptions{
+		Title: "Render twice",
+		Body:  "Problem body.\n\nOut of scope: none.",
+		Kind:  IssueKindDelivery,
+		Criteria: []IssueCriterionInput{{
+			Text: "Holds",
+			Tier: IssueCriterionTierH,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+
+	first, err := store.RenderOutIssue(ctx, root, IssueRenderOutOptions{
+		Ref:    issue.ID,
+		Branch: "issue/loaf-62-rebuild",
+	})
+	if err != nil {
+		t.Fatalf("RenderOutIssue(first) error = %v", err)
+	}
+	if _, err := store.RenderOutIssue(ctx, root, IssueRenderOutOptions{
+		Ref:    issue.ID,
+		Branch: "issue/loaf-62-rebuild",
+	}); err != nil {
+		t.Fatalf("RenderOutIssue(second) error = %v", err)
+	}
+
+	projectID := first.ProjectID
+	if _, err := RebuildMutableCoreProjectionsForProject(ctx, store, projectID); err != nil {
+		t.Fatalf("RebuildMutableCoreProjectionsForProject() error = %v", err)
+	}
+
+	var mappings, receipts int
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM work_contract_mappings
+WHERE project_id = ? AND provider = ? AND provider_ref = ? AND mapping_kind = ?
+`, projectID, first.AuthorityRef.Provider, first.AuthorityRef.Key, RenderOutMappingIssueID).Scan(&mappings); err != nil {
+		t.Fatalf("count render-out mappings: %v", err)
+	}
+	if mappings != 1 {
+		t.Fatalf("render-out mapping rows = %d, want 1", mappings)
+	}
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM work_contract_receipts
+WHERE project_id = ? AND provider = ? AND provider_ref = ? AND receipt_kind = ?
+`, projectID, first.AuthorityRef.Provider, first.AuthorityRef.Key, RenderOutReceiptKind).Scan(&receipts); err != nil {
+		t.Fatalf("count render-out receipts: %v", err)
+	}
+	if receipts != 1 {
+		t.Fatalf("render-out receipt rows = %d, want 1", receipts)
+	}
+
+	assertDistinctFactSubjects(t, store, projectID, FactKindRefRegistered, "mapping_kind", RenderOutMappingIssueID, 2, 1)
+	assertDistinctFactSubjects(t, store, projectID, FactKindVerificationRecorded, "receipt_kind", RenderOutReceiptKind, 2, 1)
+}
+
+func assertDistinctFactSubjects(t *testing.T, store *Store, projectID, kind, payloadKey, payloadValue string, wantFacts, wantSubjects int) {
+	t.Helper()
+	var facts, subjects int
+	query := `
+SELECT COUNT(*), COUNT(DISTINCT json_extract(payload, '$.subject_id'))
+FROM facts
+WHERE project_id = ? AND kind = ? AND json_extract(payload, '$.` + payloadKey + `') = ?
+`
+	if err := store.db.QueryRowContext(context.Background(), query, projectID, kind, payloadValue).Scan(&facts, &subjects); err != nil {
+		t.Fatalf("count %s facts: %v", kind, err)
+	}
+	if facts != wantFacts || subjects != wantSubjects {
+		t.Fatalf("%s facts=%d subjects=%d, want facts=%d subjects=%d", kind, facts, subjects, wantFacts, wantSubjects)
+	}
+}
+
 func containsAll(s string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(s, part) {
