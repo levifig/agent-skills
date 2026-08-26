@@ -120,6 +120,16 @@ func (r PathResolver) dataHome() (string, error) {
 	return filepath.Join(home, ".local", "share"), nil
 }
 
+
+// AuthDir returns the machine-local auth state directory beside the global database.
+func (r PathResolver) AuthDir() (string, error) {
+	dataHome, err := r.dataHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dataHome, "loaf", "auth"), nil
+}
+
 func (r PathResolver) legacyStateHome() (string, error) {
 	if value := os.Getenv("XDG_STATE_HOME"); value != "" {
 		if stateHome, ok := cleanAbsoluteXDGHome(value); ok {
