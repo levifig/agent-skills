@@ -1733,20 +1733,6 @@ SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entit
 // dangling with nothing to detect it.
 func retireKindSpecificResidueTx(ctx context.Context, tx *sql.Tx, projectID string, kind string, entityID string, twinID string, manifest *AliasOrphanRollbackManifest, order *int) error {
 	switch kind {
-	case "report":
-		// verdicts hang off findings, findings hang off the report; both FKs
-		// are NOT NULL, so the subtree retires with its root. Finding/verdict
-		// aliases, relationship edges, events, and entity_tags are not covered
-		// by the report-endpoint polymorphic sweep and must go with them.
-		if err := retireReportSubtreeResidueTx(ctx, tx, projectID, entityID, manifest, order); err != nil {
-			return err
-		}
-		if err := captureAndDeleteTx(ctx, tx, "verdicts", `
-WHERE project_id = ? AND finding_id IN (SELECT id FROM findings WHERE project_id = ? AND report_id = ?)
-`, []any{projectID, projectID, entityID}, manifest, order); err != nil {
-			return err
-		}
-		return captureAndDeleteTx(ctx, tx, "findings", `WHERE project_id = ? AND report_id = ?`, []any{projectID, entityID}, manifest, order)
 	case "spark":
 		// spark_id is NOT NULL in both tables and carries no foreign key, so a
 		// retirement leaves silent dangling provenance. Repoint at the proven
@@ -2215,88 +2201,6 @@ func syncDirectory(path string) error {
 		return err
 	}
 	return directory.Close()
-}
-
-// retireReportSubtreeResidueTx captures and deletes aliases, relationships,
-// events, and entity_tags that belong to findings and verdicts under a report
-// being retired. The report-endpoint polymorphic sweep does not reach these
-// rows because findings are not in aliasOrphanEntityTables.
-func retireReportSubtreeResidueTx(ctx context.Context, tx *sql.Tx, projectID string, reportID string, manifest *AliasOrphanRollbackManifest, order *int) error {
-	findingIDs, err := listIDsTx(ctx, tx, `SELECT id FROM findings WHERE project_id = ? AND report_id = ? ORDER BY id`, projectID, reportID)
-	if err != nil {
-		return fmt.Errorf("list findings for report %s: %w", reportID, err)
-	}
-	if len(findingIDs) == 0 {
-		return nil
-	}
-	verdictIDs, err := listIDsTx(ctx, tx, `
-SELECT id FROM verdicts
-WHERE project_id = ? AND finding_id IN (SELECT id FROM findings WHERE project_id = ? AND report_id = ?)
-ORDER BY id
-`, projectID, projectID, reportID)
-	if err != nil {
-		return fmt.Errorf("list verdicts for report %s: %w", reportID, err)
-	}
-
-	for _, findingID := range findingIDs {
-		if err := captureAndDeleteTx(ctx, tx, "aliases", `
-WHERE project_id = ? AND entity_kind = 'finding' AND entity_id = ?
-`, []any{projectID, findingID}, manifest, order); err != nil {
-			return err
-		}
-		if err := captureAndDeleteEntityRefsTx(ctx, tx, projectID, "finding", findingID, manifest, order); err != nil {
-			return err
-		}
-	}
-	for _, verdictID := range verdictIDs {
-		if err := captureAndDeleteTx(ctx, tx, "aliases", `
-WHERE project_id = ? AND entity_kind = 'verdict' AND entity_id = ?
-`, []any{projectID, verdictID}, manifest, order); err != nil {
-			return err
-		}
-		if err := captureAndDeleteEntityRefsTx(ctx, tx, projectID, "verdict", verdictID, manifest, order); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func captureAndDeleteEntityRefsTx(ctx context.Context, tx *sql.Tx, projectID string, kind string, entityID string, manifest *AliasOrphanRollbackManifest, order *int) error {
-	ops := []struct {
-		table string
-		where string
-		args  []any
-	}{
-		{"events", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
-		{"entity_tags", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
-		{"relationships", `WHERE project_id = ? AND ((from_entity_kind = ? AND from_entity_id = ?) OR (to_entity_kind = ? AND to_entity_id = ?))`, []any{projectID, kind, entityID, kind, entityID}},
-	}
-	for _, op := range ops {
-		if err := captureAndDeleteTx(ctx, tx, op.table, op.where, op.args, manifest, order); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func listIDsTx(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return ids, nil
 }
 
 func readAliasOrphanRollbackManifest(path string) (AliasOrphanRollbackManifest, error) {
