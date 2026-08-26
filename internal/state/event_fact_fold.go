@@ -457,8 +457,190 @@ func rebuildReleaseProjectionFromFactsTx(ctx context.Context, tx *sql.Tx, projec
 	return len(folded), nil
 }
 
+func isWorkContractRefPayload(payload CoreEventPayload) bool {
+	return strings.TrimSpace(payload.MappingKind) != "" || strings.TrimSpace(payload.MappingValue) != ""
+}
+
+func upsertBackendMappingProjectionTx(ctx context.Context, execer journalWriteExecer, projectID, mappingID string, payload CoreEventPayload) error {
+	createdAt := firstNonEmpty(payload.CreatedAt, payload.UpdatedAt)
+	updatedAt := firstNonEmpty(payload.UpdatedAt, createdAt)
+	syncStatus := strings.TrimSpace(payload.SyncStatus)
+	if syncStatus == "" {
+		syncStatus = linearSyncLinked
+	}
+	_, err := execer.ExecContext(ctx, `
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  backend = excluded.backend,
+  entity_kind = excluded.entity_kind,
+  entity_id = excluded.entity_id,
+  external_kind = excluded.external_kind,
+  external_id = excluded.external_id,
+  external_url = excluded.external_url,
+  sync_status = excluded.sync_status,
+  updated_at = excluded.updated_at
+`, mappingID, projectID, payload.Backend, payload.EntityKind, payload.EntityID, payload.ExternalKind, payload.ExternalID, emptyToNil(payload.ExternalURL), syncStatus, createdAt, updatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert backend mapping projection %q: %w", mappingID, err)
+	}
+	return nil
+}
+
+func upsertWorkContractMappingProjectionTx(ctx context.Context, execer journalWriteExecer, projectID, mappingID string, payload CoreEventPayload) error {
+	createdAt := firstNonEmpty(payload.CreatedAt, payload.UpdatedAt)
+	updatedAt := firstNonEmpty(payload.UpdatedAt, createdAt)
+	_, err := execer.ExecContext(ctx, `
+INSERT INTO work_contract_mappings (id, project_id, provider, provider_ref, mapping_kind, mapping_value, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  provider = excluded.provider,
+  provider_ref = excluded.provider_ref,
+  mapping_kind = excluded.mapping_kind,
+  mapping_value = excluded.mapping_value,
+  updated_at = excluded.updated_at
+`, mappingID, projectID, payload.Provider, payload.ProviderRef, payload.MappingKind, payload.MappingValue, createdAt, updatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert work-contract mapping projection %q: %w", mappingID, err)
+	}
+	return nil
+}
+
+func upsertVerificationProjectionTx(ctx context.Context, execer journalWriteExecer, projectID, receiptID string, payload CoreEventPayload) error {
+	createdAt := firstNonEmpty(payload.CreatedAt, payload.UpdatedAt)
+	updatedAt := firstNonEmpty(payload.UpdatedAt, createdAt)
+	_, err := execer.ExecContext(ctx, `
+INSERT INTO work_contract_receipts (id, project_id, provider, provider_ref, receipt_kind, receipt_value, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  provider = excluded.provider,
+  provider_ref = excluded.provider_ref,
+  receipt_kind = excluded.receipt_kind,
+  receipt_value = excluded.receipt_value,
+  updated_at = excluded.updated_at
+`, receiptID, projectID, payload.Provider, payload.ProviderRef, payload.ReceiptKind, payload.ReceiptValue, createdAt, updatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert verification projection %q: %w", receiptID, err)
+	}
+	return nil
+}
+
+func applyWorktreeProjectionTx(ctx context.Context, tx *sql.Tx, projectID, subjectID string, payload CoreEventPayload) error {
+	createdAt := firstNonEmpty(payload.CreatedAt, payload.UpdatedAt)
+	updatedAt := firstNonEmpty(payload.UpdatedAt, createdAt)
+	branch := strings.TrimSpace(payload.Branch)
+	worktree := strings.TrimSpace(payload.Worktree)
+	switch strings.TrimSpace(payload.SubjectKind) {
+	case "issue":
+		_, err := tx.ExecContext(ctx, `
+UPDATE issues
+SET started_branch = ?, started_worktree = ?, updated_at = ?
+WHERE project_id = ? AND id = ?
+`, emptyToNil(branch), emptyToNil(worktree), updatedAt, projectID, subjectID)
+		if err != nil {
+			return fmt.Errorf("apply issue worktree projection %q: %w", subjectID, err)
+		}
+		return nil
+	case "work_contract":
+		if !tableExists(ctx, tx, "work_contracts") || !tableExists(ctx, tx, "work_contract_workspace") {
+			return nil
+		}
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_contracts WHERE project_id = ? AND id = ?`, projectID, subjectID).Scan(&exists); err != nil {
+			return fmt.Errorf("lookup work contract for worktree projection %q: %w", subjectID, err)
+		}
+		if exists == 0 {
+			return nil
+		}
+		return upsertWorkContractWorkspaceTx(ctx, tx, projectID, subjectID, branch, worktree, firstNonEmpty(updatedAt, createdAt))
+	default:
+		return nil
+	}
+}
+
+func rebuildRefProjectionFromFactsTx(ctx context.Context, execer journalWriteExecer, projectID string) (int, error) {
+	folded, err := foldRefFacts(ctx, execer, projectID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := execer.ExecContext(ctx, `DELETE FROM backend_mappings WHERE project_id = ?`, projectID); err != nil {
+		return 0, fmt.Errorf("clear backend mapping projection: %w", err)
+	}
+	if tableExists(ctx, execer, "work_contract_mappings") {
+		if _, err := execer.ExecContext(ctx, `DELETE FROM work_contract_mappings WHERE project_id = ?`, projectID); err != nil {
+			return 0, fmt.Errorf("clear work-contract mapping projection: %w", err)
+		}
+	}
+	for mappingID, row := range folded {
+		if isWorkContractRefPayload(row.Payload) {
+			if !tableExists(ctx, execer, "work_contract_mappings") {
+				continue
+			}
+			if err := upsertWorkContractMappingProjectionTx(ctx, execer, projectID, mappingID, row.Payload); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		if err := upsertBackendMappingProjectionTx(ctx, execer, projectID, mappingID, row.Payload); err != nil {
+			return 0, err
+		}
+	}
+	return len(folded), nil
+}
+
+func rebuildWorktreeProjectionFromFactsTx(ctx context.Context, tx *sql.Tx, projectID string) (int, error) {
+	// Worktree bindings are machine-local paths, but worktree.bound / worktree.unbound
+	// facts sync. Refresh applies the latest fact onto issues.started_* and
+	// work_contract_workspace even when the path does not exist here. Missing
+	// parent issue/contract rows are skipped so a remote fact cannot fail the
+	// whole rebuild.
+	folded, err := foldWorktreeFacts(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE issues
+SET started_branch = NULL, started_worktree = NULL
+WHERE project_id = ?
+`, projectID); err != nil {
+		return 0, fmt.Errorf("clear issue worktree projection: %w", err)
+	}
+	if tableExists(ctx, tx, "work_contract_workspace") {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM work_contract_workspace WHERE project_id = ?`, projectID); err != nil {
+			return 0, fmt.Errorf("clear work-contract worktree projection: %w", err)
+		}
+	}
+	for subjectID, row := range folded {
+		if err := applyWorktreeProjectionTx(ctx, tx, projectID, subjectID, row.Payload); err != nil {
+			return 0, err
+		}
+	}
+	return len(folded), nil
+}
+
+func rebuildVerificationProjectionFromFactsTx(ctx context.Context, execer journalWriteExecer, projectID string) (int, error) {
+	if !tableExists(ctx, execer, "work_contract_receipts") {
+		return 0, nil
+	}
+	folded, err := foldVerificationFacts(ctx, execer, projectID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := execer.ExecContext(ctx, `DELETE FROM work_contract_receipts WHERE project_id = ?`, projectID); err != nil {
+		return 0, fmt.Errorf("clear verification projection: %w", err)
+	}
+	for receiptID, row := range folded {
+		if err := upsertVerificationProjectionTx(ctx, execer, projectID, receiptID, row.Payload); err != nil {
+			return 0, err
+		}
+	}
+	return len(folded), nil
+}
+
 // RebuildMutableCoreProjectionsForProject rebuilds spark/idea/handoff/release
-// projections from grow-only facts for one project.
+// plus ref, worktree, and verification projections from grow-only facts for
+// one project. Worktree paths are applied from facts as-is (see
+// rebuildWorktreeProjectionFromFactsTx).
 func RebuildMutableCoreProjectionsForProject(ctx context.Context, store *Store, projectID string) (int, error) {
 	if store == nil || store.db == nil {
 		return 0, fmt.Errorf("rebuild mutable core projections: store is nil")
@@ -485,6 +667,21 @@ func RebuildMutableCoreProjectionsForProject(ctx context.Context, store *Store, 
 	}
 	count += n
 	n, err = rebuildReleaseProjectionFromFactsTx(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	count += n
+	n, err = rebuildRefProjectionFromFactsTx(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	count += n
+	n, err = rebuildWorktreeProjectionFromFactsTx(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	count += n
+	n, err = rebuildVerificationProjectionFromFactsTx(ctx, tx, projectID)
 	if err != nil {
 		return 0, err
 	}

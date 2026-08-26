@@ -13,6 +13,7 @@ is a Loaf workflow staging section for curated entries before release.
 
 ### Fixed
 
+- Sync refresh rebuilds ref, worktree, and verification projections from pulled facts so a receiving replica shows CLI-facing mappings, start bindings, and receipts (LOAF-62).
 - Sync-server admin `DELETE` of facts is scoped to projects the authenticating account has minted a connection token for, so a second tenant cannot delete another tenant's blobs.
 - `loaf serve` refuses ports `443` and `8443` unless `--tls-cert` and `--tls-key` are set, so `LoafToken` / `LoafAdmin` credentials are not sent on a TLS-looking cleartext port.
 
