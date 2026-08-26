@@ -144,6 +144,13 @@ func (r Runner) runIssueStart(args []string, out io.Writer, runtime state.Runtim
 	}); err != nil {
 		return wrapIssueStartUpdateError(err, rollbackIssueWorktree(repoRoot, worktree, branch, createdBranch), worktree, branch)
 	}
+	if _, err := state.BootstrapIssueBranchContract(ctx, projectRoot, resolver, state.BootstrapIssueBranchContractOptions{
+		IssueID:         owner.ID,
+		Branch:          branch,
+		StartedWorktree: worktree,
+	}); err != nil {
+		return wrapIssueStartUpdateError(err, rollbackIssueWorktree(repoRoot, worktree, branch, createdBranch), worktree, branch)
+	}
 	if requested.ID != owner.ID {
 		if err := activateIssue(ctx, projectRoot, resolver, requested); err != nil {
 			return err
