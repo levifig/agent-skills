@@ -24,6 +24,7 @@ Loaf's durable memory — journal, wraps, handoffs, decisions, work-unit refs, v
 
 Work survives context loss, compaction, tool restarts, and cross-conversation handoffs because the substrate is external to any single harness session. The project journal is a **projection** of grow-only ledger facts, not a hand-authored file. Change artifacts and compatible task records keep intent and execution inspectable outside any one conversation. Context at conversation start is a derived digest — never a lifecycle transition.
 
+
 Sharing with other humans happens only through explicit **promote surfaces** (PR bodies, committed files, external trackers). The substrate itself is private.
 
 ## What Success Looks Like
