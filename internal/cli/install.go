@@ -131,7 +131,7 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 
 	var installedTargets []string
 	var codexBasicCommandsErr error
-	defaults := defaultInstallConfigDirs()
+	defaults, layoutHome := resolveInstallLayout(projectRoot.Path())
 	toolByKey := installToolsByKey(tools)
 	hookState, releaseHookState := r.hookStateForApply(projectRoot.Path())
 	defer releaseHookState()
@@ -155,8 +155,8 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 			ConfigDir:          configDir,
 			CodexBasicCommands: options.codexBasicCommands,
 			Version:            version,
-			HomeDir:            installHome(),
-			CodexHome:          os.Getenv("CODEX_HOME"),
+			HomeDir:            layoutHome,
+			CodexHome:          resolveInstallCodexHome(configDir),
 			ProjectRoot:        projectRoot.Path(),
 			SkipSkillsSync:     true,
 			HookState:          hookState,
@@ -373,7 +373,7 @@ func (r Runner) selectedInstallTargets(options installOptions, tools []detectedI
 			return nil, fmt.Errorf("unknown install target %q (valid targets: %s, all)", options.target, strings.Join(installValidTargets, ", "))
 		}
 		if !containsInstallTool(tools, options.target) {
-			fmt.Fprintf(out, "  %s %s was not auto-detected; installing to %s\n", ansiYellow("⚡"), options.target, defaultInstallConfigDirs()[options.target])
+			fmt.Fprintf(out, "  %s %s was not auto-detected; installing to %s\n", ansiYellow("⚡"), options.target, installLayoutConfigDirs("")[options.target])
 		}
 		return []string{options.target}, nil
 	case options.upgrade:
@@ -650,39 +650,43 @@ func writeInstallFencedResults(out io.Writer, results map[string]fencedInstallRe
 }
 
 func detectInstallTools() []detectedInstallTool {
-	home := installHome()
-	defaults := defaultInstallConfigDirs()
+	return detectInstallToolsForProject("")
+}
+
+func detectInstallToolsForProject(projectRoot string) []detectedInstallTool {
+	home := installLayoutHome(projectRoot)
+	defaults := installLayoutConfigDirs(projectRoot)
 	var tools []detectedInstallTool
 	if dirExistsForInstall(defaults["opencode"]) || installRecordExists(home, "opencode") {
-		tools = append(tools, newDetectedInstallTool("opencode", defaults["opencode"], "config"))
+		tools = append(tools, newDetectedInstallTool("opencode", defaults["opencode"], "config", home))
 	}
 	cursorConfig := defaults["cursor"]
 	switch {
 	case installCommandExists("cursor"):
-		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "cli"))
+		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "cli", home))
 	case runtime.GOOS == "darwin" && (dirExistsForInstall("/Applications/Cursor.app") || dirExistsForInstall(filepath.Join(home, "Applications", "Cursor.app"))):
-		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "app"))
+		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "app", home))
 	case dirExistsForInstall(cursorConfig) || installRecordExists(home, "cursor"):
-		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "config"))
+		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "config", home))
 	}
 	codexConfig := defaults["codex"]
 	if installCommandExists("codex") || dirExistsForInstall(codexConfig) || dirExistsForInstall(filepath.Join(home, ".codex")) || installRecordExists(home, "codex") {
-		tools = append(tools, newDetectedInstallTool("codex", codexConfig, "config"))
+		tools = append(tools, newDetectedInstallTool("codex", codexConfig, "config", home))
 	}
 	ampConfig := defaults["amp"]
 	legacyAmpConfig := filepath.Join(home, ".amp")
 	if installCommandExists("amp") || dirExistsForInstall(ampConfig) || dirExistsForInstall(legacyAmpConfig) || installRecordExists(home, "amp") {
-		tools = append(tools, newDetectedInstallTool("amp", ampConfig, "config"))
+		tools = append(tools, newDetectedInstallTool("amp", ampConfig, "config", home))
 	}
 	return tools
 }
 
-func newDetectedInstallTool(key string, configDir string, detectedBy string) detectedInstallTool {
+func newDetectedInstallTool(key string, configDir string, detectedBy string, recordHome string) detectedInstallTool {
 	return detectedInstallTool{
 		key:        key,
 		name:       installDisplayName(key),
 		configDir:  configDir,
-		installed:  isLoafInstalledForTargetInstall(key, configDir),
+		installed:  isLoafInstalledForTargetInstall(key, configDir, recordHome),
 		detectedBy: detectedBy,
 	}
 }
@@ -717,12 +721,15 @@ func isLoafInstalledForInstall(configDir string) bool {
 	return false
 }
 
-func isLoafInstalledForTargetInstall(target string, configDir string) bool {
-	if isLoafInstalledForInstall(configDir) || installRecordExists(installHome(), target) {
+func isLoafInstalledForTargetInstall(target string, configDir string, recordHome string) bool {
+	if recordHome == "" {
+		recordHome = installHome()
+	}
+	if isLoafInstalledForInstall(configDir) || installRecordExists(recordHome, target) {
 		return true
 	}
 	if target == "amp" {
-		return isLoafInstalledForInstall(filepath.Join(installHome(), ".amp"))
+		return isLoafInstalledForInstall(filepath.Join(recordHome, ".amp"))
 	}
 	return false
 }

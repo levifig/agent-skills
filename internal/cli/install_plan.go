@@ -160,7 +160,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	plan.Deprecations = deprecations
 
 	toolByKey := installToolsByKey(tools)
-	defaults := defaultInstallConfigDirs()
+	defaults, layoutHome := resolveInstallLayout(projectRoot)
 	// A plan reads hook enablement and never creates it: a dry run that brought
 	// a state database into existence would be a write, and the plan promises
 	// none.
@@ -193,8 +193,8 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 			Upgrade:            options.upgrade,
 			CodexBasicCommands: options.codexBasicCommands,
 			Version:            version,
-			HomeDir:            installHome(),
-			CodexHome:          os.Getenv("CODEX_HOME"),
+			HomeDir:            layoutHome,
+			CodexHome:          resolveInstallCodexHome(configDir),
 			ProjectRoot:        projectRoot,
 			HookState:          hookState,
 		}
@@ -601,10 +601,7 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 // needed it uses the same read-only trusted-executable resolution and template
 // rendering the apply path uses.
 func planCodexJournalRule(options targetInstallOptions) ([]artifactPlanDecision, error) {
-	codexHome := options.CodexHome
-	if codexHome == "" {
-		codexHome = filepath.Join(installHomeDir(options), ".codex")
-	}
+	codexHome := effectiveCodexHome(options)
 	rulesDir := filepath.Join(codexHome, "rules")
 	ruleDest := filepath.Join(rulesDir, codexJournalRuleRelativePath)
 	manifestPath := filepath.Join(rulesDir, codexJournalRuleManifest)

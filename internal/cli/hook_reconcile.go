@@ -204,10 +204,7 @@ func hookArtifactRoot(options targetInstallOptions) string {
 	if options.Target != "codex" {
 		return options.ConfigDir
 	}
-	if options.CodexHome != "" {
-		return options.CodexHome
-	}
-	return filepath.Join(installHomeDir(options), ".codex")
+	return effectiveCodexHome(options)
 }
 
 // targetReconcilesHookEntries reports whether this target's hooks file is

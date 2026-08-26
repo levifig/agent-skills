@@ -45,7 +45,7 @@ type harnessDriftReading struct {
 // `.loaf-version` marker lives in, through the same table install writes the
 // marker with.
 func harnessDriftConfigDir(harness string) string {
-	return defaultInstallConfigDirs()[harness]
+	return installLayoutConfigDirs("")[harness]
 }
 
 func readHarnessVersionMarker(configDir string) string {

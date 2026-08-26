@@ -1,0 +1,4 @@
+{
+  "install": ".cursor/loaf-cloud-install.sh",
+  "start": ".cursor/loaf-cloud-start.sh"
+}
