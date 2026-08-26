@@ -185,7 +185,6 @@ func normalizeFactID(factID string) (string, error) {
 	return factID, nil
 }
 
-
 func (s *Store) HasKeyMaterial(ctx context.Context) (bool, error) {
 	return s.SchemaHasKeyMaterial(ctx)
 }
@@ -357,9 +356,37 @@ WHERE token_id = ?`, strings.TrimSpace(tokenID)).Scan(&storedHash, &scopedProjec
 	return nil
 }
 
+var (
+	errInvalidAccountCredentials = errors.New("invalid account credentials")
+	errAdminProjectForbidden     = errors.New("admin is not authorized for this project")
+)
+
 func (s *Store) AuthenticateAdmin(ctx context.Context, accessKeyID, accessSecret string) error {
 	if !s.verifyAccount(ctx, accessKeyID, accessSecret) {
-		return errors.New("invalid account credentials")
+		return errInvalidAccountCredentials
+	}
+	return nil
+}
+
+func (s *Store) AuthenticateAdminForProject(ctx context.Context, accessKeyID, accessSecret, projectID string) error {
+	if err := s.AuthenticateAdmin(ctx, accessKeyID, accessSecret); err != nil {
+		return err
+	}
+	projectID, err := normalizeProjectID(projectID)
+	if err != nil {
+		return err
+	}
+	var n int
+	err = s.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM connection_tokens
+WHERE account_access_key_id = ? AND project_id = ?`,
+		strings.TrimSpace(accessKeyID), projectID,
+	).Scan(&n)
+	if err != nil {
+		return fmt.Errorf("lookup admin project binding: %w", err)
+	}
+	if n == 0 {
+		return errAdminProjectForbidden
 	}
 	return nil
 }
@@ -609,7 +636,6 @@ func (s *Store) SchemaHasKeyMaterial(ctx context.Context) (bool, error) {
 	}
 	return false, rows.Err()
 }
-
 
 func sqliteDSN(path string) string {
 	values := url.Values{}

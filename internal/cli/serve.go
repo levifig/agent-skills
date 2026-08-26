@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,8 +18,10 @@ import (
 )
 
 type serveOptions struct {
-	listen string
-	dbPath string
+	listen  string
+	dbPath  string
+	tlsCert string
+	tlsKey  string
 }
 
 func (r Runner) runServe(args []string, out io.Writer) error {
@@ -56,7 +59,7 @@ func (r Runner) runServe(args []string, out io.Writer) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- httpSrv.ListenAndServe()
+		errCh <- listenAndServe(httpSrv, opts.tlsCert, opts.tlsKey)
 	}()
 
 	select {
@@ -74,9 +77,11 @@ func (r Runner) runServe(args []string, out io.Writer) error {
 }
 
 func writeServeHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf serve", "Run the self-hostable sync relay (opaque blobs + token auth).",
-		"--listen <addr>   Listen address (default :8080)",
-		"--db <path>       Sync server SQLite path (default $XDG_DATA_HOME/loaf/sync.sqlite)")
+	writeUsageHelp(out, "loaf serve", "Run the self-hostable sync relay (opaque blobs + token auth). Speaks HTTP; terminate TLS at a reverse proxy or pass --tls-cert and --tls-key.",
+		"--listen <addr>     Listen address (default :8080). Ports 443 and 8443 require TLS.",
+		"--tls-cert <path>   TLS certificate file (enables HTTPS)",
+		"--tls-key <path>    TLS private key file",
+		"--db <path>         Sync server SQLite path (default $XDG_DATA_HOME/loaf/sync.sqlite)")
 }
 
 func parseServeArgs(args []string) (serveOptions, error) {
@@ -95,14 +100,60 @@ func parseServeArgs(args []string) (serveOptions, error) {
 			}
 			opts.dbPath = strings.TrimSpace(args[i+1])
 			i++
+		case "--tls-cert":
+			if i+1 >= len(args) {
+				return serveOptions{}, fmt.Errorf("serve --tls-cert requires a value")
+			}
+			opts.tlsCert = strings.TrimSpace(args[i+1])
+			i++
+		case "--tls-key":
+			if i+1 >= len(args) {
+				return serveOptions{}, fmt.Errorf("serve --tls-key requires a value")
+			}
+			opts.tlsKey = strings.TrimSpace(args[i+1])
+			i++
 		default:
 			return serveOptions{}, fmt.Errorf("serve: unknown option %q", args[i])
 		}
 	}
-	if opts.listen == "" {
-		return serveOptions{}, fmt.Errorf("serve --listen cannot be empty")
+	if err := opts.validate(); err != nil {
+		return serveOptions{}, err
 	}
 	return opts, nil
+}
+
+func (opts serveOptions) validate() error {
+	if opts.listen == "" {
+		return fmt.Errorf("serve --listen cannot be empty")
+	}
+	hasCert := opts.tlsCert != ""
+	hasKey := opts.tlsKey != ""
+	if hasCert != hasKey {
+		return errors.New("serve --tls-cert and --tls-key must be set together")
+	}
+	if listenImpliesTLS(opts.listen) && !hasCert {
+		return fmt.Errorf("serve --listen %s requires --tls-cert and --tls-key (or bind a non-TLS port and terminate TLS at a reverse proxy)", opts.listen)
+	}
+	return nil
+}
+
+func listenImpliesTLS(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "443" || addr == "8443" {
+		return true
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	return port == "443" || port == "8443"
+}
+
+func listenAndServe(srv *http.Server, certFile, keyFile string) error {
+	if strings.TrimSpace(certFile) != "" {
+		return srv.ListenAndServeTLS(certFile, keyFile)
+	}
+	return srv.ListenAndServe()
 }
 
 func resolveServeDBPath(explicit, stateHome string) (string, error) {
