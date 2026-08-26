@@ -74,6 +74,10 @@ func (r Runner) runIssueVerifyContract(ctx context.Context, projectRoot project.
 				status = ansiRed("fail")
 			}
 			fmt.Fprintf(out, "%s %d  %s%s\n", status, criterion.Position, criterion.Command, changeExpectFailureNote(runErr, exitCode, checks))
+			for _, clause := range expectation.Advisory {
+				fmt.Fprintf(out, "%s %d  unenforceable Expect clause %q — recorded as advisory, never checked\n",
+					ansiYellow("warn"), criterion.Position, clause)
+			}
 		}
 	}
 
