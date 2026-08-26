@@ -30,6 +30,12 @@ type ClaimPayload struct {
 	ExpiresAt  string `json:"expires_at"`
 }
 
+type ClosePayload struct {
+	Channel    string `json:"channel"`
+	InstanceID string `json:"instance_id"`
+	EnvID      string `json:"env_id"`
+}
+
 type ReleasePayload struct {
 	Channel    string `json:"channel"`
 	InstanceID string `json:"instance_id"`
@@ -97,6 +103,14 @@ func decodeRelease(raw string) (ReleasePayload, error) {
 	var payload ReleasePayload
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return ReleasePayload{}, fmt.Errorf("decode scratchpad release: %w", err)
+	}
+	return payload, nil
+}
+
+func decodeClose(raw string) (ClosePayload, error) {
+	var payload ClosePayload
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return ClosePayload{}, fmt.Errorf("decode scratchpad close: %w", err)
 	}
 	return payload, nil
 }

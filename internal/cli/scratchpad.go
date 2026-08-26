@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/levifig/loaf/internal/auth"
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/scratchpad"
 	"github.com/levifig/loaf/internal/state"
@@ -29,6 +30,10 @@ func (r Runner) runScratchpad(args []string, out io.Writer, runtime state.Runtim
 		return r.runScratchpadClaim(args[1:], out, runtime)
 	case "release":
 		return r.runScratchpadRelease(args[1:], out, runtime)
+	case "close":
+		return r.runScratchpadClose(args[1:], out, runtime)
+	case "prune":
+		return r.runScratchpadPrune(args[1:], out, runtime)
 	default:
 		return unknownSubcommandError("scratchpad", args[0])
 	}
@@ -40,7 +45,9 @@ func writeScratchpadHelp(out io.Writer) {
 		"read     Read scratchpad messages for a channel",
 		"list     List roster and active claims for a channel",
 		"claim    Claim a resource with a lease expiry",
-		"release  Release a claimed resource")
+		"release  Release a claimed resource",
+		"close    Close a scratchpad channel (logical hide)",
+		"prune    Admin-only physical blob deletion on sync server")
 }
 
 func (r Runner) runScratchpadAppend(args []string, out io.Writer, runtime state.Runtime) error {
@@ -184,6 +191,93 @@ func (r Runner) runScratchpadRelease(args []string, out io.Writer, runtime state
 	}
 	fmt.Fprintf(out, "released %s (%s)\n", opts.Resource, envelope.ID)
 	return nil
+}
+
+
+func (r Runner) runScratchpadClose(args []string, out io.Writer, runtime state.Runtime) error {
+	opts, _, err := parseScratchpadChannelArgs(args, false)
+	if err != nil {
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		return err
+	}
+	envelope, err := scratchpad.CloseChannel(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, scratchpad.CloseOptions{
+		Channel:    opts.Channel,
+		InstanceID: opts.InstanceID,
+		EnvID:      opts.EnvID,
+	})
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return writeJSON(out, envelope)
+	}
+	fmt.Fprintf(out, "closed channel %s (%s)\n", opts.Channel, envelope.ID)
+	return nil
+}
+
+func (r Runner) runScratchpadPrune(args []string, out io.Writer, runtime state.Runtime) error {
+	opts, rest, err := parseScratchpadPruneArgs(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("scratchpad prune accepts flags only")
+	}
+	authStore, err := r.authStore()
+	if err != nil {
+		return err
+	}
+	adminCtx, cleanup, err := auth.OpenAdminContext(context.Background(), authStore, opts.ServerDB)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	projectID, err := r.resolveAuthProjectID(runtime)
+	if err != nil {
+		return err
+	}
+	deleted, err := scratchpad.PruneServerChannel(context.Background(), adminCtx.Server, projectID, opts.Channel)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return writeJSON(out, map[string]any{"channel": opts.Channel, "deleted": deleted})
+	}
+	fmt.Fprintf(out, "pruned channel %s (%d blob(s) deleted)\n", opts.Channel, deleted)
+	return nil
+}
+
+type scratchpadPruneOptions struct {
+	Channel  string
+	ServerDB string
+	JSON     bool
+}
+
+func parseScratchpadPruneArgs(args []string) (scratchpadPruneOptions, []string, error) {
+	opts := scratchpadPruneOptions{}
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--json":
+			opts.JSON = true
+		case arg == "--channel" && i+1 < len(args):
+			i++
+			opts.Channel = args[i]
+		case arg == "--server-db" && i+1 < len(args):
+			i++
+			opts.ServerDB = args[i]
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	if strings.TrimSpace(opts.Channel) == "" {
+		return opts, nil, fmt.Errorf("scratchpad prune requires --channel")
+	}
+	return opts, rest, nil
 }
 
 type scratchpadCommonOptions struct {

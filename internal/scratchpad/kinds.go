@@ -7,6 +7,7 @@ const (
 	KindMessage = "scratchpad_message"
 	KindClaim   = "scratchpad_claim"
 	KindRelease = "scratchpad_release"
+	KindClose   = "scratchpad_close"
 )
 
 func init() {
@@ -14,4 +15,5 @@ func init() {
 	state.RegisterFactKind(KindMessage, state.PermanenceScratchpad)
 	state.RegisterFactKind(KindClaim, state.PermanenceScratchpad)
 	state.RegisterFactKind(KindRelease, state.PermanenceScratchpad)
+	state.RegisterFactKind(KindClose, state.PermanenceScratchpad)
 }

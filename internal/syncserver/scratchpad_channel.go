@@ -119,3 +119,25 @@ func (s *Store) WaitScratchpadSince(ctx context.Context, projectID, channel stri
 func normalizeScratchpadChannel(channel string) string {
 	return strings.TrimSpace(channel)
 }
+
+// PruneScratchpadChannel physically deletes all relay blobs for one channel.
+func (s *Store) PruneScratchpadChannel(ctx context.Context, projectID, channel string) (int64, error) {
+	projectID = strings.TrimSpace(projectID)
+	channel = normalizeScratchpadChannel(channel)
+	if projectID == "" || channel == "" {
+		return 0, fmt.Errorf("scratchpad prune requires project_id and channel")
+	}
+	result, err := s.db.ExecContext(ctx, `
+DELETE FROM scratchpad_messages
+WHERE project_id = ? AND channel = ?
+`, projectID, channel)
+	if err != nil {
+		return 0, fmt.Errorf("prune scratchpad channel: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("scratchpad prune rows affected: %w", err)
+	}
+	return deleted, nil
+}
+
