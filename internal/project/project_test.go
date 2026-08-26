@@ -45,6 +45,28 @@ func TestResolveRootUsesGitTopLevelFromSubdirectory(t *testing.T) {
 	}
 }
 
+func TestResolveRepositoryRootUsesLinkedWorktreeCheckout(t *testing.T) {
+	requireGit(t)
+	main := initGitRepo(t)
+	linked := addLinkedWorktree(t, main, "command-root")
+
+	fromMain, err := ResolveRepositoryRoot(main)
+	if err != nil {
+		t.Fatalf("ResolveRepositoryRoot(main) error = %v", err)
+	}
+	fromLinked, err := ResolveRepositoryRoot(linked)
+	if err != nil {
+		t.Fatalf("ResolveRepositoryRoot(linked) error = %v", err)
+	}
+
+	if fromMain.Path() != main {
+		t.Fatalf("main Path() = %q, want %q", fromMain.Path(), main)
+	}
+	if fromLinked.Path() != linked {
+		t.Fatalf("linked Path() = %q, want linked checkout %q", fromLinked.Path(), linked)
+	}
+}
+
 func TestResolveRootUsesMainWorktreeForLinkedWorktree(t *testing.T) {
 	requireGit(t)
 	main := initGitRepo(t)
