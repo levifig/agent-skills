@@ -11,6 +11,8 @@ import (
 )
 
 // JournalFactPayload is the journal-kind fact body. Display timestamps live here.
+// EntryID, when set, is the stable journal_entries projection id. Empty means the
+// fact id itself is the projection id (wrapped corpus and first write).
 type JournalFactPayload struct {
 	EntryType        string `json:"entry_type"`
 	Scope            string `json:"scope,omitempty"`
@@ -20,9 +22,10 @@ type JournalFactPayload struct {
 	HarnessSessionID string `json:"harness_session_id,omitempty"`
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
+	EntryID          string `json:"entry_id,omitempty"`
 }
 
-// JournalFactParity describes parity between journal facts and the projection.
+// JournalFactParity describes parity between folded journal facts and the projection.
 type JournalFactParity struct {
 	FactRows       int  `json:"fact_rows"`
 	ProjectionRows int  `json:"projection_rows"`
@@ -35,6 +38,11 @@ type JournalFactParity struct {
 const JournalFactParityDivergenceCode = "journal-fact-parity-diverged"
 
 const JournalFactParityRepairCommand = "loaf state repair journal-facts --dry-run --json"
+
+type foldedJournalFact struct {
+	projectID string
+	payload   JournalFactPayload
+}
 
 func encodeJournalFactPayload(payload JournalFactPayload) (string, error) {
 	raw, err := json.Marshal(payload)
@@ -52,7 +60,18 @@ func decodeJournalFactPayload(raw string) (JournalFactPayload, error) {
 	return payload, nil
 }
 
+func journalEntryIDFromFact(factID string, payload JournalFactPayload) string {
+	if id := strings.TrimSpace(payload.EntryID); id != "" {
+		return id
+	}
+	return factID
+}
+
 func appendJournalFactTx(ctx context.Context, tx *sql.Tx, projectID string, id string, payload JournalFactPayload, now time.Time) (FactEnvelope, error) {
+	return appendJournalFactWithEnvTx(ctx, tx, projectID, id, payload, now, "")
+}
+
+func appendJournalFactWithEnvTx(ctx context.Context, tx *sql.Tx, projectID string, id string, payload JournalFactPayload, now time.Time, envID string) (FactEnvelope, error) {
 	encoded, err := encodeJournalFactPayload(payload)
 	if err != nil {
 		return FactEnvelope{}, err
@@ -61,6 +80,7 @@ func appendJournalFactTx(ctx context.Context, tx *sql.Tx, projectID string, id s
 		ProjectID: projectID,
 		Kind:      FactKindJournal,
 		Payload:   encoded,
+		EnvID:     envID,
 		ID:        id,
 		Now:       now,
 	})
@@ -82,12 +102,49 @@ INSERT INTO journal_entries (
 	return nil
 }
 
-func journalFactExistsTx(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
-	var count int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM facts WHERE id = ?`, id).Scan(&count); err != nil {
-		return false, fmt.Errorf("inspect journal fact id %q: %w", id, err)
+func foldJournalFacts(ctx context.Context, queryer queryContext, projectID string) (map[string]foldedJournalFact, error) {
+	query := `
+SELECT f.id, f.project_id, f.payload
+FROM facts AS f
+WHERE f.kind = ?
+`
+	args := []any{FactKindJournal}
+	if strings.TrimSpace(projectID) != "" {
+		query += ` AND f.project_id = ?`
+		args = append(args, projectID)
 	}
-	return count > 0, nil
+	query += ` ORDER BY f.project_id, f.hlc, f.env_id, f.id`
+	rows, err := queryer.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list journal facts for fold: %w", err)
+	}
+	defer rows.Close()
+	folded := map[string]foldedJournalFact{}
+	for rows.Next() {
+		var id, projID, payloadRaw string
+		if err := rows.Scan(&id, &projID, &payloadRaw); err != nil {
+			return nil, fmt.Errorf("scan journal fact for fold: %w", err)
+		}
+		payload, err := decodeJournalFactPayload(payloadRaw)
+		if err != nil {
+			return nil, err
+		}
+		entryID := journalEntryIDFromFact(id, payload)
+		folded[entryID] = foldedJournalFact{projectID: projID, payload: payload}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate journal facts for fold: %w", err)
+	}
+	return folded, nil
+}
+
+func journalFactExistsForEntryTx(ctx context.Context, tx *sql.Tx, projectID, entryID string) (bool, error) {
+	folded, err := foldJournalFacts(ctx, tx, projectID)
+	if err != nil {
+		return false, err
+	}
+	_, ok := folded[entryID]
+	return ok, nil
 }
 
 func appendJournalDecisionFactAndProjectionTx(ctx context.Context, tx *sql.Tx, projectID, decisionID, scope, decisionMessage string, nowTime time.Time) error {
@@ -105,7 +162,7 @@ func appendJournalDecisionFactAndProjectionTx(ctx context.Context, tx *sql.Tx, p
 	return insertJournalProjectionTx(ctx, tx, projectID, decisionID, payload)
 }
 
-func upsertJournalProjectionTx(ctx context.Context, execer journalWriteExecer, projectID, id string, payload JournalFactPayload) error {
+func upsertJournalProjectionTx(ctx context.Context, execer journalWriteExecer, projectID string, id string, payload JournalFactPayload) error {
 	_, err := execer.ExecContext(ctx, `
 INSERT INTO journal_entries (
   id, project_id, entry_type, scope, message,
@@ -139,14 +196,19 @@ func journalFactPayloadContentEqual(a, b JournalFactPayload) bool {
 		a.CreatedAt == b.CreatedAt
 }
 
-func replaceJournalFactForImportTx(ctx context.Context, tx *sql.Tx, projectID, id string, payload JournalFactPayload, nowTime time.Time) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM facts WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("replace journal fact %q: %w", id, err)
-	}
-	if _, err := appendJournalFactTx(ctx, tx, projectID, id, payload, nowTime); err != nil {
+// appendJournalFactRevisionForImportTx appends a grow-only revision fact for an
+// existing journal entry and updates the stable projection pointer. It never
+// deletes facts rows.
+func appendJournalFactRevisionForImportTx(ctx context.Context, tx *sql.Tx, projectID, entryID string, payload JournalFactPayload, nowTime time.Time) error {
+	payload.EntryID = entryID
+	newID, err := mintFactID(nowTime)
+	if err != nil {
 		return err
 	}
-	return upsertJournalProjectionTx(ctx, tx, projectID, id, payload)
+	if _, err := appendJournalFactTx(ctx, tx, projectID, newID, payload, nowTime); err != nil {
+		return err
+	}
+	return upsertJournalProjectionTx(ctx, tx, projectID, entryID, payload)
 }
 
 func journalProjectionDiffersFromPayloadTx(ctx context.Context, tx *sql.Tx, id string, payload JournalFactPayload) (bool, error) {
@@ -168,10 +230,11 @@ WHERE id = ?
 }
 
 func upsertJournalViaFactsTx(ctx context.Context, tx *sql.Tx, projectID, id string, payload JournalFactPayload, nowTime time.Time) error {
-	exists, err := journalFactExistsTx(ctx, tx, id)
+	folded, err := foldJournalFacts(ctx, tx, projectID)
 	if err != nil {
 		return err
 	}
+	existingFold, exists := folded[id]
 	if !exists {
 		if _, err := appendJournalFactTx(ctx, tx, projectID, id, payload, nowTime); err != nil {
 			return err
@@ -185,14 +248,7 @@ func upsertJournalViaFactsTx(ctx context.Context, tx *sql.Tx, projectID, id stri
 	if projectionExists == 0 {
 		return insertJournalProjectionTx(ctx, tx, projectID, id, payload)
 	}
-	var payloadRaw string
-	if err := tx.QueryRowContext(ctx, `SELECT payload FROM facts WHERE id = ?`, id).Scan(&payloadRaw); err != nil {
-		return fmt.Errorf("read journal fact payload %q: %w", id, err)
-	}
-	existing, err := decodeJournalFactPayload(payloadRaw)
-	if err != nil {
-		return err
-	}
+	existing := existingFold.payload
 	// Grow-only facts own display timestamps; import callers pass fresh clocks.
 	payload.CreatedAt = existing.CreatedAt
 	payload.UpdatedAt = existing.UpdatedAt
@@ -207,10 +263,10 @@ func upsertJournalViaFactsTx(ctx context.Context, tx *sql.Tx, projectID, id stri
 		return upsertJournalProjectionTx(ctx, tx, projectID, id, payload)
 	}
 	payload.UpdatedAt = nowTime.UTC().Format(time.RFC3339Nano)
-	return replaceJournalFactForImportTx(ctx, tx, projectID, id, payload, nowTime)
+	return appendJournalFactRevisionForImportTx(ctx, tx, projectID, id, payload, nowTime)
 }
 
-// InspectJournalFactParity compares journal-kind facts to journal_entries.
+// InspectJournalFactParity compares folded journal facts to journal_entries.
 func InspectJournalFactParity(ctx context.Context, store *Store) (JournalFactParity, error) {
 	if store == nil || store.db == nil {
 		return JournalFactParity{}, fmt.Errorf("inspect journal fact parity: store is nil")
@@ -230,35 +286,9 @@ func inspectJournalFactParity(ctx context.Context, queryer queryContext) (Journa
 	if !tableExists(ctx, queryer, "facts") {
 		return JournalFactParity{Ready: true}, nil
 	}
-	rows, err := queryer.QueryContext(ctx, `
-SELECT f.id, f.project_id, f.payload
-FROM facts AS f
-WHERE f.kind = ?
-ORDER BY f.project_id, f.hlc, f.env_id, f.id
-`, FactKindJournal)
+	folded, err := foldJournalFacts(ctx, queryer, "")
 	if err != nil {
-		return JournalFactParity{}, fmt.Errorf("list journal facts: %w", err)
-	}
-	defer rows.Close()
-
-	type foldedRow struct {
-		projectID string
-		payload   JournalFactPayload
-	}
-	folded := map[string]foldedRow{}
-	for rows.Next() {
-		var id, projectID, payloadRaw string
-		if err := rows.Scan(&id, &projectID, &payloadRaw); err != nil {
-			return JournalFactParity{}, fmt.Errorf("scan journal fact: %w", err)
-		}
-		payload, err := decodeJournalFactPayload(payloadRaw)
-		if err != nil {
-			return JournalFactParity{}, err
-		}
-		folded[id] = foldedRow{projectID: projectID, payload: payload}
-	}
-	if err := rows.Err(); err != nil {
-		return JournalFactParity{}, fmt.Errorf("iterate journal facts: %w", err)
+		return JournalFactParity{}, err
 	}
 
 	projectionRows, err := queryer.QueryContext(ctx, `
@@ -315,35 +345,9 @@ func journalProjectionMatchesPayload(entryType, scope, message, branch, worktree
 }
 
 func rebuildJournalProjectionFromFactsTx(ctx context.Context, execer journalWriteExecer, projectID string) (int, error) {
-	rows, err := execer.QueryContext(ctx, `
-SELECT id, payload
-FROM facts
-WHERE project_id = ? AND kind = ?
-ORDER BY hlc ASC, env_id ASC, id ASC
-`, projectID, FactKindJournal)
+	folded, err := foldJournalFacts(ctx, execer, projectID)
 	if err != nil {
-		return 0, fmt.Errorf("list journal facts for rebuild: %w", err)
-	}
-	defer rows.Close()
-
-	type projection struct {
-		id      string
-		payload JournalFactPayload
-	}
-	projections := []projection{}
-	for rows.Next() {
-		var id, payloadRaw string
-		if err := rows.Scan(&id, &payloadRaw); err != nil {
-			return 0, fmt.Errorf("scan journal fact for rebuild: %w", err)
-		}
-		payload, err := decodeJournalFactPayload(payloadRaw)
-		if err != nil {
-			return 0, err
-		}
-		projections = append(projections, projection{id: id, payload: payload})
-	}
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("iterate journal facts for rebuild: %w", err)
+		return 0, err
 	}
 
 	if _, err := execer.ExecContext(ctx, `DELETE FROM journal_search WHERE project_id = ?`, projectID); err != nil {
@@ -352,15 +356,15 @@ ORDER BY hlc ASC, env_id ASC, id ASC
 	if _, err := execer.ExecContext(ctx, `DELETE FROM journal_entries WHERE project_id = ?`, projectID); err != nil {
 		return 0, fmt.Errorf("clear journal projection: %w", err)
 	}
-	for _, row := range projections {
-		if err := insertJournalProjectionTx(ctx, execer, projectID, row.id, row.payload); err != nil {
+	for entryID, row := range folded {
+		if err := insertJournalProjectionTx(ctx, execer, projectID, entryID, row.payload); err != nil {
 			return 0, err
 		}
-		if err := insertJournalSearchTx(ctx, execer, projectID, row.id, row.payload.HarnessSessionID, row.payload.EntryType, row.payload.Scope, row.payload.Message); err != nil {
+		if err := insertJournalSearchTx(ctx, execer, projectID, entryID, row.payload.HarnessSessionID, row.payload.EntryType, row.payload.Scope, row.payload.Message); err != nil {
 			return 0, err
 		}
 	}
-	return len(projections), nil
+	return len(folded), nil
 }
 
 func backfillMissingJournalFactsForProjectTx(ctx context.Context, tx *sql.Tx, projectID string) error {
@@ -370,23 +374,29 @@ func backfillMissingJournalFactsForProjectTx(ctx context.Context, tx *sql.Tx, pr
 	if !tableExists(ctx, tx, "facts") {
 		return nil
 	}
+	folded, err := foldJournalFacts(ctx, tx, projectID)
+	if err != nil {
+		return err
+	}
 	rows, err := tx.QueryContext(ctx, `
 SELECT j.id, j.entry_type, COALESCE(j.scope, ''), j.message,
        COALESCE(j.observed_branch, ''), COALESCE(j.observed_worktree, ''),
        COALESCE(j.harness_session_id, ''), j.created_at, j.updated_at
 FROM journal_entries AS j
-LEFT JOIN facts AS f ON f.id = j.id
-WHERE j.project_id = ? AND f.id IS NULL
+WHERE j.project_id = ?
 ORDER BY j.created_at, j.rowid
 `, projectID)
 	if err != nil {
-		return fmt.Errorf("list journal rows missing facts: %w", err)
+		return fmt.Errorf("list journal rows for fact backfill: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id, entryType, scope, message, branch, worktree, sessionID, createdAt, updatedAt string
 		if err := rows.Scan(&id, &entryType, &scope, &message, &branch, &worktree, &sessionID, &createdAt, &updatedAt); err != nil {
 			return fmt.Errorf("scan journal row missing fact: %w", err)
+		}
+		if _, ok := folded[id]; ok {
+			continue
 		}
 		created, err := time.Parse(time.RFC3339Nano, createdAt)
 		if err != nil {
@@ -397,7 +407,7 @@ ORDER BY j.created_at, j.rowid
 			ObservedBranch: branch, ObservedWorktree: worktree, HarnessSessionID: sessionID,
 			CreatedAt: createdAt, UpdatedAt: updatedAt,
 		}
-		if _, err := appendJournalFactTx(ctx, tx, projectID, id, payload, created); err != nil {
+		if _, err := appendJournalFactWithEnvTx(ctx, tx, projectID, id, payload, created, legacyFactEnvID); err != nil {
 			return err
 		}
 	}
@@ -415,7 +425,7 @@ WHERE type = 'table' AND name = ?
 }
 
 // backfillJournalFactForTest mirrors one projection row into facts for tests that
-// insert journal_entries directly.
+// insert journal_entries directly. Historical wrap uses legacy-host env_id.
 func backfillJournalFactForTest(ctx context.Context, store *Store, projectID, journalEntryID string) error {
 	if store == nil || store.db == nil {
 		return fmt.Errorf("backfill journal fact: store is nil")
@@ -448,12 +458,12 @@ WHERE project_id = ? AND id = ?
 		return fmt.Errorf("begin journal fact backfill: %w", err)
 	}
 	defer tx.Rollback()
-	var existing int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM facts WHERE id = ?`, journalEntryID).Scan(&existing); err != nil {
-		return fmt.Errorf("inspect fact id: %w", err)
+	exists, err := journalFactExistsForEntryTx(ctx, tx, projectID, journalEntryID)
+	if err != nil {
+		return err
 	}
-	if existing == 0 {
-		if _, err := appendJournalFactTx(ctx, tx, projectID, journalEntryID, payload, created); err != nil {
+	if !exists {
+		if _, err := appendJournalFactWithEnvTx(ctx, tx, projectID, journalEntryID, payload, created, legacyFactEnvID); err != nil {
 			if strings.Contains(err.Error(), "already exists") {
 				return nil
 			}

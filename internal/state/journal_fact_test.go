@@ -196,3 +196,111 @@ harness_session_id: hsid-fact-parity
 		t.Fatalf("parity = %#v, want one ready imported journal fact", parity)
 	}
 }
+
+func TestImportJournalRevisionIsGrowOnly(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	logged, err := store.LogJournal(ctx, root, JournalLogOptions{Entry: "decision(import): original content"})
+	if err != nil {
+		t.Fatalf("LogJournal() error = %v", err)
+	}
+	var beforeCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM facts WHERE kind = ?`, FactKindJournal).Scan(&beforeCount); err != nil {
+		t.Fatalf("count facts before: %v", err)
+	}
+
+	var createdAt string
+	if err := store.db.QueryRowContext(ctx, `SELECT created_at FROM journal_entries WHERE id = ?`, logged.ID).Scan(&createdAt); err != nil {
+		t.Fatalf("read created_at: %v", err)
+	}
+	now := time.Now().UTC()
+	payload := JournalFactPayload{
+		EntryType: "decision",
+		Scope:     "import",
+		Message:   "revised content",
+		CreatedAt: createdAt,
+		UpdatedAt: now.Format(time.RFC3339Nano),
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	if err := appendJournalFactRevisionForImportTx(ctx, tx, status.ProjectID, logged.ID, payload, now); err != nil {
+		tx.Rollback()
+		t.Fatalf("appendJournalFactRevisionForImportTx() error = %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+
+	var afterCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM facts WHERE kind = ?`, FactKindJournal).Scan(&afterCount); err != nil {
+		t.Fatalf("count facts after: %v", err)
+	}
+	if afterCount != beforeCount+1 {
+		t.Fatalf("fact count = %d, want %d (grow-only append)", afterCount, beforeCount+1)
+	}
+	var originalExists int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM facts WHERE id = ?`, logged.ID).Scan(&originalExists); err != nil {
+		t.Fatalf("original fact lookup: %v", err)
+	}
+	if originalExists != 1 {
+		t.Fatal("original fact row was deleted; grow-only violated")
+	}
+	var message string
+	if err := store.db.QueryRowContext(ctx, `SELECT message FROM journal_entries WHERE id = ?`, logged.ID).Scan(&message); err != nil {
+		t.Fatalf("read projection: %v", err)
+	}
+	if message != "revised content" {
+		t.Fatalf("projection message = %q, want revised content", message)
+	}
+	parity, err := InspectJournalFactParity(ctx, store)
+	if err != nil {
+		t.Fatalf("InspectJournalFactParity() error = %v", err)
+	}
+	if !parity.Ready {
+		t.Fatalf("parity = %#v, want ready after fold", parity)
+	}
+}
+
+func TestHistoricalJournalFactBackfillUsesLegacyHostEnv(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	entryID := "historical-backfill-entry"
+	now := "2026-08-01T00:00:00Z"
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO journal_entries (id, project_id, entry_type, scope, message, observed_branch, observed_worktree, harness_session_id, spec_id, task_id, created_at, updated_at)
+VALUES (?, ?, 'decision', 'hist', 'legacy wrap', NULL, NULL, NULL, NULL, NULL, ?, ?)`, entryID, status.ProjectID, now, now); err != nil {
+		t.Fatalf("insert projection: %v", err)
+	}
+	mustBackfillJournalFactForTest(t, store, status.ProjectID, entryID)
+	var envID string
+	if err := store.db.QueryRowContext(ctx, `SELECT env_id FROM facts WHERE id = ?`, entryID).Scan(&envID); err != nil {
+		t.Fatalf("read env_id: %v", err)
+	}
+	if envID != legacyFactEnvID {
+		t.Fatalf("env_id = %q, want %q", envID, legacyFactEnvID)
+	}
+}

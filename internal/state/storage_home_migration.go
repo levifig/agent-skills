@@ -45,6 +45,8 @@ var projectScopedMergeTables = []string{
 	"shaping_drafts",
 	"sessions",
 	"reports",
+	"facts",
+	"fact_env_clocks",
 	"journal_entries",
 	"events",
 	"relationships",
@@ -358,9 +360,18 @@ func (s *Store) mergeProjectDatabaseWithOps(ctx context.Context, sourcePath stri
 		return err
 	}
 	for _, table := range projectScopedMergeTables {
+		if table == "fact_env_clocks" {
+			if err := copyFactEnvClocksRows(ctx, tx, projectID); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := copyProjectScopedRows(ctx, tx, table, projectID); err != nil {
 			return err
 		}
+	}
+	if err := reconcileFactEnvClocksForProjectTx(ctx, tx, projectID); err != nil {
+		return err
 	}
 	if err := copyProjectProvenanceRows(ctx, tx, projectID); err != nil {
 		return err
@@ -536,6 +547,81 @@ WHERE l.id = ?
 		return fmt.Errorf("merge project row: %w", err)
 	}
 	return nil
+}
+
+func copyFactEnvClocksRows(ctx context.Context, tx mergeExecer, projectID string) error {
+	if !legacyTableExists(ctx, tx, "fact_env_clocks") {
+		return nil
+	}
+	columns := sharedColumns(ctx, tx, "fact_env_clocks")
+	if len(columns) == 0 {
+		return nil
+	}
+	columnList := quotedColumnList(columns)
+	query := fmt.Sprintf(`INSERT OR IGNORE INTO fact_env_clocks (%s) SELECT %s FROM legacy.fact_env_clocks WHERE project_id = ?`, columnList, columnList)
+	if _, err := tx.ExecContext(ctx, query, projectID); err != nil {
+		return fmt.Errorf("merge fact_env_clocks rows: %w", err)
+	}
+	return nil
+}
+
+func reconcileFactEnvClocksForProjectTx(ctx context.Context, tx mergeExecer, projectID string) error {
+	if !tableExists(ctx, tx, "facts") || !tableExists(ctx, tx, "fact_env_clocks") {
+		return nil
+	}
+	rows, err := tx.QueryContext(ctx, `
+SELECT env_id, MAX(seq), MAX(hlc)
+FROM facts
+WHERE project_id = ?
+GROUP BY env_id
+`, projectID)
+	if err != nil {
+		return fmt.Errorf("list fact env clocks for reconcile: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var envID, hlc string
+		var maxSeq int64
+		if err := rows.Scan(&envID, &maxSeq, &hlc); err != nil {
+			return fmt.Errorf("scan fact env clock: %w", err)
+		}
+		parsed, err := parseHLC(hlc)
+		if err != nil {
+			return fmt.Errorf("parse fact hlc for env %q: %w", envID, err)
+		}
+		var wallMS, logical, nextSeq int64
+		err = tx.QueryRowContext(ctx, `
+SELECT hlc_wall_ms, hlc_logical, next_seq
+FROM fact_env_clocks
+WHERE project_id = ? AND env_id = ?
+`, projectID, envID).Scan(&wallMS, &logical, &nextSeq)
+		switch {
+		case err == nil:
+			if parsed.WallMS > wallMS || (parsed.WallMS == wallMS && parsed.Logical > logical) {
+				wallMS, logical = parsed.WallMS, parsed.Logical
+			}
+			if maxSeq+1 > nextSeq {
+				nextSeq = maxSeq + 1
+			}
+			if _, err := tx.ExecContext(ctx, `
+UPDATE fact_env_clocks
+SET hlc_wall_ms = ?, hlc_logical = ?, next_seq = ?
+WHERE project_id = ? AND env_id = ?
+`, wallMS, logical, nextSeq, projectID, envID); err != nil {
+				return fmt.Errorf("update fact env clock %q: %w", envID, err)
+			}
+		case errors.Is(err, sql.ErrNoRows):
+			if _, err := tx.ExecContext(ctx, `
+INSERT INTO fact_env_clocks (project_id, env_id, hlc_wall_ms, hlc_logical, next_seq)
+VALUES (?, ?, ?, ?, ?)
+`, projectID, envID, parsed.WallMS, parsed.Logical, maxSeq+1); err != nil {
+				return fmt.Errorf("insert fact env clock %q: %w", envID, err)
+			}
+		default:
+			return fmt.Errorf("read fact env clock %q: %w", envID, err)
+		}
+	}
+	return rows.Err()
 }
 
 func copyProjectScopedRows(ctx context.Context, tx mergeExecer, table string, projectID string) error {
