@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Amp Orb resume script (LOAF-78). Re-runs project-environment install on wake.
-# Attach pre-warm deferred until LOAF-67 attach ceremony ships.
+# Optional attach pre-warm: export LOAF_CLIENT_TOKEN in project secrets, then
+# run `loaf attach` after resume (see docs/knowledge/cloud-attach-walkthrough.md).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

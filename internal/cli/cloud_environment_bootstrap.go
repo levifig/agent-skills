@@ -20,7 +20,7 @@ import (
 //   - Optional durable project env var with the same name keeps layout without
 //     relying on start/resume scripts alone.
 //
-// LOAF-67 attach client token (not wired until attach ceremony ships):
+// LOAF-67 attach client token:
 //   - Mint locally: loaf auth link --project
 //   - Cursor Cloud Agent: add project environment vars LOAF_CLIENT_TOKEN and
 //     preferably LOAF_PROJECT_ENV=1 (project-scoped client token; never the
@@ -28,10 +28,11 @@ import (
 //   - Amp Orb: add project env LOAF_CLIENT_TOKEN (and LOAF_PROJECT_ENV=1) via
 //     amp project configuration
 //   - Optional sync endpoint (when configured): LOAF_SYNC_URL
+//   - Full walkthrough: docs/knowledge/cloud-attach-walkthrough.md
 //
 // Cursor Cloud harness install runs in the install/build script so hooks and
-// skills exist before the agent starts. Attach pre-warm in the start script is
-// intentionally deferred until LOAF-67 lands.
+// skills exist before the agent starts. Attach pre-warm runs in the start script
+// when LOAF_CLIENT_TOKEN is present.
 const (
 	// projectEnvironmentClientTokenEnv is the provisional per-project env var name
 	// for the LOAF-67 client token in Cursor Cloud and Amp Orb environments.
