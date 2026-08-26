@@ -38,14 +38,34 @@ func (s *Store) UpsertWorkContractReceipt(ctx context.Context, root project.Root
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO work_contract_receipts (id, project_id, provider, provider_ref, receipt_kind, receipt_value, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(project_id, provider, provider_ref, receipt_kind) DO UPDATE SET
   receipt_value = excluded.receipt_value,
   updated_at = excluded.updated_at
 `, receiptID, projectID, authorityRef.Provider, authorityRef.Key, kind, value, now, now)
-	return err
+	if err != nil {
+		return err
+	}
+	if _, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindVerificationRecorded, "", CoreEventPayload{
+		SubjectKind:  "verification",
+		SubjectID:    receiptID,
+		Provider:     authorityRef.Provider,
+		ProviderRef:  authorityRef.Key,
+		ReceiptKind:  kind,
+		ReceiptValue: value,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}, parseCoreEventTime(now), ""); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func loadWorkContractReceiptsTx(ctx context.Context, tx *sql.Tx, projectID string, ref AuthorityRef) ([]WorkContractReceipt, error) {

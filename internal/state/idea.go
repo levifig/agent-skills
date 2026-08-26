@@ -240,13 +240,20 @@ VALUES (?, ?, ?, ?, NULL, ?, ?)
 		return IdeaCaptureResult{}, err
 	}
 
-	eventID := stableMigrationID("event", projectID, "idea", ideaID, "created", "open")
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, 'idea', ?, 'status_changed', NULL, 'open', 'recorded by idea capture', ?, ?)
-`, eventID, projectID, ideaID, timestamp, timestamp); err != nil {
-		return IdeaCaptureResult{}, fmt.Errorf("record idea capture event: %w", err)
+	envelope, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindIdeaCreated, "", CoreEventPayload{
+		SubjectKind: "idea",
+		SubjectID:   ideaID,
+		Alias:       alias,
+		Title:       title,
+		Status:      "open",
+		Note:        "recorded by idea capture",
+		CreatedAt:   timestamp,
+		UpdatedAt:   timestamp,
+	}, now, "")
+	if err != nil {
+		return IdeaCaptureResult{}, fmt.Errorf("record idea capture fact: %w", err)
 	}
+	eventID := envelope.ID
 
 	if err := tx.Commit(); err != nil {
 		return IdeaCaptureResult{}, fmt.Errorf("commit idea capture transaction: %w", err)
@@ -356,15 +363,24 @@ ON CONFLICT(id) DO UPDATE SET
 
 	eventID := ""
 	if !LifecycleStatusMatches(LifecycleEntityIdea, previousStatus, LifecycleStatusDone) {
-		eventID = stableMigrationID("event", projectID, "idea", idea.ID, "status", previousStatus, LifecycleStatusDone)
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO NOTHING
-`, eventID, projectID, "idea", idea.ID, "status_changed", previousStatus, LifecycleStatusDone, "recorded by idea resolve", now, now)
+		envelope, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindIdeaResolved, "", CoreEventPayload{
+			SubjectKind: "idea",
+			SubjectID:   idea.ID,
+			Alias:       idea.Alias,
+			Title:       idea.Title,
+			Status:      LifecycleStatusDone,
+			FromStatus:  previousStatus,
+			ToStatus:    LifecycleStatusDone,
+			RelatedKind: target.Kind,
+			RelatedID:   target.ID,
+			Note:        "recorded by idea resolve",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}, parseCoreEventTime(now), "")
 		if err != nil {
-			return IdeaResolveResult{}, fmt.Errorf("record idea resolution event: %w", err)
+			return IdeaResolveResult{}, fmt.Errorf("record idea resolution fact: %w", err)
 		}
+		eventID = envelope.ID
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -423,7 +439,12 @@ func (s *Store) PromoteIdea(ctx context.Context, root project.Root, options Idea
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	relationshipID := stableMigrationID("relationship", projectID, "idea", idea.ID, "promoted_to", "spec", spec.ID)
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return IdeaPromoteResult{}, fmt.Errorf("begin idea promote transaction: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
@@ -433,6 +454,23 @@ ON CONFLICT(id) DO UPDATE SET
 `, relationshipID, projectID, "idea", idea.ID, "spec", spec.ID, "promoted_to", "recorded by idea promote", now, now)
 	if err != nil {
 		return IdeaPromoteResult{}, fmt.Errorf("record idea promotion relationship: %w", err)
+	}
+	if _, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindIdeaPromoted, "", CoreEventPayload{
+		SubjectKind: "idea",
+		SubjectID:   idea.ID,
+		Alias:       idea.Alias,
+		Title:       idea.Title,
+		Status:      idea.Status,
+		RelatedKind: "spec",
+		RelatedID:   spec.ID,
+		Note:        "recorded by idea promote",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, parseCoreEventTime(now), ""); err != nil {
+		return IdeaPromoteResult{}, fmt.Errorf("record idea promotion fact: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return IdeaPromoteResult{}, fmt.Errorf("commit idea promote transaction: %w", err)
 	}
 
 	return IdeaPromoteResult{
@@ -529,15 +567,22 @@ func (s *Store) archiveIdea(ctx context.Context, projectID string, ref string, r
 	}
 
 	note := firstNonEmpty(strings.TrimSpace(reason), "recorded by idea archive")
-	eventID := stableMigrationID("event", projectID, "idea", idea.ID, "status", previousStatus, "archived")
-	_, err = tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO NOTHING
-`, eventID, projectID, "idea", idea.ID, "status_changed", previousStatus, "archived", note, now, now)
+	envelope, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindIdeaArchived, "", CoreEventPayload{
+		SubjectKind: "idea",
+		SubjectID:   idea.ID,
+		Alias:       idea.Alias,
+		Title:       idea.Title,
+		Status:      "archived",
+		FromStatus:  previousStatus,
+		ToStatus:    "archived",
+		Note:        note,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, parseCoreEventTime(now), "")
 	if err != nil {
-		return IdeaArchiveItem{}, false, fmt.Errorf("record idea archive event: %w", err)
+		return IdeaArchiveItem{}, false, fmt.Errorf("record idea archive fact: %w", err)
 	}
+	eventID := envelope.ID
 
 	if err := tx.Commit(); err != nil {
 		return IdeaArchiveItem{}, false, fmt.Errorf("commit idea archive transaction: %w", err)

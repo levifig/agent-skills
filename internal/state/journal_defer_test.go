@@ -53,8 +53,8 @@ func TestDeferJournalCreatesSelfSufficientReciprocalPacket(t *testing.T) {
 	if journalID != result.Decision.ID || sparkID != result.Spark.ID || storedDigest != result.InputDigest {
 		t.Fatalf("deferral = %q/%q/%q, want reciprocal result", journalID, sparkID, storedDigest)
 	}
-	if got := rawCount(t, status.DatabasePath, `SELECT COUNT(*) FROM events WHERE project_id = ? AND entity_kind = 'spark' AND entity_id = ?`, result.ProjectID, result.Spark.ID); got != 1 {
-		t.Fatalf("spark events = %d, want 1", got)
+	if got := rawCount(t, status.DatabasePath, `SELECT COUNT(*) FROM facts WHERE project_id = ? AND kind = 'spark.captured' AND json_extract(payload, '$.subject_id') = ?`, result.ProjectID, result.Spark.ID); got != 1 {
+		t.Fatalf("spark facts = %d, want 1", got)
 	}
 	parity, err := InspectJournalSearchParity(ctx, store)
 	if err != nil {
@@ -396,10 +396,13 @@ func assertNoDeferredRows(t *testing.T, databasePath string) {
 
 func assertDeferredCounts(t *testing.T, databasePath string, journal, search, sparks, aliases, events, deferrals int) {
 	t.Helper()
-	for table, want := range map[string]int{"journal_entries": journal, "journal_search": search, "sparks": sparks, "events": events, "journal_deferrals": deferrals} {
+	for table, want := range map[string]int{"journal_entries": journal, "journal_search": search, "sparks": sparks, "journal_deferrals": deferrals} {
 		if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM `+table); got != want {
 			t.Fatalf("%s rows = %d, want %d", table, got, want)
 		}
+	}
+	if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM facts WHERE kind = 'spark.captured'`); got != events {
+		t.Fatalf("spark.captured facts = %d, want %d", got, events)
 	}
 	if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM aliases WHERE namespace = 'spark'`); got != aliases {
 		t.Fatalf("spark alias rows = %d, want %d", got, aliases)

@@ -74,6 +74,7 @@ var requiredInitialTables = []string{
 	"sync_project_cursors",
 	"project_conf_labels",
 	"project_attachment_evidence",
+	"fact_replay_discrepancies",
 	"schema_migrations",
 }
 
@@ -110,11 +111,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 23 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 23", len(migrations))
+	if len(migrations) != 24 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 24", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -177,7 +178,7 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if migrations[18].Name != "facts_and_journal_envelope" {
 		t.Fatalf("migration[18].Name = %q, want facts_and_journal_envelope", migrations[18].Name)
 	}
- 	if migrations[19].Name != "drop_document_layer" {
+	if migrations[19].Name != "drop_document_layer" {
 		t.Fatalf("migration[19].Name = %q, want drop_document_layer", migrations[19].Name)
 	}
 	if migrations[20].Name != "prune_fossil_relationship_edges" {
@@ -243,7 +244,7 @@ func TestOperationalTablesHaveStableIDsAndTimestamps(t *testing.T) {
 	}
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
-		if table == "schema_migrations" || table == "project_conf_labels" || table == "project_attachment_evidence" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" || table == "release_members" || table == "facts" || table == "fact_env_clocks" || table == "sync_outbound_queue" || table == "sync_project_cursors" {
+		if table == "schema_migrations" || table == "project_conf_labels" || table == "project_attachment_evidence" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" || table == "release_members" || table == "facts" || table == "fact_env_clocks" || table == "sync_outbound_queue" || table == "sync_project_cursors" || table == "fact_replay_discrepancies" {
 			continue
 		}
 		body := tableBody(t, sql, table)
@@ -443,7 +444,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if normalizeMigrationSQL(sqlDoc) != normalizeMigrationSQL(factsAndJournalEnvelopeSQL) {
 		t.Fatal("docs/schema/0020_facts_and_journal_envelope.sql must match embedded migration 0020 exactly")
 	}
- 	sqlDoc = readRepoFile(t, "docs", "schema", "0021_drop_document_layer.sql")
+	sqlDoc = readRepoFile(t, "docs", "schema", "0021_drop_document_layer.sql")
 	if sqlDoc != SchemaMigrations()[19].SQL {
 		t.Fatal("docs/schema/0021_drop_document_layer.sql must match embedded migration 0021 exactly")
 	}
@@ -458,6 +459,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	sqlDoc = readRepoFile(t, "docs", "schema", "0024_project_attachment.sql")
 	if sqlDoc != SchemaMigrations()[22].SQL {
 		t.Fatal("docs/schema/0024_project_attachment.sql must match embedded migration 0024 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0025_mutable_core_event_facts.sql")
+	if sqlDoc != SchemaMigrations()[23].SQL {
+		t.Fatal("docs/schema/0025_mutable_core_event_facts.sql must match embedded migration 0025 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
@@ -514,6 +519,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ exploration_conversations : scopes",
 		"projects ||--o{ explorations : scopes",
 		"projects ||--o{ exports : scopes",
+		"projects ||--o{ fact_replay_discrepancies : scopes",
 		"projects ||--o{ handoffs : scopes",
 		"projects ||--o{ hook_events : scopes",
 		"projects ||--o{ ideas : scopes",
@@ -696,7 +702,6 @@ SELECT path, id FROM docs_search WHERE docs_search MATCH 'needle'
 	}
 }
 
-
 func effectiveTableNames(sql string) []string {
 	tables := map[string]bool{}
 	createRe := regexp.MustCompile(`(?im)^CREATE TABLE IF NOT EXISTS ([a-z_]+) \(`)
@@ -725,7 +730,6 @@ func tableNames(sql string) []string {
 	sort.Strings(names)
 	return names
 }
-
 
 func effectiveSchemaSQL() string {
 	sql := currentSchemaSQL()
@@ -864,4 +868,3 @@ func mermaidRelationships(t *testing.T, doc string) []string {
 	sort.Strings(relationships)
 	return relationships
 }
-

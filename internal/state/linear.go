@@ -347,7 +347,7 @@ WHERE id = ?
 `, mapping.EntityKind, mapping.EntityID, emptyToNil(mapping.ExternalURL), mapping.SyncStatus, now, existingID); err != nil {
 				return fmt.Errorf("update backend mapping: %w", err)
 			}
-			return nil
+			return appendBackendMappingFactTx(ctx, tx, projectID, existingID, mapping, now)
 		case err != sql.ErrNoRows:
 			return fmt.Errorf("lookup backend mapping: %w", err)
 		}
@@ -362,7 +362,24 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, id, projectID, linearBackend, mapping.EntityKind, mapping.EntityID, mapping.ExternalKind, mapping.ExternalID, emptyToNil(mapping.ExternalURL), mapping.SyncStatus, now, now); err != nil {
 		return fmt.Errorf("insert backend mapping: %w", err)
 	}
-	return nil
+	return appendBackendMappingFactTx(ctx, tx, projectID, id, mapping, now)
+}
+
+func appendBackendMappingFactTx(ctx context.Context, tx *sql.Tx, projectID, mappingID string, mapping backendMapping, now string) error {
+	_, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindRefRegistered, "", CoreEventPayload{
+		SubjectKind:  "ref",
+		SubjectID:    mappingID,
+		Backend:      linearBackend,
+		EntityKind:   mapping.EntityKind,
+		EntityID:     mapping.EntityID,
+		ExternalKind: mapping.ExternalKind,
+		ExternalID:   mapping.ExternalID,
+		ExternalURL:  mapping.ExternalURL,
+		SyncStatus:   mapping.SyncStatus,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}, parseCoreEventTime(now), "")
+	return err
 }
 
 func lookupLinearIssueMappingTx(ctx context.Context, tx *sql.Tx, projectID, entityID, externalID string) (backendMapping, error) {
