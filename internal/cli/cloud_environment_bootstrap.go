@@ -13,18 +13,18 @@ import (
 // Harness surfaces ride `loaf install` under LOAF_PROJECT_ENV=1 (project-local
 // .cursor/, .amp/, .agents/skills/), not user-level ~/.cursor or hooks.json.
 //
-// LOAF-67 attach credential (not wired until attach ceremony ships):
+// LOAF-67 attach client token (not wired until attach ceremony ships):
 //   - Mint locally: loaf auth link --project
-//   - Cursor Cloud Agent: add project environment secret LOAF_CLIENT_TOKEN
-//     (project-scoped client credential; never the operator master key)
-//   - Amp Orb: add project secret LOAF_CLIENT_TOKEN via amp secrets / dashboard
+//   - Cursor Cloud Agent: add project environment var LOAF_CLIENT_TOKEN
+//     (project-scoped client token; never the operator master key)
+//   - Amp Orb: add project env LOAF_CLIENT_TOKEN via amp project configuration
 //   - Optional sync endpoint (when configured): LOAF_SYNC_URL
 //
 // Attach pre-warm in the start script is intentionally deferred until LOAF-67
 // lands; the issue body treats start-script attach as optional pre-warm only.
 const (
-	// projectEnvironmentClientTokenEnv is the provisional per-project secret name
-	// for the LOAF-67 client credential in Cursor Cloud and Amp Orb environments.
+	// projectEnvironmentClientTokenEnv is the provisional per-project env var name
+	// for the LOAF-67 client token in Cursor Cloud and Amp Orb environments.
 	projectEnvironmentClientTokenEnv = "LOAF_CLIENT_TOKEN"
 	// projectEnvironmentSyncURLEnv is optional when a project sync endpoint is configured.
 	projectEnvironmentSyncURLEnv = "LOAF_SYNC_URL"

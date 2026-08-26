@@ -2,7 +2,7 @@ package cli
 
 // LOAF_PROJECT_ENV routes harness install to project-local config dirs on
 // ephemeral cloud hosts. See cloud_environment_bootstrap.go for bootstrap scripts
-// and LOAF-67 credential secret names.
+// and LOAF-67 client-token env names.
 
 import (
 	"os"
