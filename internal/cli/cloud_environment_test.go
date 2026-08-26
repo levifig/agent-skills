@@ -58,6 +58,9 @@ func TestCloudEnvironmentBootstrapInstallUsesProjectEnvironmentInstall(t *testin
 	if err != nil {
 		t.Fatalf("readCloudBootstrapFile(%q) error = %v", cursorCloudStartScript, err)
 	}
+	if !strings.Contains(start, projectEnvironmentEnv+"=1") {
+		t.Fatalf("%s missing %s=1 (Cursor sessions do not inherit install exports)", cursorCloudStartScript, projectEnvironmentEnv)
+	}
 	if strings.Contains(stripShellComments(start), "loaf install") {
 		t.Fatalf("%s must not run loaf install (belongs in install phase)", cursorCloudStartScript)
 	}
@@ -171,6 +174,27 @@ func TestIsLoafInstalledForTargetInstallUsesLayoutHome(t *testing.T) {
 func TestCloudEnvironmentBootstrapDocumentsClientTokenSecret(t *testing.T) {
 	if projectEnvironmentClientTokenEnv != "LOAF_CLIENT_TOKEN" {
 		t.Fatalf("client token env = %q", projectEnvironmentClientTokenEnv)
+	}
+	if projectEnvironmentEnv != "LOAF_PROJECT_ENV" {
+		t.Fatalf("project env = %q", projectEnvironmentEnv)
+	}
+	body, err := os.ReadFile("cloud_environment_bootstrap.go")
+	if err != nil {
+		// package-relative; tests run with package dir as cwd for source reads via loafRepositoryRoot
+		root, rootErr := loafRepositoryRoot()
+		if rootErr != nil {
+			t.Fatalf("loafRepositoryRoot() error = %v", rootErr)
+		}
+		body, err = os.ReadFile(filepath.Join(root, "internal", "cli", "cloud_environment_bootstrap.go"))
+	}
+	if err != nil {
+		t.Fatalf("read bootstrap docs error = %v", err)
+	}
+	docs := string(body)
+	for _, want := range []string{projectEnvironmentEnv, projectEnvironmentClientTokenEnv, projectEnvironmentSyncURLEnv} {
+		if !strings.Contains(docs, want) {
+			t.Fatalf("bootstrap docs missing %q", want)
+		}
 	}
 }
 

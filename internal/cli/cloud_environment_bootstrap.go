@@ -13,11 +13,20 @@ import (
 // Harness surfaces ride `loaf install` under LOAF_PROJECT_ENV=1 (project-local
 // .cursor/, .amp/, .agents/skills/), not user-level ~/.cursor or hooks.json.
 //
+// Project-environment layout (LOAF_PROJECT_ENV):
+//   - Must be exported in every cloud session entry that runs loaf after
+//     bootstrap (Cursor start script; Amp setup/resume). Cursor Cloud does not
+//     carry install-time shell exports into agent sessions.
+//   - Optional durable project env var with the same name keeps layout without
+//     relying on start/resume scripts alone.
+//
 // LOAF-67 attach client token (not wired until attach ceremony ships):
 //   - Mint locally: loaf auth link --project
-//   - Cursor Cloud Agent: add project environment var LOAF_CLIENT_TOKEN
-//     (project-scoped client token; never the operator master key)
-//   - Amp Orb: add project env LOAF_CLIENT_TOKEN via amp project configuration
+//   - Cursor Cloud Agent: add project environment vars LOAF_CLIENT_TOKEN and
+//     preferably LOAF_PROJECT_ENV=1 (project-scoped client token; never the
+//     operator master key)
+//   - Amp Orb: add project env LOAF_CLIENT_TOKEN (and LOAF_PROJECT_ENV=1) via
+//     amp project configuration
 //   - Optional sync endpoint (when configured): LOAF_SYNC_URL
 //
 // Cursor Cloud harness install runs in the install/build script so hooks and
@@ -53,6 +62,7 @@ var requiredCloudBootstrapMarkers = map[string][]string{
 		"loaf install --to cursor",
 	},
 	cursorCloudStartScript: {
+		projectEnvironmentEnv + "=1",
 		"LOAF-67",
 	},
 	ampOrbSetupScript: {
