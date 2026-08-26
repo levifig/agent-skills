@@ -354,13 +354,22 @@ VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
 		return SparkCaptureResult{}, err
 	}
 
-	eventID := stableMigrationID("event", projectID, "spark", sparkID, "created", "open")
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, 'spark', ?, 'status_changed', NULL, 'open', 'recorded by spark capture', ?, ?)
-`, eventID, projectID, sparkID, now, now); err != nil {
-		return SparkCaptureResult{}, fmt.Errorf("record spark capture event: %w", err)
+	capturedAt := parseCoreEventTime(now)
+	envelope, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindSparkCaptured, "", CoreEventPayload{
+		SubjectKind: "spark",
+		SubjectID:   sparkID,
+		Alias:       alias,
+		Status:      "open",
+		Text:        text,
+		Scope:       scope,
+		Note:        "recorded by spark capture",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, capturedAt, "")
+	if err != nil {
+		return SparkCaptureResult{}, fmt.Errorf("record spark capture fact: %w", err)
 	}
+	eventID := envelope.ID
 
 	if err := tx.Commit(); err != nil {
 		return SparkCaptureResult{}, fmt.Errorf("commit spark capture transaction: %w", err)
@@ -481,15 +490,24 @@ ON CONFLICT(id) DO UPDATE SET
 
 	eventID := ""
 	if !LifecycleStatusMatches(LifecycleEntitySpark, previousStatus, LifecycleStatusDone) {
-		eventID = stableMigrationID("event", projectID, "spark", spark.ID, "status", previousStatus, LifecycleStatusDone)
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO NOTHING
-`, eventID, projectID, "spark", spark.ID, "status_changed", previousStatus, LifecycleStatusDone, reason, now, now)
+		envelope, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindSparkArchived, "", CoreEventPayload{
+			SubjectKind: "spark",
+			SubjectID:   spark.ID,
+			Alias:       spark.Alias,
+			Status:      LifecycleStatusDone,
+			Text:        spark.Title,
+			FromStatus:  previousStatus,
+			ToStatus:    LifecycleStatusDone,
+			RelatedKind: target.Kind,
+			RelatedID:   target.ID,
+			Note:        reason,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}, parseCoreEventTime(now), "")
 		if err != nil {
-			return SparkResolveResult{}, fmt.Errorf("record spark resolution event: %w", err)
+			return SparkResolveResult{}, fmt.Errorf("record spark resolution fact: %w", err)
 		}
+		eventID = envelope.ID
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -549,7 +567,12 @@ func (s *Store) PromoteSpark(ctx context.Context, root project.Root, options Spa
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	relationshipID := stableMigrationID("relationship", projectID, "spark", spark.ID, "promoted_to", "idea", idea.ID)
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SparkPromoteResult{}, fmt.Errorf("begin spark promote transaction: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
@@ -559,6 +582,23 @@ ON CONFLICT(id) DO UPDATE SET
 `, relationshipID, projectID, "spark", spark.ID, "idea", idea.ID, "promoted_to", "recorded by spark promote", now, now)
 	if err != nil {
 		return SparkPromoteResult{}, fmt.Errorf("record spark promotion relationship: %w", err)
+	}
+	if _, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindSparkPromoted, "", CoreEventPayload{
+		SubjectKind: "spark",
+		SubjectID:   spark.ID,
+		Alias:       spark.Alias,
+		Status:      spark.Status,
+		Text:        spark.Title,
+		RelatedKind: "idea",
+		RelatedID:   idea.ID,
+		Note:        "recorded by spark promote",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, parseCoreEventTime(now), ""); err != nil {
+		return SparkPromoteResult{}, fmt.Errorf("record spark promotion fact: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return SparkPromoteResult{}, fmt.Errorf("commit spark promote transaction: %w", err)
 	}
 
 	return SparkPromoteResult{

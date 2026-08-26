@@ -43,6 +43,7 @@ var projectScopedDeleteTables = []string{
 	"journal_origins",
 	"facts",
 	"fact_env_clocks",
+	"fact_replay_discrepancies",
 	"journal_entries",
 	"handoffs",
 	"plans",

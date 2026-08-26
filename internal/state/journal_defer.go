@@ -211,11 +211,17 @@ VALUES (?, ?, ?, 'open', ?, NULL, ?, ?)
 	if err := insertAlias(ctx, tx, projectID, "spark", sparkID, "spark", alias, now); err != nil {
 		return JournalDeferResult{}, &JournalDeferTransactionError{Stage: "alias", Err: err}
 	}
-	eventID := stableMigrationID("event", projectID, "spark", sparkID, "created", "open")
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, 'spark', ?, 'status_changed', NULL, 'open', 'recorded by journal defer', ?, ?)
-`, eventID, projectID, sparkID, now, now); err != nil {
+	if _, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindSparkCaptured, "", CoreEventPayload{
+		SubjectKind: "spark",
+		SubjectID:   sparkID,
+		Alias:       alias,
+		Status:      "open",
+		Text:        sparkText,
+		Scope:       scope,
+		Note:        "recorded by journal defer",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, nowTime, ""); err != nil {
 		return JournalDeferResult{}, &JournalDeferTransactionError{Stage: "event", Err: err}
 	}
 	if err := runJournalDeferHook(hooks, "after alias/event", func(h *journalDeferHooks) func(*sql.Tx) error { return h.afterAliasEvent }, tx); err != nil {
@@ -421,11 +427,17 @@ VALUES (?, ?, ?, 'open', ?, NULL, ?, ?)
 	if err := insertAlias(ctx, tx, projectID, "spark", sparkID, "spark", alias, now); err != nil {
 		return JournalDeferResult{}, &JournalDeferTransactionError{Stage: "alias", Err: err}
 	}
-	eventID := stableMigrationID("event", projectID, "spark", sparkID, "created", "open")
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, 'spark', ?, 'status_changed', NULL, 'open', 'recorded by journal defer', ?, ?)
-`, eventID, projectID, sparkID, now, now); err != nil {
+	if _, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindSparkCaptured, "", CoreEventPayload{
+		SubjectKind: "spark",
+		SubjectID:   sparkID,
+		Alias:       alias,
+		Status:      "open",
+		Text:        sparkText,
+		Scope:       scope,
+		Note:        "recorded by journal defer",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, nowTime, ""); err != nil {
 		return JournalDeferResult{}, &JournalDeferTransactionError{Stage: "event", Err: err}
 	}
 	if err := runJournalDeferHook(hooks, "after alias/event", func(h *journalDeferHooks) func(*sql.Tx) error { return h.afterAliasEvent }, tx); err != nil {

@@ -188,12 +188,33 @@ VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
 	if err := insertAlias(ctx, tx, projectID, kind, id, kind, alias, timestamp); err != nil {
 		return ArtifactEntityCreateResult{}, err
 	}
-	eventID := stableMigrationID("event", projectID, kind, id, "created", LifecycleStatusDraft)
-	if _, err := tx.ExecContext(ctx, `
+	eventID := ""
+	if kind == "handoff" {
+		envelope, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindHandoffRecorded, "", CoreEventPayload{
+			SubjectKind:      "handoff",
+			SubjectID:        id,
+			Alias:            alias,
+			Title:            title,
+			Status:           LifecycleStatusDraft,
+			Body:             options.Body,
+			HarnessSessionID: harnessSessionID,
+			TaskID:           taskID,
+			Note:             "recorded by handoff new",
+			CreatedAt:        timestamp,
+			UpdatedAt:        timestamp,
+		}, now, "")
+		if err != nil {
+			return ArtifactEntityCreateResult{}, fmt.Errorf("record handoff fact: %w", err)
+		}
+		eventID = envelope.ID
+	} else {
+		eventID = stableMigrationID("event", projectID, kind, id, "created", LifecycleStatusDraft)
+		if _, err := tx.ExecContext(ctx, `
 INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
 VALUES (?, ?, ?, ?, 'status_changed', NULL, ?, ?, ?, ?)
 `, eventID, projectID, kind, id, LifecycleStatusDraft, "recorded by "+kind+" new", timestamp, timestamp); err != nil {
-		return ArtifactEntityCreateResult{}, fmt.Errorf("record %s create event: %w", kind, err)
+			return ArtifactEntityCreateResult{}, fmt.Errorf("record %s create event: %w", kind, err)
+		}
 	}
 	if _, err := upsertArtifactBodyTx(ctx, tx, projectID, kind, id, ArtifactBodyKindMarkdown, options.Body, nil, timestamp); err != nil {
 		return ArtifactEntityCreateResult{}, err
