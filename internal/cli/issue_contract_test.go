@@ -171,11 +171,11 @@ func TestRunnerIssueStartContractRollbackPreservesPreExistingBranch(t *testing.T
 	gitCLI(t, repo, "branch", branch)
 	ref := seedBranchWorkContract(t, repo, stateHome, branch, "")
 
-	prev := updateWorkContractForStartFn
-	updateWorkContractForStartFn = func(ctx context.Context, root project.Root, resolver state.PathResolver, options state.WorkContractUpdateOptions) (state.WorkContract, error) {
+	prev := updateWorkContractFn
+	updateWorkContractFn = func(ctx context.Context, root project.Root, resolver state.PathResolver, options state.WorkContractUpdateOptions) (state.WorkContract, error) {
 		return state.WorkContract{}, errors.New("simulated persistence failure")
 	}
-	t.Cleanup(func() { updateWorkContractForStartFn = prev })
+	t.Cleanup(func() { updateWorkContractFn = prev })
 
 	_, err := runIssue(t, repo, stateHome, "start", ref)
 	if err == nil {
@@ -307,6 +307,43 @@ type failingReadinessPublisher struct {
 
 func (f failingReadinessPublisher) Publish(context.Context, ReadinessPublication) error {
 	return f.err
+}
+
+func TestRunnerIssueContractStopReportsRestoreFailure(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	branch := "issue/stop-restore"
+	ref := seedBranchWorkContract(t, repo, stateHome, branch, "")
+
+	out, err := runIssue(t, repo, stateHome, "start", ref, "--json")
+	if err != nil {
+		t.Fatalf("issue start error = %v\n%s", err, out)
+	}
+
+	origRemove := removeIssueWorktreeFn
+	removeIssueWorktreeFn = func(repoRoot, worktree string, force bool) (bool, error) {
+		return false, errors.New("injected worktree remove failure")
+	}
+	t.Cleanup(func() { removeIssueWorktreeFn = origRemove })
+
+	calls := 0
+	prevUpdate := updateWorkContractFn
+	updateWorkContractFn = func(ctx context.Context, root project.Root, resolver state.PathResolver, options state.WorkContractUpdateOptions) (state.WorkContract, error) {
+		calls++
+		if calls == 1 {
+			return prevUpdate(ctx, root, resolver, options)
+		}
+		return state.WorkContract{}, errors.New("injected restore failure")
+	}
+	t.Cleanup(func() { updateWorkContractFn = prevUpdate })
+
+	_, err = runIssue(t, repo, stateHome, "stop", ref)
+	if err == nil {
+		t.Fatal("stop error = nil, want remove+restore failure")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "injected worktree remove failure") || !strings.Contains(msg, "also failed to restore started fields") || !strings.Contains(msg, "injected restore failure") {
+		t.Fatalf("stop error = %v, want remove failure wrapped with restore failure", err)
+	}
 }
 
 func TestRunnerIssueContractVerifyEmitsAdvisoryWarnings(t *testing.T) {
