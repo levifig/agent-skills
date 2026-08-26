@@ -9,6 +9,21 @@ import (
 	"testing"
 )
 
+func documentLayerMigrationPre() ([]SchemaMigration, int) {
+	migrations := SchemaMigrations()
+	dropIdx := -1
+	for i, migration := range migrations {
+		if migration.Name == "drop_document_layer" {
+			dropIdx = i
+			break
+		}
+	}
+	if dropIdx < 0 {
+		panic("drop_document_layer migration missing")
+	}
+	return migrations[:dropIdx], dropIdx
+}
+
 func TestDocumentLayerMigrationExportsThenDropsTables(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)
@@ -21,9 +36,9 @@ func TestDocumentLayerMigrationExportsThenDropsTables(t *testing.T) {
 	db.SetMaxOpenConns(1)
 
 	migrations := SchemaMigrations()
-	pre := migrations[:len(migrations)-1]
-	if pre[len(pre)-1].Version != 20 || migrations[len(migrations)-1].Version != 21 {
-		t.Fatalf("unexpected migration tail: last pre=%d final=%d", pre[len(pre)-1].Version, migrations[len(migrations)-1].Version)
+	pre, dropIdx := documentLayerMigrationPre()
+	if pre[len(pre)-1].Version != 20 || migrations[dropIdx].Version != 21 {
+		t.Fatalf("unexpected migration tail: last pre=%d drop=%d", pre[len(pre)-1].Version, migrations[dropIdx].Version)
 	}
 	if err := ApplyMigrations(ctx, db, pre); err != nil {
 		t.Fatalf("ApplyMigrations(pre-0021) error = %v", err)
@@ -80,7 +95,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		}
 	}
 
-	if err := ApplyMigrations(ctx, db, migrations); err != nil {
+	if err := ApplyMigrations(ctx, db, migrations[dropIdx:dropIdx+1]); err != nil {
 		t.Fatalf("ApplyMigrations(0021) error = %v", err)
 	}
 	if err := validateGoneTablesAbsent(ctx, db); err != nil {
@@ -114,7 +129,7 @@ func TestDocumentLayerMigrationRefusesMissingProjectPath(t *testing.T) {
 	db.SetMaxOpenConns(1)
 
 	migrations := SchemaMigrations()
-	pre := migrations[:len(migrations)-1]
+	pre, dropIdx := documentLayerMigrationPre()
 	if err := ApplyMigrations(ctx, db, pre); err != nil {
 		t.Fatalf("ApplyMigrations(pre-0021) error = %v", err)
 	}
@@ -132,7 +147,7 @@ VALUES (?, ?, 'audit', 'Orphan Report', 'draft', NULL, ?, ?)
 `, "report:orphan", projectID, now, now); err != nil {
 		t.Fatalf("insert report: %v", err)
 	}
-	err = ApplyMigrations(ctx, db, migrations)
+	err = ApplyMigrations(ctx, db, migrations[dropIdx:dropIdx+1])
 	if err == nil {
 		t.Fatal("ApplyMigrations(0021) error = nil, want missing-path refusal")
 	}
@@ -153,7 +168,7 @@ func TestDocumentLayerMigrationRefusesExistingDest(t *testing.T) {
 	db.SetMaxOpenConns(1)
 
 	migrations := SchemaMigrations()
-	pre := migrations[:len(migrations)-1]
+	pre, dropIdx := documentLayerMigrationPre()
 	if err := ApplyMigrations(ctx, db, pre); err != nil {
 		t.Fatalf("ApplyMigrations(pre-0021) error = %v", err)
 	}
@@ -190,7 +205,7 @@ VALUES (?, ?, 'report', ?, 'report', 'conflict-report', ?, ?)
 	if err := os.WriteFile(filepath.Join(dest, "conflict-report.md"), []byte("existing\n"), 0o600); err != nil {
 		t.Fatalf("seed existing file: %v", err)
 	}
-	err = ApplyMigrations(ctx, db, migrations)
+	err = ApplyMigrations(ctx, db, migrations[dropIdx:dropIdx+1])
 	if err == nil {
 		t.Fatal("ApplyMigrations(0021) error = nil, want existing-dest refusal")
 	}

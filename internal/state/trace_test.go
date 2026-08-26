@@ -130,7 +130,6 @@ status: accepted
 	assertTraceRelationship(t, ideaTrace.Relationships, "inbound", "promoted_to", "spark", "SPARK-sqlite-state")
 	assertTraceRelationship(t, ideaTrace.Relationships, "outbound", "resolved_by", "spec", "SPEC-001")
 	assertTraceRelationship(t, ideaTrace.Relationships, "outbound", "resolved_by", "task", "TASK-001")
-	assertTraceRelationship(t, ideaTrace.Relationships, "outbound", "exported_as", "report", "export")
 
 	assertFileContent(t, filepath.Join(root.Path(), ".agents", "ideas", "20260528-sqlite-state.md"), ideaBody)
 	assertFileContent(t, filepath.Join(root.Path(), ".agents", "sessions", "20260528-lineage.md"), sessionBody)
@@ -209,7 +208,6 @@ status: complete
 		t.Fatalf("Trace(20260528-runtime) error = %v", err)
 	}
 	assertTraceRelationship(t, ideaTrace.Relationships, "inbound", "promoted_to", "brainstorm", "20260528-brainstorm-runtime")
-	assertTraceRelationship(t, ideaTrace.Relationships, "outbound", "promoted_to", "shaping_draft", "20260528-runtime-draft")
 
 	shapingTrace, err := store.Trace(context.Background(), root, "20260528-runtime-draft")
 	if err != nil {
@@ -226,7 +224,6 @@ status: complete
 	if err != nil {
 		t.Fatalf("Trace(SPEC-002) error = %v", err)
 	}
-	assertTraceRelationship(t, specTrace.Relationships, "inbound", "promoted_to", "shaping_draft", "20260528-runtime-draft")
 	assertTraceRelationship(t, specTrace.Relationships, "inbound", "implements", "task", "TASK-002")
 
 	assertFileContent(t, filepath.Join(root.Path(), ".agents", "drafts", "20260528-brainstorm-runtime.md"), brainstormBody)

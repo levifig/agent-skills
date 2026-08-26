@@ -106,11 +106,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 20 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 20", len(migrations))
+	if len(migrations) != 21 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 21", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -173,8 +173,11 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if migrations[18].Name != "facts_and_journal_envelope" {
 		t.Fatalf("migration[18].Name = %q, want facts_and_journal_envelope", migrations[18].Name)
 	}
-	if migrations[19].Name != "drop_document_layer" {
+ 	if migrations[19].Name != "drop_document_layer" {
 		t.Fatalf("migration[19].Name = %q, want drop_document_layer", migrations[19].Name)
+	}
+	if migrations[20].Name != "prune_fossil_relationship_edges" {
+		t.Fatalf("migration[20].Name = %q, want prune_fossil_relationship_edges", migrations[20].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -430,9 +433,13 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if normalizeMigrationSQL(sqlDoc) != normalizeMigrationSQL(factsAndJournalEnvelopeSQL) {
 		t.Fatal("docs/schema/0020_facts_and_journal_envelope.sql must match embedded migration 0020 exactly")
 	}
-	sqlDoc = readRepoFile(t, "docs", "schema", "0021_drop_document_layer.sql")
+ 	sqlDoc = readRepoFile(t, "docs", "schema", "0021_drop_document_layer.sql")
 	if sqlDoc != SchemaMigrations()[19].SQL {
 		t.Fatal("docs/schema/0021_drop_document_layer.sql must match embedded migration 0021 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0022_prune_fossil_relationship_edges.sql")
+	if sqlDoc != SchemaMigrations()[20].SQL {
+		t.Fatal("docs/schema/0022_prune_fossil_relationship_edges.sql must match embedded migration 0022 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
