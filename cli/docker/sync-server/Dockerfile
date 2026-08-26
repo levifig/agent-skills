@@ -7,7 +7,7 @@ RUN CGO_ENABLED=0 go build -o /out/loaf ./cmd/loaf
 
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /out/loaf /usr/local/bin/loaf
-EXPOSE 8443
+EXPOSE 8080
 VOLUME ["/data"]
 ENV LOAF_SYNC_DB=/data/sync.sqlite
-ENTRYPOINT ["/usr/local/bin/loaf", "serve", "--listen", ":8443", "--db", "/data/sync.sqlite"]
+ENTRYPOINT ["/usr/local/bin/loaf", "serve", "--listen", ":8080", "--db", "/data/sync.sqlite"]

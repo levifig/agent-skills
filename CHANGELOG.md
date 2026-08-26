@@ -8,9 +8,13 @@ is a Loaf workflow staging section for curated entries before release.
 
 ### Changed
 
+- **Breaking:** The distroless sync-server image now binds HTTP `:8080` instead of `:8443`. Terminate TLS at a reverse proxy, or pass `--tls-cert` and `--tls-key` to `loaf serve`.
 - `loaf issue start` walks to the shippable root of the issue tree. Only that root gets `issue/<root-alias>` and a worktree; starting a child creates or joins the root workspace and marks the child active. `loaf issue stop` on a child that does not own a worktree names the root (LOAF-50).
 
 ### Fixed
+
+- Sync-server admin `DELETE` of facts is scoped to projects the authenticating account has minted a connection token for, so a second tenant cannot delete another tenant's blobs.
+- `loaf serve` refuses ports `443` and `8443` unless `--tls-cert` and `--tls-key` are set, so `LoafToken` / `LoafAdmin` credentials are not sent on a TLS-looking cleartext port.
 
 - Development builds stage native targets before replacing `bin/native` and `bin/.loaf-dev-commit`, so a later target failure cannot leave a new binary reporting a previous commit. Activation updates a Loaf-owned launcher pointer and creates `~/.local/bin/loaf` only when that name is absent; existing operator-owned paths are never replaced, and activation failures no longer fail a successful native build. Release tags that are not strict SemVer fail resolve instead of being skipped as dev identities.
 - `loaf issue start` on a child refuses if the root workspace is missing or the root is already `done` / archived, instead of joining a stale or closed workspace.
