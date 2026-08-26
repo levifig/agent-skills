@@ -31,6 +31,7 @@ INSERT INTO journal_entries (
 	if err := insertJournalSearchStore(context.Background(), store, projectID, id, entryType, scope, message); err != nil {
 		t.Fatalf("seed journal search row: %v", err)
 	}
+	mustBackfillJournalFactForTest(t, store, projectID, id)
 	return id
 }
 

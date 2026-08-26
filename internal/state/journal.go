@@ -127,7 +127,10 @@ func (s *Store) logJournalWithHooks(ctx context.Context, root project.Root, opti
 	if err != nil {
 		return JournalLogResult{}, err
 	}
-	id := stableMigrationID("journal", projectID, now, entryType, scope, message)
+	id, err := mintFactID(time.Now().UTC())
+	if err != nil {
+		return JournalLogResult{}, err
+	}
 	// SQLite maps serializable transactions to BEGIN IMMEDIATE. Taking the write
 	// lock before inspecting the latest exact key outcome makes validation and
 	// insertion one atomic operation across independent stores and processes.
@@ -148,24 +151,25 @@ func (s *Store) logJournalWithHooks(ctx context.Context, root project.Root, opti
 			return JournalLogResult{}, err
 		}
 	}
-	_, err = tx.ExecContext(ctx, `
-INSERT INTO journal_entries (
-  id,
-  project_id,
-  entry_type,
-  scope,
-  message,
-  observed_branch,
-  observed_worktree,
-  harness_session_id,
-  spec_id,
-  task_id,
-  created_at,
-  updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-`, id, projectID, entryType, emptyToNil(scope), message, emptyToNil(options.ObservedBranch), emptyToNil(options.ObservedWorktree), emptyToNil(options.HarnessSessionID), now, now)
+	journalPayload := JournalFactPayload{
+		EntryType:        entryType,
+		Scope:            scope,
+		Message:          message,
+		ObservedBranch:   options.ObservedBranch,
+		ObservedWorktree: options.ObservedWorktree,
+		HarnessSessionID: options.HarnessSessionID,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, now)
 	if err != nil {
-		return JournalLogResult{}, fmt.Errorf("insert journal entry: %w", err)
+		return JournalLogResult{}, fmt.Errorf("parse journal timestamp: %w", err)
+	}
+	if _, err := appendJournalFactTx(ctx, tx, projectID, id, journalPayload, createdAt); err != nil {
+		return JournalLogResult{}, err
+	}
+	if err := insertJournalProjectionTx(ctx, tx, projectID, id, journalPayload); err != nil {
+		return JournalLogResult{}, err
 	}
 	if err := runJournalLogHook(hooks, func(h *journalLogHooks) func(*sql.Tx) error { return h.afterCanonical }, tx); err != nil {
 		return JournalLogResult{}, err
@@ -301,9 +305,14 @@ func parseJournalEntry(entry string) (string, string, string, error) {
 	return matches[1], strings.TrimSpace(matches[2]), strings.TrimSpace(matches[3]), nil
 }
 
-func insertJournalSearchTx(ctx context.Context, tx *sql.Tx, projectID string, journalEntryID string, harnessSessionID string, entryType string, scope string, message string) error {
+type journalWriteExecer interface {
+	queryContext
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertJournalSearchTx(ctx context.Context, execer journalWriteExecer, projectID string, journalEntryID string, harnessSessionID string, entryType string, scope string, message string) error {
 	var rowID int64
-	if err := tx.QueryRowContext(ctx, `
+	if err := execer.QueryRowContext(ctx, `
 SELECT rowid FROM journal_entries
 WHERE project_id = ? AND id = ?
 `, projectID, journalEntryID).Scan(&rowID); err != nil {
@@ -312,7 +321,7 @@ WHERE project_id = ? AND id = ?
 	// The FTS correlation column is harness_session_id on the current schema and
 	// session_id on the pre-migration schema. Match the live table so the write
 	// works on both shapes.
-	correlationColumn, err := journalSearchCorrelationColumn(ctx, tx)
+	correlationColumn, err := journalSearchCorrelationColumn(ctx, execer)
 	if err != nil {
 		return err
 	}
@@ -320,7 +329,7 @@ WHERE project_id = ? AND id = ?
 INSERT INTO journal_search(rowid, project_id, journal_entry_id, %s, entry_type, scope, message)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 `, correlationColumn)
-	if _, err := tx.ExecContext(ctx, query, rowID, projectID, journalEntryID, firstNonEmpty(harnessSessionID, ""), entryType, firstNonEmpty(scope, ""), message); err != nil {
+	if _, err := execer.ExecContext(ctx, query, rowID, projectID, journalEntryID, firstNonEmpty(harnessSessionID, ""), entryType, firstNonEmpty(scope, ""), message); err != nil {
 		return fmt.Errorf("insert journal search row %s: %w", journalEntryID, err)
 	}
 	return nil

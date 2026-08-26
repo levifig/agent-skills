@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,51 @@ import (
 // harness_session_id, entry_type='session' lifecycle noise, entry_type='wrap'
 // synthesis, events/aliases with entity_kind='session', and a handoff carrying
 // a session_id. It returns the project id.
+
+func initializePreFactsState(t *testing.T, ctx context.Context, root project.Root, resolver PathResolver) (Status, error) {
+	t.Helper()
+	databasePath, err := resolver.DatabasePath(root)
+	if err != nil {
+		return Status{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o700); err != nil {
+		return Status{}, fmt.Errorf("create state database directory: %w", err)
+	}
+	store, err := OpenStore(databasePath)
+	if err != nil {
+		return Status{}, err
+	}
+	if err := ApplyMigrations(ctx, store.db, SchemaMigrations()[:16]); err != nil {
+		store.Close()
+		return Status{}, err
+	}
+	if err := store.UpsertProject(ctx, root); err != nil {
+		store.Close()
+		return Status{}, err
+	}
+	identity, err := store.LookupProjectIdentityForRoot(ctx, root)
+	if err != nil {
+		store.Close()
+		return Status{}, err
+	}
+	if err := store.Close(); err != nil {
+		return Status{}, err
+	}
+	return Status{
+		ContractVersion:      StateJSONContractVersion,
+		DatabaseScope:        "global",
+		ProjectRoot:          root.Path(),
+		LegacyProjectKey:     ProjectID(root),
+		DatabasePath:         databasePath,
+		DatabaseExists:       true,
+		DatabaseParentExists: true,
+		ProjectID:            identity.ID,
+		ProjectName:          identity.FriendlyName,
+		ProjectCurrentPath:   identity.CurrentPath,
+		SchemaVersion:        17,
+	}, nil
+}
+
 func seedJournalFirstFixture(t *testing.T, databasePath string, projectID string) {
 	t.Helper()
 	store, err := OpenStore(databasePath)
@@ -103,7 +149,7 @@ func TestPreviewJournalFirstMigrationUsesCopyRun(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)
 	stateHome := t.TempDir()
-	status, err := Initialize(ctx, root, PathResolver{StateHome: stateHome})
+	status, err := initializePreFactsState(t, ctx, root, PathResolver{StateHome: stateHome})
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -154,7 +200,7 @@ func TestApplyJournalFirstMigrationTransformsLiveDatabase(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)
 	stateHome := t.TempDir()
-	status, err := Initialize(ctx, root, PathResolver{StateHome: stateHome})
+	status, err := initializePreFactsState(t, ctx, root, PathResolver{StateHome: stateHome})
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -273,7 +319,7 @@ func TestApplyJournalFirstMigrationIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)
 	stateHome := t.TempDir()
-	status, err := Initialize(ctx, root, PathResolver{StateHome: stateHome})
+	status, err := initializePreFactsState(t, ctx, root, PathResolver{StateHome: stateHome})
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -311,7 +357,7 @@ func TestJournalFirstMigrationRebuildsModifiedDerivedState(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	resolver := PathResolver{StateHome: stateHome}
-	status, err := Initialize(ctx, root, resolver)
+	status, err := initializePreFactsState(t, ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -345,7 +391,7 @@ func TestJournalFirstMigrationRefusesAfterBackupConcurrentCanonicalUpdate(t *tes
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	resolver := PathResolver{StateHome: stateHome}
-	status, err := Initialize(ctx, root, resolver)
+	status, err := initializePreFactsState(t, ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -383,7 +429,7 @@ func TestInspectAcceptsMigratedJournalFirstDatabase(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	resolver := PathResolver{StateHome: stateHome}
-	status, err := Initialize(ctx, root, resolver)
+	status, err := initializePreFactsState(t, ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -415,7 +461,7 @@ func TestApplyJournalFirstMigrationReRunIsCleanNoOp(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	resolver := PathResolver{StateHome: stateHome}
-	status, err := Initialize(ctx, root, resolver)
+	status, err := initializePreFactsState(t, ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -461,7 +507,7 @@ func TestJournalExportSucceedsAfterJournalFirstMigration(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	resolver := PathResolver{StateHome: stateHome}
-	status, err := Initialize(ctx, root, resolver)
+	status, err := initializePreFactsState(t, ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -509,7 +555,7 @@ func TestBackupVerifiesMigratedJournalFirstDatabase(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	resolver := PathResolver{StateHome: stateHome}
-	status, err := Initialize(ctx, root, resolver)
+	status, err := initializePreFactsState(t, ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -537,8 +583,8 @@ func TestBackupVerifiesMigratedJournalFirstDatabase(t *testing.T) {
 }
 
 func TestJournalFirstMigrationExcludedFromAutoApply(t *testing.T) {
-	if CurrentSchemaVersion() != 19 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 19 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 20 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 20 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
 	}
 	for _, m := range SchemaMigrations() {
 		if m.Version == journalFirstMigrationVersion {
@@ -618,7 +664,7 @@ func TestJournalFirstMigrationPreservesUnknownSessionRows(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	resolver := PathResolver{StateHome: stateHome}
-	status, err := Initialize(ctx, root, resolver)
+	status, err := initializePreFactsState(t, ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
