@@ -52,6 +52,19 @@ func TestReleaseLegacyFlagsFailWithGuidance(t *testing.T) {
 	}
 }
 
+
+// commitBootstrapAgentsFiles records genesis .agents/ files (e.g. loaf.conf) so
+// release cut's clean-tree gate passes after state init.
+func commitBootstrapAgentsFiles(t *testing.T, repo string) {
+	t.Helper()
+	status := gitOutputReleaseTest(t, repo, "status", "--porcelain=v1", ".agents")
+	if strings.TrimSpace(status) == "" {
+		return
+	}
+	gitCLI(t, repo, "add", ".agents")
+	gitCLI(t, repo, "commit", "-m", "chore: bootstrap loaf project files")
+}
+
 func seedReleaseTaggedRepo(t *testing.T) string {
 	t.Helper()
 	repo := realpath(t, t.TempDir())

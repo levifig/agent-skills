@@ -75,6 +75,9 @@ var pruneFossilRelationshipEdgesSQL string
 //go:embed migrations/0023_sync_client.sql
 var syncClientSQL string
 
+//go:embed migrations/0024_project_attachment.sql
+var projectAttachmentSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -202,6 +205,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 23,
 			Name:    "sync_client",
 			SQL:     normalizeMigrationSQL(syncClientSQL),
+		},
+		{
+			Version: 24,
+			Name:    "project_attachment",
+			SQL:     normalizeMigrationSQL(projectAttachmentSQL),
 		},
 	}
 }

@@ -98,6 +98,8 @@ type InspectOptions struct {
 	// LeftoverAbsorb inventories leftover SQLite tasks and intents and names
 	// the absorb course of action. Off on `loaf state status`.
 	LeftoverAbsorb bool
+	// DuplicateUniverse flags projects sharing normalized remotes or root fingerprints.
+	DuplicateUniverse bool
 }
 
 // Inspect returns the current state-runtime status without creating files.
@@ -746,6 +748,14 @@ func inspectOperationalInvariants(ctx context.Context, store *Store, options Ins
 		// error when orphan/dangling diverged, warn for multi-alias. Mode stays
 		// ready either way — identity damage is detectable, not invalidating.
 		diagnostics = append(diagnostics, aliasParityDiagnostics(aliasParity)...)
+	}
+
+	if options.DuplicateUniverse {
+		duplicateReport, err := InspectDuplicateUniverseSuspects(ctx, store)
+		if err != nil {
+			return nil, false, err
+		}
+		diagnostics = append(diagnostics, duplicateUniverseDiagnostics(duplicateReport)...)
 	}
 
 	journalProvenance, err := InspectJournalProvenanceIntegrity(ctx, store)

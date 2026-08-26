@@ -1655,9 +1655,7 @@ func TestRunnerLinkedWorktreesShareSQLiteState(t *testing.T) {
 	}
 
 	for _, dir := range []string{main, linked} {
-		if _, err := os.Stat(filepath.Join(dir, ".agents")); !os.IsNotExist(err) {
-			t.Fatalf("state commands created repository .agents directory in %q; err = %v", dir, err)
-		}
+		assertNoRepositoryAgentsDir(t, dir)
 	}
 }
 
@@ -3004,9 +3002,7 @@ func TestRunnerStateInitHumanOutputPrintsRepositoryExternalDatabaseWithoutSecret
 	if _, err := os.Stat(databasePath); err != nil {
 		t.Fatalf("database was not created at printed path: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents")); !os.IsNotExist(err) {
-		t.Fatalf("state init created repository .agents directory; err = %v", err)
-	}
+	assertNoRepositoryAgentsDir(t, workingDir)
 	lowerOutput := strings.ToLower(output)
 	for _, forbidden := range []string{"token", "password", "secret", "api_key", "api key", "credential"} {
 		if strings.Contains(lowerOutput, forbidden) {
@@ -5466,9 +5462,7 @@ func TestRunnerReportGenerateDoesNotMutateStateOrCreateRepoFiles(t *testing.T) {
 	if firstOut.String() != secondOut.String() {
 		t.Fatalf("report output changed:\nfirst=%s\nsecond=%s", firstOut.String(), secondOut.String())
 	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents")); !os.IsNotExist(err) {
-		t.Fatalf("report generate created repository .agents directory; err = %v", err)
-	}
+	assertNoRepositoryAgentsDir(t, workingDir)
 	var snapshotOut bytes.Buffer
 	if err := (Runner{Stdout: &snapshotOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "export", "all", "--format", "json"}); err != nil {
 		t.Fatalf("state export all error = %v", err)
@@ -5767,9 +5761,7 @@ func TestRunnerStateExportAllJSONDoesNotMutateStateOrCreateRepoFiles(t *testing.
 	if len(first.Tables["exports"]) != 0 || len(second.Tables["exports"]) != 0 {
 		t.Fatalf("exports table mutated: first=%#v second=%#v", first.Tables["exports"], second.Tables["exports"])
 	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents")); !os.IsNotExist(err) {
-		t.Fatalf("state export created repository .agents directory; err = %v", err)
-	}
+	assertNoRepositoryAgentsDir(t, workingDir)
 }
 
 func TestRunnerStateExportReleaseReadinessMarkdownDoesNotMutateStateOrCreateRepoFiles(t *testing.T) {
@@ -5800,9 +5792,7 @@ func TestRunnerStateExportReleaseReadinessMarkdownDoesNotMutateStateOrCreateRepo
 	if firstOut.String() != secondOut.String() {
 		t.Fatalf("export output changed:\nfirst=%s\nsecond=%s", firstOut.String(), secondOut.String())
 	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents")); !os.IsNotExist(err) {
-		t.Fatalf("state export created repository .agents directory; err = %v", err)
-	}
+	assertNoRepositoryAgentsDir(t, workingDir)
 	var snapshotOut bytes.Buffer
 	err = Runner{
 		Stdout:     &snapshotOut,
@@ -5891,9 +5881,7 @@ func TestRunnerStateExportTriageMarkdownDoesNotCreateRepoFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state export triage error = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents")); !os.IsNotExist(err) {
-		t.Fatalf("state export created repository .agents directory; err = %v", err)
-	}
+	assertNoRepositoryAgentsDir(t, workingDir)
 }
 
 func TestRunnerStateExportRejectsMissingInvalidUnsupportedState(t *testing.T) {
@@ -13602,7 +13590,25 @@ func assertNoStateDatabase(t *testing.T, workingDir string, stateHome string) {
 
 func assertNoRepositoryAgentsDir(t *testing.T, workingDir string) {
 	t.Helper()
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents")); !os.IsNotExist(err) {
-		t.Fatalf("repository .agents directory exists or stat failed after read-only command; err = %v", err)
+	agentsDir := filepath.Join(workingDir, ".agents")
+	info, err := os.Stat(agentsDir)
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("repository .agents stat error = %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("repository .agents is not a directory")
+	}
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		t.Fatalf("ReadDir(.agents) error = %v", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == "loaf.conf" {
+			continue
+		}
+		t.Fatalf("repository .agents contains unexpected entry %q after read-only command", entry.Name())
 	}
 }

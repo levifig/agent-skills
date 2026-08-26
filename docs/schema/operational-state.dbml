@@ -743,3 +743,23 @@ Table sync_project_cursors {
   updated_at text [not null]
 }
 
+// Project attachment evidence (migration 0024).
+Table project_conf_labels {
+  conf_id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  first_seen_at text [not null]
+  last_seen_at text [not null]
+}
+
+Table project_attachment_evidence {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  evidence_kind text [not null]
+  evidence_value text [not null]
+  first_seen_at text [not null]
+  last_seen_at text [not null]
+  indexes {
+    (project_id, evidence_kind, evidence_value) [unique]
+    (evidence_kind, evidence_value)
+  }
+}

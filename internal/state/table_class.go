@@ -44,6 +44,8 @@ var projectScopedTableClasses = map[string]TableClass{
 	// Sync — minimal core (LOAF-62): identity evidence, refs/contracts, ledger,
 	// releases. FTS and machine-local projections are excluded.
 	"project_paths":                    TableClassSync,
+	"project_conf_labels":              TableClassMachineLocal,
+	"project_attachment_evidence":      TableClassSync,
 	"aliases":                          TableClassSync,
 	"sources":                          TableClassSync,
 	"ideas":                            TableClassSync,
