@@ -130,6 +130,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueLink(args[1:], out, runtime)
 	case "render":
 		return r.runIssueRender(args[1:], out, runtime)
+	case "rehome":
+		return r.runIssueRehome(args[1:], out, runtime)
 	case "render-out":
 		return r.runIssueRenderOut(args[1:], out, runtime)
 	case "bootstrap":
@@ -169,6 +171,7 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "bucket", Summary: "Set an advisory Now/Next/Later label"},
 		{Name: "link", Summary: "Create or remove an issue relationship"},
 		{Name: "render", Summary: "Emit a paste-ready PR body"},
+		{Name: "rehome", Summary: "Re-home a decision-kind issue row to ledger question/resolution facts"},
 		{Name: "render-out", Summary: "Render an internal issue row onto a durable authority ref"},
 		{Name: "identity", Summary: "Show, define, or align the local issue prefix"},
 		{Name: "export", Summary: "Export issues, identity, criteria, claims, and relationships as JSON"},
@@ -328,6 +331,17 @@ func (r Runner) runIssueNew(args []string, out io.Writer, runtime state.Runtime)
 		options.create.Body = body
 	}
 	resolver := state.PathResolver{StateHome: r.StateHome}
+	if strings.TrimSpace(options.create.Kind) == state.IssueKindDecision {
+		record, err := state.RecordDecisionQuestion(context.Background(), projectRoot, resolver, state.DecisionRecordOptions{
+			Title:  options.create.Title,
+			Body:   options.create.Body,
+			Parent: options.create.Parent,
+		})
+		if err != nil {
+			return err
+		}
+		return r.finishDecisionNew(out, record, options)
+	}
 	created, err := r.createIssueWithIdentity(projectRoot, resolver, options.create)
 	if err != nil {
 		return err
@@ -1380,4 +1394,75 @@ func renderIssueMarkdown(result state.IssueResult) string {
 
 func issueDisplayRef(issue state.Issue) string {
 	return firstNonEmpty(issue.Alias, issue.ID)
+}
+
+func (r Runner) finishDecisionNew(out io.Writer, record state.DecisionRecord, options issueNewOptions) error {
+	if options.jsonOutput {
+		return writeJSON(out, record)
+	}
+	fmt.Fprintf(out, "recorded decision question %s\n", record.QuestionID)
+	return nil
+}
+
+func (r Runner) runIssueRehome(args []string, out io.Writer, runtime state.Runtime) error {
+	options, ref, err := parseIssueRehomeArgs(args)
+	if err != nil {
+		return err
+	}
+	projectRoot, err := r.requireIssueSQLiteState("issue rehome", runtime)
+	if err != nil {
+		return err
+	}
+	result, err := state.ReHomeDecisionIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.DecisionReHomeOptions{
+		Ref: ref, Resolution: options.resolution, DryRun: options.dryRun,
+	})
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "re-homed decision %s -> question %s", firstNonEmpty(result.IssueAlias, result.IssueID), result.QuestionID)
+	if result.ResolutionID != "" {
+		fmt.Fprintf(out, " + resolution %s", result.ResolutionID)
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+type issueRehomeOptions struct {
+	resolution string
+	dryRun     bool
+	jsonOutput bool
+}
+
+func parseIssueRehomeArgs(args []string) (issueRehomeOptions, string, error) {
+	var options issueRehomeOptions
+	ref := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--resolution":
+			if i+1 >= len(args) {
+				return options, "", fmt.Errorf("issue rehome --resolution requires a value")
+			}
+			i++
+			options.resolution = args[i]
+		case "--dry-run":
+			options.dryRun = true
+		case "--json":
+			options.jsonOutput = true
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return options, "", fmt.Errorf("issue rehome: unknown option %s", args[i])
+			}
+			if ref != "" {
+				return options, "", fmt.Errorf("issue rehome accepts one ref")
+			}
+			ref = args[i]
+		}
+	}
+	if ref == "" {
+		return options, "", fmt.Errorf("issue rehome requires a decision issue ref")
+	}
+	return options, ref, nil
 }

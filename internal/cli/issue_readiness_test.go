@@ -260,26 +260,52 @@ func parsePOSIXArgv(command string) ([]string, error) {
 
 func TestRunnerIssueCheckDecisionReadyOnQuestion(t *testing.T) {
 	workingDir, stateHome := issueCLIFixture(t)
-	if _, err := runIssue(t, workingDir, stateHome, "new", "Pick a store", "--kind", "decision", "--body", "Need a direction."); err != nil {
-		t.Fatalf("issue new blank decision error = %v", err)
-	}
-	blankOut, err := runIssue(t, workingDir, stateHome, "check", "LOAF-1")
-	if err == nil {
-		t.Fatalf("blank decision check error = nil, want not ready\n%s", blankOut)
-	}
-	if !strings.Contains(blankOut, "sharp question") {
-		t.Fatalf("blank decision output = %q", blankOut)
+	if _, err := runIssue(t, workingDir, stateHome, "new", "Pick a store", "--kind", "decision", "--body", "Need a direction."); err == nil {
+		t.Fatal("issue new blank decision error = nil, want validation failure")
 	}
 
-	if _, err := runIssue(t, workingDir, stateHome, "new", "Should we keep the local store?", "--kind", "decision"); err != nil {
+	recordedOut, err := runIssue(t, workingDir, stateHome, "new", "Should we keep the local store?", "--kind", "decision")
+	if err != nil {
 		t.Fatalf("issue new question error = %v", err)
 	}
-	readyOut, err := runIssue(t, workingDir, stateHome, "check", "LOAF-2")
-	if err != nil {
-		t.Fatalf("question decision check error = %v\n%s", err, readyOut)
+	if !strings.Contains(recordedOut, "recorded decision question") {
+		t.Fatalf("question decision output = %q", recordedOut)
 	}
-	if !strings.Contains(readyOut, "issue LOAF-2 is ready") {
-		t.Fatalf("question decision output = %q", readyOut)
+
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := state.PathResolver{StateHome: stateHome}
+	legacyBlank, err := state.CreateIssueLegacyDecisionRow(context.Background(), root, resolver, state.IssueCreateOptions{
+		Title: "Pick a store",
+		Kind:  state.IssueKindDecision,
+		Body:  "Need a direction.",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLegacyDecisionRow(blank) error = %v", err)
+	}
+	blankOut, err := runIssue(t, workingDir, stateHome, "check", legacyBlank.Alias)
+	if err == nil {
+		t.Fatalf("blank legacy decision check error = nil, want not ready\n%s", blankOut)
+	}
+	if !strings.Contains(blankOut, "sharp question") {
+		t.Fatalf("blank legacy decision output = %q", blankOut)
+	}
+
+	legacyQuestion, err := state.CreateIssueLegacyDecisionRow(context.Background(), root, resolver, state.IssueCreateOptions{
+		Title: "Should we keep the local store?",
+		Kind:  state.IssueKindDecision,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLegacyDecisionRow(question) error = %v", err)
+	}
+	readyOut, err := runIssue(t, workingDir, stateHome, "check", legacyQuestion.Alias)
+	if err != nil {
+		t.Fatalf("legacy question decision check error = %v\n%s", err, readyOut)
+	}
+	if !strings.Contains(readyOut, "is ready") {
+		t.Fatalf("legacy question decision output = %q", readyOut)
 	}
 }
 
@@ -358,21 +384,15 @@ func TestRunnerIssueCheckPublishesThroughReadinessSeam(t *testing.T) {
 	if _, err := state.SetIssueIdentity(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IssueIdentityOptions{Authority: state.IssueAuthorityGitHub}); err != nil {
 		t.Fatalf("SetIssueIdentity() error = %v", err)
 	}
-	if _, err := runIssue(t, workingDir, stateHome, "new", "Should we publish readiness?", "--kind", "decision"); err != nil {
-		t.Fatalf("issue new error = %v", err)
-	}
-	listOut, err := runIssue(t, workingDir, stateHome, "list", "--json")
+	resolver := state.PathResolver{StateHome: stateHome}
+	legacy, err := state.CreateIssueLegacyDecisionRow(context.Background(), root, resolver, state.IssueCreateOptions{
+		Title: "Should we publish readiness?",
+		Kind:  state.IssueKindDecision,
+	})
 	if err != nil {
-		t.Fatalf("issue list error = %v", err)
+		t.Fatalf("CreateIssueLegacyDecisionRow() error = %v", err)
 	}
-	var listed state.IssueListResult
-	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
-		t.Fatalf("list json error = %v", err)
-	}
-	if len(listed.Issues) != 1 {
-		t.Fatalf("listed = %#v, want one issue", listed)
-	}
-	ref := listed.Issues[0].ID
+	ref := legacy.ID
 
 	fake := &recordingReadinessPublisher{}
 	previous := defaultReadinessPublisher

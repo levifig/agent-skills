@@ -235,8 +235,16 @@ func TestRunnerIssueStatusHonorsRemovalSemantics(t *testing.T) {
 
 func TestRunnerIssueListDodPromoteBucketExportAndHelp(t *testing.T) {
 	workingDir, stateHome := issueCLIFixture(t)
-	if _, err := runIssue(t, workingDir, stateHome, "new", "Listed", "--kind", "decision", "--fog", "still fuzzy"); err != nil {
-		t.Fatalf("issue new listed error = %v", err)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	if _, err := state.CreateIssueLegacyDecisionRow(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IssueCreateOptions{
+		Title: "Should we list?",
+		Kind:  state.IssueKindDecision,
+		Fog:   "still fuzzy",
+	}); err != nil {
+		t.Fatalf("CreateIssueLegacyDecisionRow() error = %v", err)
 	}
 	if _, err := runIssue(t, workingDir, stateHome, "new", "Other"); err != nil {
 		t.Fatalf("issue new other error = %v", err)
