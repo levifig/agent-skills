@@ -23,6 +23,10 @@ func providerQualifiedRefCommand(ref string) bool {
 	return state.IsAuthorityRef(ref) || strings.Contains(strings.TrimSpace(ref), ":")
 }
 
+var updateWorkContractForStartFn = func(ctx context.Context, root project.Root, resolver state.PathResolver, options state.WorkContractUpdateOptions) (state.WorkContract, error) {
+	return state.UpdateWorkContract(ctx, root, resolver, options)
+}
+
 func (r Runner) runIssueVerifyContract(ctx context.Context, projectRoot project.Root, ref string, jsonOutput bool, out io.Writer) error {
 	shown, err := state.ShowWorkContract(ctx, projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
@@ -196,6 +200,9 @@ func (r Runner) runIssueStartContract(ctx context.Context, projectRoot project.R
 	if err != nil {
 		return err
 	}
+	if err := refuseIssueStartLifecycle(contractAsIssue(shown.Contract)); err != nil {
+		return err
+	}
 	if strings.TrimSpace(shown.Contract.StartedWorktree) != "" {
 		return fmt.Errorf("contract %s is already started at %s", ref, shown.Contract.StartedWorktree)
 	}
@@ -213,10 +220,11 @@ func (r Runner) runIssueStartContract(ctx context.Context, projectRoot project.R
 		return fmt.Errorf("could not resolve repository default branch")
 	}
 	base = qualifyIssueStartBase(repoRoot, base)
-	if _, err := addIssueWorktree(repoRoot, worktree, branch, base); err != nil {
+	createdBranch, err := addIssueWorktree(repoRoot, worktree, branch, base)
+	if err != nil {
 		return err
 	}
-	updated, err := state.UpdateWorkContract(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
+	updated, err := updateWorkContractForStartFn(ctx, projectRoot, resolver, state.WorkContractUpdateOptions{
 		AuthorityRef:    authorityRef,
 		Status:          state.IssueStatusActive,
 		SetStatus:       true,
@@ -225,8 +233,7 @@ func (r Runner) runIssueStartContract(ctx context.Context, projectRoot project.R
 		SetStarted:      true,
 	})
 	if err != nil {
-		_ = rollbackIssueWorktree(repoRoot, worktree, branch, true)
-		return err
+		return wrapIssueStartUpdateError(err, rollbackIssueWorktree(repoRoot, worktree, branch, createdBranch), worktree, branch)
 	}
 	if jsonOutput {
 		return writeJSON(out, map[string]any{
