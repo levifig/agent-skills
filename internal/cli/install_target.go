@@ -399,11 +399,7 @@ func installCodexTarget(options targetInstallOptions) error {
 	if err != nil {
 		return err
 	}
-	homeDir := installHomeDir(options)
-	codexHome := options.CodexHome
-	if codexHome == "" {
-		codexHome = filepath.Join(homeDir, ".codex")
-	}
+	codexHome := effectiveCodexHome(options)
 	skillsDest := installSkillsDestination(options)
 	if !options.SkipSkillsSync {
 		if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
@@ -477,6 +473,9 @@ func installSkillsDestination(options targetInstallOptions) string {
 	// resolved destination so a genuine per-target override would stay correct.
 	if options.Target == "amp" && options.AmpSkillsDir != "" {
 		return options.AmpSkillsDir
+	}
+	if projectEnvironmentActive() && options.ProjectRoot != "" {
+		return filepath.Join(options.ProjectRoot, ".agents", "skills")
 	}
 	return filepath.Join(installHomeDir(options), ".agents", "skills")
 }

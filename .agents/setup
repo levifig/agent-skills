@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Amp Orb setup script (LOAF-78). Runs once when a fresh orb is prepared.
+# Installs the Loaf CLI, then project-environment `loaf install --to amp`.
+# Project secret (LOAF-67, when attach ships): LOAF_CLIENT_TOKEN from
+# `loaf auth link --project` via amp secrets / project environment.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+arch="$(uname -m)"
+case "$arch" in
+  x86_64) arch=x64 ;;
+  aarch64|arm64) arch=arm64 ;;
+esac
+NATIVE="$ROOT/bin/native/${os}-${arch}/loaf"
+
+# bin/loaf is only the Node launcher; require the native binary for this host
+# before skipping the build.
+if [[ ! -x "$ROOT/bin/loaf" || ! -x "$NATIVE" ]]; then
+  npm ci
+  npm run build:go
+fi
+export PATH="$ROOT/bin:$PATH"
+export LOAF_PROJECT_ENV=1
+exec loaf install --to amp --yes

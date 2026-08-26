@@ -119,7 +119,7 @@ func TestRunnerInstallRecordKeepsRelocatedTargetDetectable(t *testing.T) {
 	if err := os.Remove(filepath.Join(home, ".cursor", loafInstallMarkerFile)); err != nil {
 		t.Fatalf("Remove(marker) error = %v", err)
 	}
-	if !isLoafInstalledForTargetInstall("cursor", filepath.Join(home, ".cursor")) {
+	if !isLoafInstalledForTargetInstall("cursor", filepath.Join(home, ".cursor"), home) {
 		t.Fatal("cursor install not detected from shared install record")
 	}
 }

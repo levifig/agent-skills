@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -292,7 +291,7 @@ func (r Runner) hooksTargetSurfaces(projectRoot string, hookState hookStateResol
 }
 
 func newHooksTargetSurface(loafRoot string, tools []detectedInstallTool, projectRoot string, hookState hookStateResolver, target string) hooksTargetSurface {
-	configDir := defaultInstallConfigDirs()[target]
+	configDir := installLayoutConfigDirs(projectRoot)[target]
 	if tool, ok := installToolsByKey(tools)[target]; ok && tool.configDir != "" {
 		configDir = tool.configDir
 	}
@@ -301,8 +300,8 @@ func newHooksTargetSurface(loafRoot string, tools []detectedInstallTool, project
 		DistDir:     filepath.Join(loafRoot, "dist", target),
 		ConfigDir:   configDir,
 		Version:     packageVersion(loafRoot),
-		HomeDir:     installHome(),
-		CodexHome:   os.Getenv("CODEX_HOME"),
+		HomeDir:     installLayoutHome(projectRoot),
+		CodexHome:   resolveInstallCodexHome(configDir),
 		ProjectRoot: projectRoot,
 		HookState:   hookState,
 	}
