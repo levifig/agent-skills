@@ -22,7 +22,7 @@ Functional profiles define what agents can mechanically touch (tool access). Ski
 
 Loaf's durable memory — journal, wraps, handoffs, decisions, work-unit refs, verification records — lives in one operator's **personal memory substrate**. Every environment the operator uses (laptop, second machine, Cursor Cloud Agent, Amp Orb, CI) attaches to the same substrate or **hard-refuses** Loaf-flow work. There is no silent empty universe and no memoryless degraded mode.
 
-Work survives context loss, compaction, tool restarts, and cross-conversation handoffs because the substrate is external to any single harness session. The project journal is a **projection** of grow-only ledger facts, not a hand-authored file. Context at conversation start is a derived digest — never a lifecycle transition.
+Work survives context loss, compaction, tool restarts, and cross-conversation handoffs because the substrate is external to any single harness session. The project journal is a **projection** of grow-only ledger facts, not a hand-authored file. Change artifacts and compatible task records keep intent and execution inspectable outside any one conversation. Context at conversation start is a derived digest — never a lifecycle transition.
 
 Sharing with other humans happens only through explicit **promote surfaces** (PR bodies, committed files, external trackers). The substrate itself is private.
 
