@@ -1,8 +1,9 @@
 package cli
 
 // Authority-ref routing for issue machinery in LOAF-82.
-// Covered here: check, verify, render, and branch: start/stop against the contract store.
+// Covered here: check (including --human and readiness publication for branch:/pr: on tracker-backed projects), verify, render, and branch: start/stop against the contract store.
 // Deferred to later slices: issue show/create/dod/promote for ref-keyed contracts (LOAF-83 migration + LOAF-85 bootstrap); linear:/pr: start/stop semantics (LOAF-85).
+// Readiness publication for linear: refs is deferred to LOAF-83/85 (needs Linear issue mapping for contract-backed rows); --human is still accepted on those refs.
 
 import (
 	"context"
@@ -89,7 +90,7 @@ func (r Runner) runIssueVerifyContract(ctx context.Context, projectRoot project.
 	return nil
 }
 
-func (r Runner) runIssueCheckContract(ctx context.Context, projectRoot project.Root, ref string, jsonOutput bool, out io.Writer) error {
+func (r Runner) runIssueCheckContract(ctx context.Context, projectRoot project.Root, ref string, human string, jsonOutput bool, out io.Writer) error {
 	resolver := state.PathResolver{StateHome: r.StateHome}
 	readiness, err := state.CheckWorkContractReadiness(ctx, projectRoot, resolver, ref)
 	if err != nil {
@@ -99,6 +100,7 @@ func (r Runner) runIssueCheckContract(ctx context.Context, projectRoot project.R
 	if err != nil {
 		return err
 	}
+	issue := contractAsIssue(readiness.Contract)
 	result := issueCheckResult{
 		ContractVersion:    shown.ContractVersion,
 		DatabaseScope:      shown.DatabaseScope,
@@ -106,13 +108,39 @@ func (r Runner) runIssueCheckContract(ctx context.Context, projectRoot project.R
 		ProjectID:          shown.ProjectID,
 		ProjectName:        shown.ProjectName,
 		ProjectCurrentPath: shown.ProjectCurrentPath,
-		Issue:              contractAsIssue(readiness.Contract),
+		Issue:              issue,
 		Kind:               readiness.Kind,
 		Shaped:             readiness.Shaped,
 		Covered:            readiness.Covered,
 		Ready:              readiness.Ready,
 		Failures:           readiness.Failures,
 		Orphans:            readiness.Orphans,
+	}
+	// Publication for linear: refs needs Linear issue mapping and is deferred to LOAF-83/85.
+	// branch:/pr: follow the same tracker-backed publication path as legacy issue check.
+	if readiness.Ready && readiness.Contract.AuthorityRef.Provider != state.AuthorityProviderLinear {
+		identity, err := state.GetIssueIdentity(ctx, projectRoot, resolver)
+		if err != nil {
+			return err
+		}
+		if trackerAuthority(identity.Authority) {
+			publication := ReadinessPublication{
+				IssueID:     issue.ID,
+				IssueRef:    issueDisplayRef(issue),
+				Label:       readinessLabelAgent,
+				Authority:   identity.Authority,
+				ProjectPath: projectRoot.Path(),
+				StateHome:   r.StateHome,
+			}
+			if human != "" {
+				publication.Label = readinessLabelHuman
+				publication.Reason = human
+			}
+			if err := defaultReadinessPublisher.Publish(ctx, publication); err != nil {
+				return err
+			}
+			result.Publication = &publication
+		}
 	}
 	if jsonOutput {
 		if err := writeJSON(out, result); err != nil {
