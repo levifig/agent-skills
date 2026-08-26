@@ -198,17 +198,7 @@ WHERE project_id = ? AND id = ?
 		return IssueRenderOutResult{}, err
 	}
 
-	receiptID, err := newOpaqueStateID("wcr")
-	if err != nil {
-		return IssueRenderOutResult{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO work_contract_receipts (id, project_id, provider, provider_ref, receipt_kind, receipt_value, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(project_id, provider, provider_ref, receipt_kind) DO UPDATE SET
-  receipt_value = excluded.receipt_value,
-  updated_at = excluded.updated_at
-`, receiptID, projectID, authorityRef.Provider, authorityRef.Key, RenderOutReceiptKind, issue.ID, now, now); err != nil {
+	if err := upsertWorkContractReceiptTx(ctx, tx, projectID, authorityRef, RenderOutReceiptKind, issue.ID, now); err != nil {
 		return IssueRenderOutResult{}, fmt.Errorf("record render-out receipt: %w", err)
 	}
 	if err := upsertWorkContractMappingTx(ctx, tx, projectID, authorityRef, RenderOutMappingIssueID, issue.ID, now); err != nil {
@@ -251,34 +241,6 @@ UPDATE issues SET status = ?, archived_at = ?, updated_at = ? WHERE project_id =
 	}
 	result.Contract = contract
 	return result, nil
-}
-
-func upsertWorkContractMappingTx(ctx context.Context, tx *sql.Tx, projectID string, ref AuthorityRef, kind, value, now string) error {
-	mappingID, err := newOpaqueStateID("wcm")
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `
-INSERT INTO work_contract_mappings (id, project_id, provider, provider_ref, mapping_kind, mapping_value, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(project_id, provider, provider_ref, mapping_kind) DO UPDATE SET
-  mapping_value = excluded.mapping_value,
-  updated_at = excluded.updated_at
-`, mappingID, projectID, ref.Provider, ref.Key, kind, value, now, now)
-	if err != nil {
-		return err
-	}
-	_, err = appendCoreEventFactTx(ctx, tx, projectID, FactKindRefRegistered, "", CoreEventPayload{
-		SubjectKind:  "ref",
-		SubjectID:    mappingID,
-		Provider:     ref.Provider,
-		ProviderRef:  ref.Key,
-		MappingKind:  kind,
-		MappingValue: value,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}, parseCoreEventTime(now), "")
-	return err
 }
 
 func lookupLinearIssueIdentifierTx(ctx context.Context, tx *sql.Tx, projectID, issueID string) (string, error) {
