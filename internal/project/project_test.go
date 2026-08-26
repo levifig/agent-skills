@@ -163,3 +163,38 @@ func git(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v failed: %v\n%s", args, err, out)
 	}
 }
+
+func TestNormalizeRemoteURLConvergesEquivalentRemotes(t *testing.T) {
+	pairs := [][2]string{
+		{"git@github.com:levifig/loaf.git", "https://github.com/levifig/loaf"},
+		{"ssh://git@github.com/levifig/loaf", "git@github.com:levifig/loaf.git"},
+		{"https://github.com:443/levifig/loaf.git/", "https://github.com/levifig/loaf"},
+	}
+	for _, pair := range pairs {
+		left, err := NormalizeRemoteURL(pair[0])
+		if err != nil {
+			t.Fatalf("NormalizeRemoteURL(%q) error = %v", pair[0], err)
+		}
+		right, err := NormalizeRemoteURL(pair[1])
+		if err != nil {
+			t.Fatalf("NormalizeRemoteURL(%q) error = %v", pair[1], err)
+		}
+		if left != right {
+			t.Fatalf("%q -> %q, %q -> %q; want equal keys", pair[0], left, pair[1], right)
+		}
+	}
+}
+
+func TestNormalizeRemoteURLDoesNotConvergeCrossHostMirrors(t *testing.T) {
+	left, err := NormalizeRemoteURL("git@github.com:levifig/loaf.git")
+	if err != nil {
+		t.Fatalf("NormalizeRemoteURL() error = %v", err)
+	}
+	right, err := NormalizeRemoteURL("git@gitlab.com:levifig/loaf.git")
+	if err != nil {
+		t.Fatalf("NormalizeRemoteURL() error = %v", err)
+	}
+	if left == right {
+		t.Fatalf("cross-host mirrors converged unexpectedly: %q", left)
+	}
+}
