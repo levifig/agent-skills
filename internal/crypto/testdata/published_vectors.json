@@ -1,0 +1,18 @@
+{
+  "ciphertext_hex": "b6aec3b60911ebb0cc4e324f1c14ba226356a89c2e60423de542005d22d7c9512a6d2bf62de9839a00f72fd5bc43896b7040ff424fc684c1604453f3e7e64582ee29c42cfc8cfa094eed22ee4989a5da5b511c59477ada0230d07c35c648a9847d9f2eaa38f9b2c00d4756edeaded17360b114fff22ec879e5506d3ba244bbb61c78afba6834bb50b167ce252baf15231a0424d43b2d783dfae5856bc01b0df4d0dbd2f9fa91cd30b964ffa0a6e3b96398125513a80f7860a45048b1258a94dcc0",
+  "fact_id": "0198c0a1-0000-7000-8000-000000000001",
+  "generation": 0,
+  "master_key_hex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+  "nonce_hex": "0102030405060708090a0b0c0d0e0f101112131415161718",
+  "plaintext": {
+    "kind": "journal",
+    "payload": "{\"entry_type\":\"decision\",\"message\":\"vector\"}",
+    "env_id": "legacy-host",
+    "seq": 1,
+    "hlc": "00000000000000000000:000000",
+    "envelope_v": 1,
+    "key_gen": 0
+  },
+  "project_id": "proj_test_vectors_00000001",
+  "project_key_hex": "535cd60458a448749c8f88aba609a2853f9995d3a59e773ae49df4808f21bb4e"
+}
