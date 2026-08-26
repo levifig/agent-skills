@@ -20,8 +20,9 @@ import (
 //   - Amp Orb: add project env LOAF_CLIENT_TOKEN via amp project configuration
 //   - Optional sync endpoint (when configured): LOAF_SYNC_URL
 //
-// Attach pre-warm in the start script is intentionally deferred until LOAF-67
-// lands; the issue body treats start-script attach as optional pre-warm only.
+// Cursor Cloud harness install runs in the install/build script so hooks and
+// skills exist before the agent starts. Attach pre-warm in the start script is
+// intentionally deferred until LOAF-67 lands.
 const (
 	// projectEnvironmentClientTokenEnv is the provisional per-project env var name
 	// for the LOAF-67 client token in Cursor Cloud and Amp Orb environments.
@@ -46,14 +47,18 @@ type cursorCloudEnvironment struct {
 var requiredCloudBootstrapMarkers = map[string][]string{
 	cursorCloudInstallScript: {
 		"npm run build:go",
+		"bin/native/",
 		"bin/loaf",
-	},
-	cursorCloudStartScript: {
 		projectEnvironmentEnv + "=1",
 		"loaf install --to cursor",
 	},
+	cursorCloudStartScript: {
+		"LOAF-67",
+	},
 	ampOrbSetupScript: {
 		"npm run build:go",
+		"bin/native/",
+		"bin/loaf",
 		projectEnvironmentEnv + "=1",
 		"loaf install --to amp",
 	},

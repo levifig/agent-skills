@@ -29,15 +29,19 @@ func TestCloudEnvironmentBootstrapArtifactsInstallCLI(t *testing.T) {
 		if loafIdx >= 0 && buildIdx > loafIdx {
 			t.Fatalf("%s runs loaf before CLI install", rel)
 		}
+		if !strings.Contains(executable, "bin/native/") {
+			t.Fatalf("%s must require bin/native/<platform>/loaf before skipping build", rel)
+		}
 	}
 }
 
-func TestCloudEnvironmentBootstrapStartUsesProjectEnvironmentInstall(t *testing.T) {
+func TestCloudEnvironmentBootstrapInstallUsesProjectEnvironmentInstall(t *testing.T) {
 	root, err := loafRepositoryRoot()
 	if err != nil {
 		t.Fatalf("loafRepositoryRoot() error = %v", err)
 	}
-	for _, rel := range []string{cursorCloudStartScript, ampOrbSetupScript, ampOrbResumeScript} {
+	// Cursor: install/build phase; Amp: setup/resume.
+	for _, rel := range []string{cursorCloudInstallScript, ampOrbSetupScript, ampOrbResumeScript} {
 		body, err := readCloudBootstrapFile(root, rel)
 		if err != nil {
 			t.Fatalf("readCloudBootstrapFile(%q) error = %v", rel, err)
@@ -48,6 +52,13 @@ func TestCloudEnvironmentBootstrapStartUsesProjectEnvironmentInstall(t *testing.
 		if !strings.Contains(body, "loaf install --to ") {
 			t.Fatalf("%s missing project-environment loaf install", rel)
 		}
+	}
+	start, err := readCloudBootstrapFile(root, cursorCloudStartScript)
+	if err != nil {
+		t.Fatalf("readCloudBootstrapFile(%q) error = %v", cursorCloudStartScript, err)
+	}
+	if strings.Contains(stripShellComments(start), "loaf install") {
+		t.Fatalf("%s must not run loaf install (belongs in install phase)", cursorCloudStartScript)
 	}
 }
 
@@ -159,5 +170,70 @@ func TestIsLoafInstalledForTargetInstallUsesLayoutHome(t *testing.T) {
 func TestCloudEnvironmentBootstrapDocumentsClientTokenSecret(t *testing.T) {
 	if projectEnvironmentClientTokenEnv != "LOAF_CLIENT_TOKEN" {
 		t.Fatalf("client token env = %q", projectEnvironmentClientTokenEnv)
+	}
+}
+
+func TestCloudEnvironmentCodexUsesProjectLayoutIgnoringCodexHome(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	projectDir := filepath.Join(root, "project")
+	dist := filepath.Join(projectDir, "dist")
+	userCodex := filepath.Join(home, "custom-codex")
+	projectCodex := filepath.Join(projectDir, ".codex")
+	mkdirAll(t, userCodex)
+	mkdirAll(t, projectDir)
+	writeInstallFile(t, filepath.Join(projectDir, "AGENTS.md"), "# Project\n")
+	writeInstallFile(t, filepath.Join(projectDir, ".agents", "loaf.json"), `{"issue":{"prefix":"LOAF"}}`+"\n")
+	seedCanonicalSkillsFixture(t, projectDir, home, []string{"codex"}, "# Foundations\n")
+	installTestHookDistribution(t, projectDir, "codex")
+
+	t.Setenv("HOME", home)
+	t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+	t.Setenv("CODEX_HOME", userCodex)
+	t.Setenv(projectEnvironmentEnv, "1")
+
+	configDir := installLayoutConfigDirs(projectDir)["codex"]
+	options := targetInstallOptions{
+		Target:      "codex",
+		DistDir:     filepath.Join(dist, "codex"),
+		ConfigDir:   configDir,
+		Version:     "9.8.7-test.1",
+		HomeDir:     installLayoutHome(projectDir),
+		CodexHome:   resolveInstallCodexHome(configDir),
+		ProjectRoot: projectDir,
+		HookState:   installTestHookState(t),
+	}
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("installTargetDistribution() error = %v", err)
+	}
+
+	if fileExistsForInstall(filepath.Join(userCodex, loafInstallMarkerFile)) {
+		t.Fatalf("wrote Codex marker to CODEX_HOME %s under project env", userCodex)
+	}
+	if fileExistsForInstall(filepath.Join(userCodex, "hooks.json")) {
+		t.Fatalf("wrote Codex hooks to CODEX_HOME %s under project env", userCodex)
+	}
+	if !fileExistsForInstall(filepath.Join(projectCodex, loafInstallMarkerFile)) {
+		t.Fatalf("missing project-environment Codex marker at %s", projectCodex)
+	}
+	if !fileExistsForInstall(filepath.Join(projectCodex, "hooks.json")) {
+		t.Fatalf("missing project-environment Codex hooks at %s", projectCodex)
+	}
+	if got := effectiveCodexHome(options); got != projectCodex {
+		t.Fatalf("effectiveCodexHome = %q, want %q", got, projectCodex)
+	}
+}
+
+func TestCloudEnvironmentResolveInstallCodexHomeIgnoresEnv(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "project", ".codex")
+	t.Setenv("CODEX_HOME", filepath.Join(root, "elsewhere"))
+	t.Setenv(projectEnvironmentEnv, "1")
+	if got := resolveInstallCodexHome(configDir); got != configDir {
+		t.Fatalf("resolveInstallCodexHome = %q, want %q", got, configDir)
+	}
+	os.Unsetenv(projectEnvironmentEnv)
+	if got := resolveInstallCodexHome(configDir); got != filepath.Join(root, "elsewhere") {
+		t.Fatalf("resolveInstallCodexHome without project env = %q, want elsewhere", got)
 	}
 }

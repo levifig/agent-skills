@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -252,7 +251,7 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 			Upgrade:        true,
 			Version:        version,
 			HomeDir:        layoutHome,
-			CodexHome:      os.Getenv("CODEX_HOME"),
+			CodexHome:      resolveInstallCodexHome(configDir),
 			ProjectRoot:    projectRoot,
 			SkipSkillsSync: true,
 			HookState:      hookState,

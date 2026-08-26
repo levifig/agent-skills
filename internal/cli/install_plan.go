@@ -194,7 +194,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 			CodexBasicCommands: options.codexBasicCommands,
 			Version:            version,
 			HomeDir:            layoutHome,
-			CodexHome:          os.Getenv("CODEX_HOME"),
+			CodexHome:          resolveInstallCodexHome(configDir),
 			ProjectRoot:        projectRoot,
 			HookState:          hookState,
 		}
@@ -601,10 +601,7 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 // needed it uses the same read-only trusted-executable resolution and template
 // rendering the apply path uses.
 func planCodexJournalRule(options targetInstallOptions) ([]artifactPlanDecision, error) {
-	codexHome := options.CodexHome
-	if codexHome == "" {
-		codexHome = filepath.Join(installHomeDir(options), ".codex")
-	}
+	codexHome := effectiveCodexHome(options)
 	rulesDir := filepath.Join(codexHome, "rules")
 	ruleDest := filepath.Join(rulesDir, codexJournalRuleRelativePath)
 	manifestPath := filepath.Join(rulesDir, codexJournalRuleManifest)

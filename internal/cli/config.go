@@ -596,7 +596,7 @@ func configTargetInstallOptions(projectRoot string, loafRoot string, target dete
 		Upgrade:     upgrade,
 		Version:     packageVersion(loafRoot),
 		HomeDir:     installHome(),
-		CodexHome:   os.Getenv("CODEX_HOME"),
+		CodexHome:   resolveInstallCodexHome(target.configDir),
 		ProjectRoot: projectRoot,
 		HookState:   hookState,
 	}

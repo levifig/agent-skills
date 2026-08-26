@@ -156,7 +156,7 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 			CodexBasicCommands: options.codexBasicCommands,
 			Version:            version,
 			HomeDir:            layoutHome,
-			CodexHome:          os.Getenv("CODEX_HOME"),
+			CodexHome:          resolveInstallCodexHome(configDir),
 			ProjectRoot:        projectRoot.Path(),
 			SkipSkillsSync:     true,
 			HookState:          hookState,

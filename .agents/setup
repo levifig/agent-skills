@@ -6,7 +6,18 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-if [[ ! -x "$ROOT/bin/loaf" ]]; then
+
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+arch="$(uname -m)"
+case "$arch" in
+  x86_64) arch=x64 ;;
+  aarch64|arm64) arch=arm64 ;;
+esac
+NATIVE="$ROOT/bin/native/${os}-${arch}/loaf"
+
+# bin/loaf is only the Node launcher; require the native binary for this host
+# before skipping the build.
+if [[ ! -x "$ROOT/bin/loaf" || ! -x "$NATIVE" ]]; then
   npm ci
   npm run build:go
 fi

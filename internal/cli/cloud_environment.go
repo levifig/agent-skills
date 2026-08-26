@@ -50,3 +50,25 @@ func installLayoutHome(projectRoot string) string {
 	_, home := resolveInstallLayout(projectRoot)
 	return home
 }
+
+// resolveInstallCodexHome picks the Codex home used for hooks, rules, and
+// markers. Under LOAF_PROJECT_ENV=1 it must match ConfigDir (project-local
+// .codex) so CODEX_HOME cannot split hooks from the install layout.
+func resolveInstallCodexHome(configDir string) string {
+	if projectEnvironmentActive() && configDir != "" {
+		return configDir
+	}
+	return os.Getenv("CODEX_HOME")
+}
+
+// effectiveCodexHome is the directory Codex hooks/rules/markers write to for
+// one install options value. Project-environment installs always use ConfigDir.
+func effectiveCodexHome(options targetInstallOptions) string {
+	if projectEnvironmentActive() && options.ConfigDir != "" {
+		return options.ConfigDir
+	}
+	if options.CodexHome != "" {
+		return options.CodexHome
+	}
+	return filepath.Join(installHomeDir(options), ".codex")
+}

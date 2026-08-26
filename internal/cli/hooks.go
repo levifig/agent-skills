@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -302,7 +301,7 @@ func newHooksTargetSurface(loafRoot string, tools []detectedInstallTool, project
 		ConfigDir:   configDir,
 		Version:     packageVersion(loafRoot),
 		HomeDir:     installLayoutHome(projectRoot),
-		CodexHome:   os.Getenv("CODEX_HOME"),
+		CodexHome:   resolveInstallCodexHome(configDir),
 		ProjectRoot: projectRoot,
 		HookState:   hookState,
 	}
