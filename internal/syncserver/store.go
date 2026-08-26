@@ -52,6 +52,15 @@ CREATE TABLE IF NOT EXISTS fact_blobs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fact_blobs_arrival ON fact_blobs(project_id, arrival_seq);
+
+CREATE TABLE IF NOT EXISTS scratchpad_messages (
+  project_id TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  payload BLOB NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, channel, seq)
+);
 `
 
 type Store struct {
