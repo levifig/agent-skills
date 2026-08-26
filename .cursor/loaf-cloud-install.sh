@@ -2,7 +2,7 @@
 # Cursor Cloud Agent install script (LOAF-78).
 # Builds the Loaf CLI for this host, then installs harness surfaces into the
 # project environment so hooks/skills exist before the agent starts.
-# Project secrets (LOAF-67, when attach ships): set LOAF_CLIENT_TOKEN from
+# Project attach token (LOAF-67): set LOAF_CLIENT_TOKEN from
 # `loaf auth link --project` in the Cursor Cloud project environment; optional
 # LOAF_SYNC_URL for sync endpoint.
 set -euo pipefail

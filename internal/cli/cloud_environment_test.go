@@ -171,6 +171,23 @@ func TestIsLoafInstalledForTargetInstallUsesLayoutHome(t *testing.T) {
 	}
 }
 
+func TestCloudEnvironmentBootstrapAmpResumePreWarmsAttach(t *testing.T) {
+	root, err := loafRepositoryRoot()
+	if err != nil {
+		t.Fatalf("loafRepositoryRoot() error = %v", err)
+	}
+	body, err := readCloudBootstrapFile(root, ampOrbResumeScript)
+	if err != nil {
+		t.Fatalf("readCloudBootstrapFile(%q) error = %v", ampOrbResumeScript, err)
+	}
+	if !strings.Contains(body, "loaf attach") {
+		t.Fatalf("%s missing attach pre-warm", ampOrbResumeScript)
+	}
+	if strings.Contains(stripShellComments(body), "exec loaf install") {
+		t.Fatalf("%s must not exec before attach pre-warm", ampOrbResumeScript)
+	}
+}
+
 func TestCloudEnvironmentBootstrapDocumentsClientTokenSecret(t *testing.T) {
 	if projectEnvironmentClientTokenEnv != "LOAF_CLIENT_TOKEN" {
 		t.Fatalf("client token env = %q", projectEnvironmentClientTokenEnv)
