@@ -30,6 +30,7 @@ import (
 //   - Optional sync endpoint (when configured): LOAF_SYNC_URL
 //
 // Human-review setup guide: docs/cloud/project-environment-attach.md
+// Full walkthrough (Cursor Cloud, Amp, CI): docs/knowledge/cloud-attach-walkthrough.md
 //
 // Cursor Cloud harness install runs in the install/build script so hooks and
 // skills exist before the agent starts. Attach pre-warm runs in start/resume

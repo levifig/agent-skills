@@ -59,4 +59,4 @@ H-tier review (not gated by `loaf issue verify`):
 - [ ] Attach refusal paths understood: identity mismatch, revoked token, gross HLC skew
 - [ ] Sync relay reachable from cloud network; TLS preferred (use `--allow-insecure-http` only in dev)
 
-Related: `internal/cli/cloud_environment_bootstrap.go`, `docs/security/substrate-e2e-threat-model.md`, ADR-029 fact envelope sync contract.
+Related: [cloud-attach-walkthrough.md](../knowledge/cloud-attach-walkthrough.md) (step-by-step for Cursor Cloud, Amp, and GitHub Actions CI), `internal/cli/cloud_environment_bootstrap.go`, `docs/security/substrate-e2e-threat-model.md`, ADR-029 fact envelope sync contract.
