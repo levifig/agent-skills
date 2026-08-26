@@ -250,7 +250,7 @@ func (r Runner) runAuthRevoke(args []string, out io.Writer) error {
 
 func (r Runner) runAuthAttach(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 1 && isHelpArg(args) {
-		writeUsageHelp(out, "loaf auth attach [--name <connection>] [--wire <credential>] [--json]", "Run the unattended attach sequence for this environment.")
+		writeUsageHelp(out, "loaf auth attach [--name <connection>] [--wire <client-wire>] [--json]", "Run the unattended attach sequence for this environment.")
 		return nil
 	}
 	name := ""
