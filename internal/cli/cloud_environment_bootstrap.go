@@ -63,7 +63,7 @@ var requiredCloudBootstrapMarkers = map[string][]string{
 	},
 	cursorCloudStartScript: {
 		projectEnvironmentEnv + "=1",
-		"LOAF-67",
+		"loaf attach",
 	},
 	ampOrbSetupScript: {
 		"npm run build:go",

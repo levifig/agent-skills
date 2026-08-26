@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/levifig/loaf/internal/project"
@@ -39,6 +40,9 @@ type cursorSessionStartValidation struct {
 // sessionStart command-hook contract. It always renders the complete neutral
 // digest; selectors and output overrides are rejected by the generic parser.
 func (r Runner) runCursorSessionStartContext(out io.Writer, runtime state.Runtime, options journalContextCLIOptions) error {
+	if err := r.enforceSessionStartAttach(os.Stderr, options.jsonOutput); err != nil {
+		return err
+	}
 	if !options.fromHook {
 		return errors.New("Cursor sessionStart context requires --from-hook")
 	}

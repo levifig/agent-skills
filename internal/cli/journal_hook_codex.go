@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
@@ -54,6 +55,9 @@ var (
 )
 
 func (r Runner) runCodexSessionStartContext(out io.Writer, runtime state.Runtime, options journalContextCLIOptions) error {
+	if err := r.enforceSessionStartAttach(os.Stderr, options.jsonOutput); err != nil {
+		return err
+	}
 	if !options.fromHook {
 		return errors.New("Codex SessionStart context requires --from-hook")
 	}
