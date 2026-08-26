@@ -1718,3 +1718,75 @@ func initializeDatabaseAtPath(t *testing.T, root project.Root, path string) {
 		t.Fatalf("Close(%s) error = %v", path, err)
 	}
 }
+
+func TestApplyProjectDatabaseMergeCopiesFactsTable(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	otherRoot := projectRoot(t)
+	dataHome := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	resolver := PathResolver{}
+	if _, err := Initialize(ctx, otherRoot, resolver); err != nil {
+		t.Fatalf("Initialize(other) error = %v", err)
+	}
+	legacyPath := initializeLegacyStateDatabase(t, root, resolver)
+	legacyStore, err := OpenStore(legacyPath)
+	if err != nil {
+		t.Fatalf("OpenStore(legacy) error = %v", err)
+	}
+	logged, err := legacyStore.LogJournal(ctx, root, JournalLogOptions{Entry: "decision(merge): copy facts"})
+	if err != nil {
+		legacyStore.Close()
+		t.Fatalf("LogJournal(legacy) error = %v", err)
+	}
+	var legacyEnvID, legacyPayload, legacyHLC string
+	var legacySeq int64
+	if err := legacyStore.db.QueryRowContext(ctx, `
+SELECT env_id, seq, payload, hlc FROM facts WHERE id = ?
+`, logged.ID).Scan(&legacyEnvID, &legacySeq, &legacyPayload, &legacyHLC); err != nil {
+		legacyStore.Close()
+		t.Fatalf("read legacy fact: %v", err)
+	}
+	if err := legacyStore.Close(); err != nil {
+		t.Fatalf("Close(legacy) error = %v", err)
+	}
+	globalPath, err := resolver.DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+	globalStore, err := OpenStore(globalPath)
+	if err != nil {
+		t.Fatalf("OpenStore(global) error = %v", err)
+	}
+	if err := globalStore.Close(); err != nil {
+		t.Fatalf("Close(global) error = %v", err)
+	}
+	merged, err := ApplyProjectDatabaseMerge(ctx, root, resolver, StorageHomeMigrationPlan{DatabasePath: globalPath, LegacyDatabasePath: legacyPath})
+	if err != nil {
+		t.Fatalf("ApplyProjectDatabaseMerge() error = %v", err)
+	}
+	if !merged.Applied {
+		t.Fatal("ApplyProjectDatabaseMerge() Applied = false, want true")
+	}
+	globalStore, err = OpenStore(globalPath)
+	if err != nil {
+		t.Fatalf("OpenStore(global after merge) error = %v", err)
+	}
+	defer globalStore.Close()
+	var gotEnvID, gotPayload, gotHLC string
+	var gotSeq int64
+	if err := globalStore.db.QueryRowContext(ctx, `
+SELECT env_id, seq, payload, hlc FROM facts WHERE id = ?
+`, logged.ID).Scan(&gotEnvID, &gotSeq, &gotPayload, &gotHLC); err != nil {
+		t.Fatalf("read merged fact: %v", err)
+	}
+	if gotEnvID != legacyEnvID || gotSeq != legacySeq || gotPayload != legacyPayload || gotHLC != legacyHLC {
+		t.Fatalf("merged fact diverged from legacy copy")
+	}
+	parity, err := InspectJournalFactParity(ctx, globalStore)
+	if err != nil || !parity.Ready {
+		t.Fatalf("parity after merge = %#v err=%v", parity, err)
+	}
+}
