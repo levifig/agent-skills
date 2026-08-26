@@ -192,7 +192,7 @@ func runConfigCheck(projectRoot string, loafRoot string, options configCheckOpti
 		result.Fixed = true
 	}
 
-	for _, target := range installedConfigTargets() {
+	for _, target := range installedConfigTargets(projectRoot) {
 		status := checkConfigTargetHooks(projectRoot, loafRoot, target, options.hookState)
 		if !status.healthy() && options.fix {
 			status = fixConfigTargetHooks(projectRoot, loafRoot, target, status, options.hookState)
@@ -464,10 +464,10 @@ func jsonNumber(value any) bool {
 	}
 }
 
-func installedConfigTargets() []detectedInstallTool {
-	tools := detectInstallTools()
+func installedConfigTargets(projectRoot string) []detectedInstallTool {
+	tools := detectInstallToolsForProject(projectRoot)
 	for i := range tools {
-		if record, ok := readConfigInstallRecord(tools[i].key); ok {
+		if record, ok := readConfigInstallRecord(projectRoot, tools[i].key); ok {
 			if record.ConfigDir != "" {
 				tools[i].configDir = record.ConfigDir
 			}
@@ -484,8 +484,8 @@ func installedConfigTargets() []detectedInstallTool {
 	return installed
 }
 
-func readConfigInstallRecord(target string) (installTargetRecord, bool) {
-	body, err := readRegularFile(installRecordPath(installHome(), target), projectFileReadLimit)
+func readConfigInstallRecord(projectRoot string, target string) (installTargetRecord, bool) {
+	body, err := readRegularFile(installRecordPath(installLayoutHome(projectRoot), target), projectFileReadLimit)
 	if err != nil {
 		return installTargetRecord{}, false
 	}

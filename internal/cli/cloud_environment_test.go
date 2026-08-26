@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -265,5 +266,67 @@ func TestCloudEnvironmentConfigTargetInstallOptionsUsesLayoutHome(t *testing.T) 
 	}, installTestHookState(t), false)
 	if opts.HomeDir != home {
 		t.Fatalf("HomeDir without project env = %q, want %q", opts.HomeDir, home)
+	}
+}
+
+func TestCloudEnvironmentConfigReadsInstallRecordFromLayoutHome(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	projectDir := filepath.Join(root, "project")
+	projectCursor := filepath.Join(projectDir, ".cursor")
+	mkdirAll(t, home)
+	mkdirAll(t, projectCursor)
+	t.Setenv("HOME", home)
+	t.Setenv(projectEnvironmentEnv, "1")
+
+	recordDir := filepath.Join(projectDir, ".agents", "loaf", "install-targets")
+	mkdirAll(t, recordDir)
+	body, err := json.MarshalIndent(installTargetRecord{
+		Version:   "9.8.7-test.1",
+		Target:    "cursor",
+		ConfigDir: projectCursor,
+		SkillsDir: filepath.Join(projectDir, ".agents", "skills"),
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent error = %v", err)
+	}
+	writeInstallFile(t, filepath.Join(recordDir, "cursor.json"), string(append(body, '\n')))
+
+	userRecordDir := filepath.Join(home, ".agents", "loaf", "install-targets")
+	mkdirAll(t, userRecordDir)
+	userBody, err := json.MarshalIndent(installTargetRecord{
+		Version:   "0.0.0-user",
+		Target:    "cursor",
+		ConfigDir: filepath.Join(home, ".cursor"),
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(user) error = %v", err)
+	}
+	writeInstallFile(t, filepath.Join(userRecordDir, "cursor.json"), string(append(userBody, '\n')))
+
+	record, ok := readConfigInstallRecord(projectDir, "cursor")
+	if !ok {
+		t.Fatal("readConfigInstallRecord missed project-layout install record")
+	}
+	if record.Version != "9.8.7-test.1" {
+		t.Fatalf("Version = %q, want project-env record 9.8.7-test.1", record.Version)
+	}
+	if record.ConfigDir != projectCursor {
+		t.Fatalf("ConfigDir = %q, want %q", record.ConfigDir, projectCursor)
+	}
+
+	installed := installedConfigTargets(projectDir)
+	var found bool
+	for _, tool := range installed {
+		if tool.key != "cursor" {
+			continue
+		}
+		found = true
+		if tool.configDir != projectCursor {
+			t.Fatalf("installed cursor configDir = %q, want %q", tool.configDir, projectCursor)
+		}
+	}
+	if !found {
+		t.Fatal("installedConfigTargets missed project-env cursor")
 	}
 }
