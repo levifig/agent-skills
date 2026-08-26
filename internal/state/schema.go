@@ -70,6 +70,9 @@ var factsAndJournalEnvelopeSQL string
 //go:embed migrations/0021_drop_document_layer.sql
 var dropDocumentLayerSQL string
 
+//go:embed migrations/0022_prune_fossil_relationship_edges.sql
+var pruneFossilRelationshipEdgesSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -187,6 +190,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 21,
 			Name:    "drop_document_layer",
 			SQL:     normalizeMigrationSQL(dropDocumentLayerSQL),
+		},
+		{
+			Version: 22,
+			Name:    "prune_fossil_relationship_edges",
+			SQL:     normalizeMigrationSQL(pruneFossilRelationshipEdgesSQL),
 		},
 	}
 }

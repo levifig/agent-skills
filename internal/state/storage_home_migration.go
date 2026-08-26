@@ -23,41 +23,8 @@ const (
 	StorageHomeActionNoLegacyState   = "no-legacy-state"
 )
 
-var projectScopedMergeTables = []string{
-	"sources",
-	"specs",
-	"tasks",
-	"issues",
-	"issue_criteria",
-	"issue_criterion_claims",
-	"work_contracts",
-	"work_contract_criteria",
-	"work_contract_criterion_claims",
-	"work_contract_workspace",
-	"work_contract_mappings",
-	"work_contract_receipts",
-	"issue_identity",
-	"releases",
-	"release_members",
-	"ideas",
-	"sparks",
-	"brainstorms",
-	"sessions",
-	"facts",
-	"fact_env_clocks",
-	"journal_entries",
-	"events",
-	"relationships",
-	"tags",
-	"entity_tags",
-	"bundles",
-	"bundle_members",
-	"aliases",
-	"backend_mappings",
-	"hook_events",
-	"exports",
-	"session_state_snapshots",
-}
+// projectScopedMergeTables is the sync-class inventory used by storage-home merge.
+var projectScopedMergeTables = ProjectScopedSyncTables()
 
 // StorageHomeMigrationPlan describes the XDG_STATE_HOME to XDG_DATA_HOME move.
 type StorageHomeMigrationPlan struct {

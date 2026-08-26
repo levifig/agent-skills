@@ -350,6 +350,9 @@ func (s *Store) queryTraceRelationships(ctx context.Context, projectID string, d
 
 	var relationships []TraceRelationship
 	for _, relationship := range raw {
+		if isPrunableNeighborEntityKind(relationship.otherKind) {
+			continue
+		}
 		other, err := s.entityDetails(ctx, projectID, relationship.otherKind, relationship.otherID)
 		if err != nil {
 			// Skip gone/unknown neighbor kinds (e.g. finding/verdict/run fossils)
@@ -370,6 +373,19 @@ func (s *Store) queryTraceRelationships(ctx context.Context, projectID string, d
 		})
 	}
 	return relationships, nil
+}
+
+var prunableNeighborEntityKinds = func() map[string]struct{} {
+	out := make(map[string]struct{}, len(PrunableNeighborEntityKinds()))
+	for _, kind := range PrunableNeighborEntityKinds() {
+		out[kind] = struct{}{}
+	}
+	return out
+}()
+
+func isPrunableNeighborEntityKind(kind string) bool {
+	_, ok := prunableNeighborEntityKinds[kind]
+	return ok
 }
 
 func isUnsupportedTraceEntityKind(err error) bool {
