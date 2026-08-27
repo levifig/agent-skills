@@ -13,9 +13,10 @@
       "name": "loaf",
       "description": "Loaf - An Opinionated Agentic Framework",
       "source": "./plugins/loaf",
-      "version": "0.3.1",
+      "version": "0.5.0",
       "license": "MIT",
       "repository": "https://github.com/levifig/loaf"
     }
-  ]
+  ],
+  "version": "0.5.0"
 }
