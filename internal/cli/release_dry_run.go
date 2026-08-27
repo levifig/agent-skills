@@ -457,6 +457,90 @@ func writeReleaseChangelog(root string, releaseSection string) error {
 	return os.WriteFile(path, []byte(updated), 0o644)
 }
 
+// resolveReleaseNotesFromChangelog prefers operator-curated [Unreleased] prose
+// for release notes when the section has real entries; otherwise keeps drafted notes.
+func resolveReleaseNotesFromChangelog(root string, draftedNotes string) string {
+	path := filepath.Join(root, "CHANGELOG.md")
+	body, err := readRegularFile(path, projectFileReadLimit)
+	if err != nil {
+		return draftedNotes
+	}
+	return mergeReleaseChangelogSection(extractReleaseUnreleasedBody(string(body)), draftedNotes)
+}
+
+func extractReleaseUnreleasedBody(existing string) string {
+	lines := strings.Split(existing, "\n")
+	unreleased := -1
+	for i, line := range lines {
+		if releaseUnreleasedHeadingRE.MatchString(strings.TrimSpace(line)) {
+			unreleased = i
+			break
+		}
+	}
+	if unreleased == -1 {
+		return ""
+	}
+	nextRelease := len(lines)
+	for i := unreleased + 1; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## [") {
+			nextRelease = i
+			break
+		}
+	}
+	return strings.Join(lines[unreleased+1:nextRelease], "\n")
+}
+
+func releaseUnreleasedIsStubOnly(body string) bool {
+	hasContent := false
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if releaseUnreleasedStubRE.MatchString(trimmed) {
+			continue
+		}
+		hasContent = true
+		break
+	}
+	return !hasContent
+}
+
+func mergeReleaseChangelogSection(unreleasedBody, draftedSection string) string {
+	if releaseUnreleasedIsStubOnly(unreleasedBody) {
+		return draftedSection
+	}
+	header := strings.TrimSpace(firstReleaseChangelogLine(draftedSection))
+	if header == "" {
+		return strings.TrimSpace(unreleasedBody)
+	}
+	curated := strings.TrimSpace(trimReleaseUnreleasedStubs(unreleasedBody))
+	if curated == "" {
+		return draftedSection
+	}
+	return header + "\n\n" + curated
+}
+
+func firstReleaseChangelogLine(section string) string {
+	for _, line := range strings.Split(section, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func trimReleaseUnreleasedStubs(body string) string {
+	var kept []string
+	for _, line := range strings.Split(body, "\n") {
+		if releaseUnreleasedStubRE.MatchString(strings.TrimSpace(line)) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.TrimRight(strings.Join(kept, "\n"), "\n")
+}
+
 func insertReleaseChangelog(existing string, releaseSection string) string {
 	lines := strings.Split(existing, "\n")
 	unreleased := -1
@@ -476,10 +560,66 @@ func insertReleaseChangelog(existing string, releaseSection string) string {
 			break
 		}
 	}
+	unreleasedBody := strings.Join(lines[unreleased+1:nextRelease], "\n")
+	releaseBlock := mergeReleaseChangelogSection(unreleasedBody, releaseSection)
 	result := append([]string{}, lines[:unreleased+1]...)
-	result = append(result, "", "- _No unreleased changes yet._", "", releaseSection, "")
+	result = append(result, "", "- _No unreleased changes yet._", "", releaseBlock, "")
 	result = append(result, lines[nextRelease:]...)
 	return strings.Join(result, "\n")
+}
+
+func compareReleaseSemver(left, right releaseSemver) int {
+	if left.major != right.major {
+		return left.major - right.major
+	}
+	if left.minor != right.minor {
+		return left.minor - right.minor
+	}
+	if left.patch != right.patch {
+		return left.patch - right.patch
+	}
+	if left.prerelease == right.prerelease {
+		return 0
+	}
+	if left.prerelease == "" {
+		return 1
+	}
+	if right.prerelease == "" {
+		return -1
+	}
+	if left.prerelease < right.prerelease {
+		return -1
+	}
+	if left.prerelease > right.prerelease {
+		return 1
+	}
+	return 0
+}
+
+func validateExplicitReleaseVersion(current, bump, explicit string) error {
+	parsedExplicit, ok := parseReleaseSemver(explicit)
+	if !ok {
+		return fmt.Errorf("Invalid version %q", explicit)
+	}
+	parsedCurrent, currentOK := parseReleaseSemver(current)
+	if !currentOK {
+		return nil
+	}
+	if compareReleaseSemver(parsedExplicit, parsedCurrent) <= 0 {
+		return fmt.Errorf("version %s must be greater than current %s", explicit, current)
+	}
+	minimum := bumpReleaseVersion(current, bump)
+	if minimum == "" {
+		return fmt.Errorf("could not compute minimum version for %s bump from %s", bump, current)
+	}
+	parsedMinimum, ok := parseReleaseSemver(minimum)
+	if !ok {
+		return fmt.Errorf("could not parse minimum version %s", minimum)
+	}
+	if compareReleaseSemver(parsedExplicit, parsedMinimum) < 0 {
+		return fmt.Errorf("version %s is below minimum %s for %s bump", explicit, minimum, bump)
+	}
+	return nil
 }
 
 func createReleaseChangelog(releaseSection string) string {
