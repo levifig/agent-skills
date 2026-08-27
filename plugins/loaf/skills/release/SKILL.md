@@ -36,7 +36,7 @@ Cut a version from work that has already landed.
 2. **Release is not merge** — do not review, approve, or land a PR here. Verification authority is the ship workflow (PR review and CI at merge). If the user is asking to merge, stop and route to ship.
 3. **A release is cut from what landed** — the surface is `loaf release suggest` and `loaf release cut`. Do not run unsubcommmanded `loaf release`, `--pre-merge`, or `--post-merge`; this skill does not own that path.
 4. **Suggest writes nothing** — it reads `baseline-tag..HEAD` (or `--base <ref>..HEAD`), attributes commits to issues, rolls up through parents, reports partially-landed parents and unattributed commits as information, derives the bump, reports the advisory bucket delta, and drafts notes.
-5. **Cut records facts** — it applies the version, prepends the drafted notes into `CHANGELOG.md`, tags, records the release row plus members, then attempts a GitHub Release draft. A `gh` failure degrades to a warning with a paste-ready retry command; the recorded row stays.
+5. **Cut records facts** — it applies the version, moves curated `[Unreleased]` prose into the release section (or prepends drafted notes when unreleased is stub-only), tags, records the release row plus members, then attempts a GitHub Release draft. A `gh` failure degrades to a warning with a paste-ready retry command; the recorded row stays.
 6. **No forward version stamp** — do not bind an issue to a future version. Members are what already landed. Buckets (`loaf issue bucket`) are advisory labels; planned-vs-landed is information only.
 7. **No suite, no re-record, no publication stop in this skill** — ship already verified the merged work. Cut's operational refusals (dirty worktree, disagreeing version files, missing version, `--no-tag` without an existing tag) are command errors, not a substitute for ship.
 8. **Confirm before cut** — present the suggest report (or `cut --dry-run`) first. Ask one question at a time, with a recommendation, using your harness's structured question tool if it has one. `--dry-run` previews everything and writes nothing.
@@ -68,7 +68,7 @@ Cut a version from work that has already landed.
 
 ```text
 loaf release suggest [--base <ref>] [--json]
-loaf release cut [--base <ref>] [--bump <type>] [--includes <version|tag>] [--no-tag] [--no-gh] [--dry-run]
+loaf release cut [--base <ref>] [--bump <type>] [--version <X.Y.Z>] [--includes <version|tag>] [--no-tag] [--no-gh] [--dry-run]
 loaf issue bucket <ref> now|next|later|none [--json]
 loaf issue link <from> blocks|relates-to <to> [--json]
 ```
@@ -97,6 +97,7 @@ Both commands need initialized SQLite state (`loaf state init`, or `loaf state m
 |------|---------|
 | `--base <ref>` | Commits since `<ref>` instead of the last tag |
 | `--bump <type>` | Override the derived bump: `major`, `minor`, `patch`, `prerelease`, `release` |
+| `--version <X.Y.Z>` | Cut an explicit version (must be valid semver, greater than current, and at least the minimum for the derived bump) |
 | `--includes <version\|tag>` | Record a prior release as a member (repeatable). Use this to hang prerelease references on a stable |
 | `--no-tag` | Do not create a git tag; tag `v<version>` must already exist |
 | `--no-gh` | Skip the GitHub Release draft |
@@ -111,7 +112,7 @@ Both commands need initialized SQLite state (`loaf state init`, or `loaf state m
 2. Resolve each `--includes` ref to an existing release
 3. Require a clean worktree
 4. Apply the version to detected version files (they must exist and agree)
-5. Prepend drafted notes into `CHANGELOG.md` (after `[Unreleased]`, ahead of prior versions; creates the file if missing)
+5. Move `[Unreleased]` into `CHANGELOG.md` under `## [version]` — operator-curated unreleased prose is preserved as the release body; drafted notes are used only when unreleased is empty or stub-only
 6. Commit `chore: release vX.Y.Z`
 7. Unless `--no-tag`: create annotated tag `vX.Y.Z` (`git tag -a`). Signing follows git config (`tag.gpgSign`); cut never passes `-s` or `--no-sign`
 8. Record the release row, issue members, and `--includes` members as facts
