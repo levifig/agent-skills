@@ -167,9 +167,9 @@ This extends the "CLI is the correct protocol layer" principle to filesystem con
 
 ### Work Records and Optional Linear Coordination
 
-> **Revision 2026-08-26 (LOAF-90):** Contract machinery keys to provider-qualified refs (LOAF-82 shipped). Internal issue rows retire after render-out (LOAF-83 shipped); decision-kind issues re-home to ledger facts (LOAF-84 pending); flow skills on refs (LOAF-86 pending).
+> **Revision 2026-08-26 (LOAF-90):** Contract machinery keys to provider-qualified refs (LOAF-82 shipped). Internal issue rows retire after render-out (LOAF-83 shipped); decision-kind issues re-home to ledger facts (LOAF-84 shipped); flow skills on refs (LOAF-86 shipped).
 >
-> **Revision 2026-08-26 (LOAF-62 inventory):** LOAF-84 and LOAF-86 shipped. Supersedes: "LOAF-84 pending" and "LOAF-86 pending".
+> **Revision 2026-08-26 (LOAF-62 inventory):** LOAF-84 and LOAF-86 shipped. Supersedes: "LOAF-84 shipped" and "LOAF-86 shipped".
 
 New bounded work is a Loaf issue, with authored shaping and implementation artifacts kept beside the code and operational issue state stored in project-scoped SQLite. Existing specs and task records remain supported compatibility surfaces until their named removal boundaries.
 
