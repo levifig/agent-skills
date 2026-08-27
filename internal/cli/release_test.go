@@ -98,3 +98,74 @@ func gitOutputReleaseTest(t *testing.T, dir string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+func TestInsertReleaseChangelogPreservesCuratedUnreleased(t *testing.T) {
+	existing := strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"### Added",
+		"- Curated operator note for the release",
+		"",
+		"## [1.0.0] - 2025-01-01",
+		"",
+		"- Initial release",
+		"",
+	}, "\n")
+	drafted := "## [1.1.0] - 2026-08-27\n\n### LOAF-1 — Ship auth\n- feat: add auth (abc1234)"
+	got := insertReleaseChangelog(existing, drafted)
+	if !strings.Contains(got, "Curated operator note for the release") {
+		t.Fatalf("curated unreleased prose missing:\n%s", got)
+	}
+	if strings.Contains(got, "### LOAF-1") {
+		t.Fatalf("drafted issue section should not replace curated prose:\n%s", got)
+	}
+	if !strings.Contains(got, "## [1.1.0] - 2026-08-27") {
+		t.Fatalf("release header missing:\n%s", got)
+	}
+	if !strings.Contains(got, "- _No unreleased changes yet._") {
+		t.Fatalf("unreleased stub not reset:\n%s", got)
+	}
+}
+
+func TestInsertReleaseChangelogUsesDraftWhenUnreleasedEmpty(t *testing.T) {
+	existing := strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"- _No unreleased changes yet._",
+		"",
+		"## [1.0.0] - 2025-01-01",
+		"",
+		"- Initial release",
+		"",
+	}, "\n")
+	drafted := "## [1.1.0] - 2026-08-27\n\n### LOAF-1 — Ship auth\n- feat: add auth (abc1234)"
+	got := insertReleaseChangelog(existing, drafted)
+	if !strings.Contains(got, "### LOAF-1 — Ship auth") {
+		t.Fatalf("drafted notes missing:\n%s", got)
+	}
+}
+
+func TestValidateExplicitReleaseVersionAllowsHigherMinor(t *testing.T) {
+	if err := validateExplicitReleaseVersion("0.3.1", "minor", "0.5.0"); err != nil {
+		t.Fatalf("0.5.0 should be allowed for minor bump from 0.3.1: %v", err)
+	}
+}
+
+func TestValidateExplicitReleaseVersionRejectsBelowMinimum(t *testing.T) {
+	err := validateExplicitReleaseVersion("0.3.1", "minor", "0.3.2")
+	if err == nil || !strings.Contains(err.Error(), "below minimum") {
+		t.Fatalf("expected below minimum error, got %v", err)
+	}
+}
+
+func TestValidateExplicitReleaseVersionRejectsInvalidSemver(t *testing.T) {
+	err := validateExplicitReleaseVersion("0.3.1", "minor", "not-a-version")
+	if err == nil || !strings.Contains(err.Error(), "Invalid version") {
+		t.Fatalf("expected invalid version error, got %v", err)
+	}
+}
+

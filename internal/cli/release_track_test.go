@@ -1027,3 +1027,91 @@ func TestReleaseCutCommitFailureRemovesCreatedChangelog(t *testing.T) {
 		t.Fatalf("failed cut tags = %q", tags)
 	}
 }
+
+func TestReleaseCutPreservesCuratedChangelog(t *testing.T) {
+	repo, stateHome := releaseTrackFixture(t)
+	writeFile(t, filepath.Join(repo, "CHANGELOG.md"), strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"### Added",
+		"- Operator curated release summary",
+		"",
+		"## [1.0.0] - 2025-01-01",
+		"",
+		"- Initial release",
+		"",
+	}, "\n"))
+	gitCLI(t, repo, "add", "CHANGELOG.md")
+	gitCLI(t, repo, "commit", "-m", "docs: curate unreleased changelog")
+
+	if _, err := runIssue(t, repo, stateHome, "new", "Ship auth"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "status", "LOAF-1", "done"); err != nil {
+		t.Fatalf("status error = %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "auth.txt"), "auth\n")
+	gitCLI(t, repo, "add", "auth.txt")
+	gitCLI(t, repo, "commit", "-m", "feat: add auth LOAF-1")
+
+	gitCLI(t, repo, "tag", "v1.1.0")
+	cutOut, err := runReleaseTrack(t, repo, stateHome, "cut", "--no-tag", "--no-gh", "--base", "v1.0.0")
+	if err != nil {
+		t.Fatalf("release cut error = %v\n%s", err, cutOut)
+	}
+	logBody, err := os.ReadFile(filepath.Join(repo, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(logBody)
+	if !strings.Contains(body, "Operator curated release summary") {
+		t.Fatalf("curated unreleased prose not preserved:\n%s", body)
+	}
+	if strings.Contains(body, "### LOAF-1") {
+		t.Fatalf("drafted issue section replaced curated prose:\n%s", body)
+	}
+}
+
+func TestReleaseCutVersionFlagDryRun(t *testing.T) {
+	repo := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	gitCLI(t, repo, "init", "-b", "main")
+	gitCLI(t, repo, "config", "user.name", "Loaf Test")
+	gitCLI(t, repo, "config", "user.email", "loaf@example.test")
+	gitCLI(t, repo, "config", "commit.gpgsign", "false")
+	gitCLI(t, repo, "config", "tag.gpgsign", "false")
+	writeFile(t, filepath.Join(repo, "package.json"), "{\n  \"name\": \"release-fixture\",\n  \"version\": \"0.3.1\",\n  \"scripts\": {\n    \"build\": \"echo build\"\n  }\n}\n")
+	writeFile(t, filepath.Join(repo, "CHANGELOG.md"), strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"- _No unreleased changes yet._",
+		"",
+	}, "\n"))
+	gitCLI(t, repo, "add", ".")
+	gitCLI(t, repo, "commit", "-m", "chore: initial release")
+	gitCLI(t, repo, "tag", "v0.3.1")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	commitBootstrapAgentsFiles(t, repo)
+
+	writeFile(t, filepath.Join(repo, "feature.txt"), "feature\n")
+	gitCLI(t, repo, "add", "feature.txt")
+	gitCLI(t, repo, "commit", "-m", "feat: add feature")
+
+	out, err := runReleaseTrack(t, repo, stateHome, "cut", "--dry-run", "--no-gh", "--version", "0.5.0")
+	if err != nil {
+		t.Fatalf("release cut --dry-run --version error = %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "0.5.0") {
+		t.Fatalf("dry-run output missing 0.5.0:\n%s", out)
+	}
+	if strings.Contains(out, "0.4.0") {
+		t.Fatalf("dry-run should target explicit 0.5.0, not suggested 0.4.0:\n%s", out)
+	}
+}
+
