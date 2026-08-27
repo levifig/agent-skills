@@ -21,6 +21,7 @@ type releaseTrackOptions struct {
 	dryRun     bool
 	base       string
 	bump       string
+	version    string
 	noTag      bool
 	noGh       bool
 	includes   []string
@@ -132,9 +133,18 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 		}
 		suggestion.Notes = draftReleaseTrackNotes(suggestion.SuggestedVersion, time.Now().UTC().Format("2006-01-02"), suggestion.Landed, suggestion.Unattributed)
 	}
+	if options.version != "" {
+		if err := validateExplicitReleaseVersion(suggestion.CurrentVersion, suggestion.SuggestedBump, options.version); err != nil {
+			return err
+		}
+		suggestion.SuggestedVersion = options.version
+		suggestion.BumpEvidence = "overridden by --version " + options.version
+		suggestion.Notes = draftReleaseTrackNotes(suggestion.SuggestedVersion, time.Now().UTC().Format("2006-01-02"), suggestion.Landed, suggestion.Unattributed)
+	}
 	if suggestion.SuggestedVersion == "" {
 		return fmt.Errorf("could not compute a version to cut")
 	}
+	suggestion.Notes = resolveReleaseNotesFromChangelog(runtimeRoot, suggestion.Notes)
 
 	projectRoot, resolver, err := r.releaseTrackState(runtimeRoot)
 	if err != nil {
@@ -469,6 +479,17 @@ func parseReleaseTrackArgs(args []string, cut bool) (releaseTrackOptions, error)
 			if options.bump == "" {
 				return releaseTrackOptions{}, fmt.Errorf("--bump requires a value")
 			}
+		case arg == "--version":
+			value, err := consumeFlagValue(args, &i, "--version")
+			if err != nil {
+				return releaseTrackOptions{}, err
+			}
+			options.version = value
+		case strings.HasPrefix(arg, "--version="):
+			options.version = strings.TrimPrefix(arg, "--version=")
+			if options.version == "" {
+				return releaseTrackOptions{}, fmt.Errorf("--version requires a value")
+			}
 		case arg == "--base":
 			value, err := consumeFlagValue(args, &i, "--base")
 			if err != nil {
@@ -503,7 +524,7 @@ func parseReleaseTrackArgs(args []string, cut bool) (releaseTrackOptions, error)
 		if options.dryRun {
 			return releaseTrackOptions{}, fmt.Errorf("suggest is read-only; --dry-run is not valid")
 		}
-		if options.noTag || options.noGh || len(options.includes) > 0 || options.bump != "" {
+		if options.noTag || options.noGh || len(options.includes) > 0 || options.bump != "" || options.version != "" {
 			return releaseTrackOptions{}, fmt.Errorf("suggest does not accept cut-only flags")
 		}
 	} else if options.jsonOutput {
@@ -1170,6 +1191,7 @@ func writeReleaseCutHelp(out io.Writer) {
 		"Options:",
 		"  --base <ref>              Use commits since <ref> instead of last tag",
 		"  --bump <type>             Override the suggested bump",
+		"  --version <X.Y.Z>         Cut an explicit version (must satisfy bump rules)",
 		"  --includes <version|tag>  Reference a prior release (repeatable)",
 		"  --no-tag                  Skip git tag creation (tag v<version> must already exist)",
 		"  --no-gh                   Skip GitHub release draft",

@@ -39,12 +39,18 @@ One operator's durable memory â€” journal, wraps, handoffs, refs, verification â
 - Findings, verdicts, and runs schema and CLI surface (migration 0018) ([#176](https://github.com/levifig/loaf/pull/176)).
 - SQLite document-layer authority for reports, councils, and shaping drafts ([#175](https://github.com/levifig/loaf/pull/175)).
 
+### Added
+
+- `loaf release cut --version <X.Y.Z>` cuts an explicit semver that must be greater than the current version and at least the minimum for the derived bump (LOAF-62).
+
 ### Fixed
 
+- `loaf release cut` preserves operator-curated `[Unreleased]` changelog prose as the release body instead of replacing it with auto-drafted issue notes; drafted notes are used only when unreleased is empty or stub-only.
 - Sync refresh rebuilds ref, worktree, and verification projections from pulled facts so a receiving replica shows CLI-facing mappings, start bindings, and receipts ([#204](https://github.com/levifig/loaf/pull/204)).
 - Repeated work-contract mapping and receipt upserts reuse the existing projection row id as the fact SubjectID, so a second render-out of the same ref rebuilds without colliding on the unique key ([#206](https://github.com/levifig/loaf/pull/206)).
 - Sync-server admin `DELETE` of facts is scoped to projects the authenticating account has minted a connection token for, so a second tenant cannot delete another tenant's blobs ([#198](https://github.com/levifig/loaf/pull/198)).
 - Development builds stage native targets before replacing `bin/native` and `bin/.loaf-dev-commit`, so a later target failure cannot leave a new binary reporting a previous commit. Activation updates a Loaf-owned launcher pointer and creates `~/.local/bin/loaf` only when that name is absent; existing operator-owned paths are never replaced, and activation failures no longer fail a successful native build.
+
 - `loaf issue start` on a child refuses if the root workspace is missing or the root is already `done` / archived, instead of joining a stale or closed workspace.
 - `loaf issue verify` runs in the invoking worktree ([#172](https://github.com/levifig/loaf/pull/172)).
 - Homebrew formula generation pins an explicit `version` so older `brew` does not infer `64` from `darwin-arm64` in the asset URL.
