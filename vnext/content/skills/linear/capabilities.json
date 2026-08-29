@@ -1,0 +1,135 @@
+{
+  "schema": "loaf-provider-capabilities/v1",
+  "provider": "linear",
+  "contract": "project-management/v1",
+  "connection": "harness-native",
+  "runtime_capability_discovery": "required",
+  "operations": [
+    {
+      "id": "connection.discover",
+      "native_semantic": "harness.exposed-linear-connection",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "connection.list"
+      ]
+    },
+    {
+      "id": "capability.discover",
+      "native_semantic": "harness.linear-capability-description",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "connection.describe"
+      ]
+    },
+    {
+      "id": "work.read",
+      "native_semantic": "linear.issue",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.read"
+      ]
+    },
+    {
+      "id": "work.create",
+      "native_semantic": "linear.issue",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.create"
+      ]
+    },
+    {
+      "id": "work.update",
+      "native_semantic": "linear.issue-fields",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.update"
+      ]
+    },
+    {
+      "id": "definition.write",
+      "native_semantic": "linear.issue-description",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.description.write"
+      ]
+    },
+    {
+      "id": "hierarchy.read",
+      "native_semantic": "linear.issue-parent-and-children",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.parent.read"
+      ]
+    },
+    {
+      "id": "hierarchy.change",
+      "native_semantic": "linear.issue-parent",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.parent.write"
+      ]
+    },
+    {
+      "id": "dependency.read",
+      "native_semantic": "linear.issue-relations",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.relation.read"
+      ]
+    },
+    {
+      "id": "dependency.change",
+      "native_semantic": "linear.issue-relations",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.relation.write"
+      ]
+    },
+    {
+      "id": "status.read",
+      "native_semantic": "linear.issue-state",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.state.read"
+      ]
+    },
+    {
+      "id": "status.transition",
+      "native_semantic": "linear.issue-state",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.state.write"
+      ]
+    },
+    {
+      "id": "comment.list",
+      "native_semantic": "linear.issue-comments",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.comment.read"
+      ]
+    },
+    {
+      "id": "comment.append",
+      "native_semantic": "linear.issue-comment",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": [
+        "issue.comment.write"
+      ]
+    }
+  ]
+}

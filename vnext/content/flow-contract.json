@@ -15,6 +15,16 @@
       "name": "loaf-reference",
       "path": "skills/loaf-reference/SKILL.md",
       "kind": "reference"
+    },
+    {
+      "name": "project-management",
+      "path": "skills/project-management/SKILL.md",
+      "kind": "reference"
+    },
+    {
+      "name": "linear",
+      "path": "skills/linear/SKILL.md",
+      "kind": "provider"
     }
   ],
   "templates": [
@@ -57,5 +67,11 @@
       ]
     }
   ],
-  "agents": []
+  "agents": [
+    {
+      "name": "project-manager",
+      "path": "agents/project-manager.md",
+      "contract_path": "agents/project-manager.contract.json"
+    }
+  ]
 }
