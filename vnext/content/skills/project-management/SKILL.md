@@ -5,7 +5,7 @@ description: Defines the provider-neutral project-management/v1 contract for can
 
 # Project Management
 
-Use the closed [`project-management/v1`](contract.json) operation vocabulary. A provider skill maps those semantics to the selected harness-native connection; the tracker remains canonical before, during, and after every operation.
+Use the closed [`project-management/v1`](contract.json) operation vocabulary. The main agent is the primary executor and a provider skill maps those semantics to the selected harness-native connection; the tracker remains canonical before, during, and after every operation. The optional project-manager profile follows this same source and route without extending it.
 
 ## Contents
 

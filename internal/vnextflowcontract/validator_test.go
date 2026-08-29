@@ -40,6 +40,7 @@ type flowManifest struct {
 	Schema          string             `json:"schema"`
 	TrackerContract string             `json:"tracker_contract"`
 	Authority       authorityContract  `json:"authority"`
+	Execution       executionContract  `json:"execution"`
 	LocalWorkRecord *bool              `json:"local_work_record"`
 	TrackerProxy    *bool              `json:"tracker_proxy"`
 	TrackerSync     *bool              `json:"tracker_sync"`
@@ -47,6 +48,24 @@ type flowManifest struct {
 	Ceremonies      []ceremonyContract `json:"ceremonies"`
 	Templates       []templateContract `json:"templates"`
 	Agents          []agentDeclaration `json:"agents"`
+}
+
+type executionContract struct {
+	Primary         primaryExecutionContract `json:"primary"`
+	OptionalProfile optionalProfileContract  `json:"optional_profile"`
+}
+
+type primaryExecutionContract struct {
+	Actor            string `json:"actor"`
+	BehaviorContract string `json:"behavior_contract"`
+	BehaviorSkill    string `json:"behavior_skill"`
+	ProviderRoute    string `json:"provider_route"`
+}
+
+type optionalProfileContract struct {
+	ID           string `json:"id"`
+	ContractPath string `json:"contract_path"`
+	Fallback     string `json:"fallback"`
 }
 
 type authorityContract struct {
@@ -123,6 +142,10 @@ func validateManifestIdentity(manifest flowManifest) []finding {
 	if manifest.Authority != wantAuthority {
 		findings = append(findings, finding{"flow.authority", flowManifestPath, fmt.Sprintf("authority = %+v, want %+v", manifest.Authority, wantAuthority)})
 	}
+	wantExecution := canonicalExecutionContract()
+	if manifest.Execution != wantExecution {
+		findings = append(findings, finding{"flow.execution", flowManifestPath, fmt.Sprintf("execution = %+v, want %+v", manifest.Execution, wantExecution)})
+	}
 	if manifest.LocalWorkRecord == nil {
 		findings = append(findings, finding{"flow.local-authority", flowManifestPath, "local_work_record must be explicit"})
 	} else if *manifest.LocalWorkRecord {
@@ -151,6 +174,22 @@ func validateManifestIdentity(manifest flowManifest) []finding {
 		findings = append(findings, finding{"flow.inventory", flowManifestPath, "agents must be an explicit array"})
 	}
 	return findings
+}
+
+func canonicalExecutionContract() executionContract {
+	return executionContract{
+		Primary: primaryExecutionContract{
+			Actor:            "main-agent",
+			BehaviorContract: projectManagementContractPath,
+			BehaviorSkill:    "skills/project-management/SKILL.md",
+			ProviderRoute:    "selected-provider-skill",
+		},
+		OptionalProfile: optionalProfileContract{
+			ID:           "project-manager/v1",
+			ContractPath: projectManagerContractPath,
+			Fallback:     "primary",
+		},
+	}
 }
 
 func validateSkillDeclarations(content fs.FS, declarations []skillDeclaration) []finding {

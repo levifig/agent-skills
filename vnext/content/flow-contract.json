@@ -7,6 +7,19 @@
     "flow_ceremonies": "loaf",
     "code": "git"
   },
+  "execution": {
+    "primary": {
+      "actor": "main-agent",
+      "behavior_contract": "skills/project-management/contract.json",
+      "behavior_skill": "skills/project-management/SKILL.md",
+      "provider_route": "selected-provider-skill"
+    },
+    "optional_profile": {
+      "id": "project-manager/v1",
+      "contract_path": "agents/project-manager.contract.json",
+      "fallback": "primary"
+    }
+  },
   "local_work_record": false,
   "tracker_proxy": false,
   "tracker_sync": false,
