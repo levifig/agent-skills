@@ -30,6 +30,87 @@ func TestTemplateContractRejectsMissingAndOrphanFields(t *testing.T) {
 	assertContractFinding(t, findings, "template.inventory", "template is not declared")
 }
 
+func TestTemplateContractRejectsStructuralFieldDrift(t *testing.T) {
+	t.Parallel()
+
+	problemContract := templateContract{Path: "templates/problem-narrative.md", RequiredFields: []string{"problem", "affected_people", "current_reality", "desired_outcome", "constraints", "unknowns", "handoff"}}
+	workContract := templateContract{Path: "templates/work-contract.md", RequiredFields: []string{"problem", "definition_of_done", "out_of_scope", "verification", "risks"}}
+	updateContract := templateContract{Path: "templates/tracker-update.md", RequiredFields: []string{"native_ref", "summary", "evidence", "status_intent", "blockers", "next_step"}}
+
+	problemBlock := "<!-- loaf:field problem -->\n## Problem\n{{problem}}\n\n"
+	affectedBlock := "<!-- loaf:field affected_people -->\n## Affected People\n{{affected_people}}\n\n"
+	workProblemBlock := "<!-- loaf:field problem -->\n## Problem\n{{problem}}\n\n"
+	doneBlock := "<!-- loaf:field definition_of_done -->\n## Definition of Done\n{{definition_of_done}}\n\n"
+
+	fixtures := []struct {
+		name             string
+		contract         templateContract
+		body             string
+		additionalRule   string
+		additionalDetail string
+	}{
+		{
+			name:     "swapped placeholders",
+			contract: problemContract,
+			body:     swapFragments(validProblemNarrativeTemplate, "{{problem}}", "{{affected_people}}"),
+		},
+		{
+			name:     "external order drift",
+			contract: workContract,
+			body:     swapFragments(validWorkContractTemplate, workProblemBlock, doneBlock),
+		},
+		{
+			name:     "placeholder before marker",
+			contract: updateContract,
+			body:     "{{native_ref}}\n" + strings.Replace(validTrackerUpdateTemplate, "{{native_ref}}", "", 1),
+		},
+		{
+			name:     "intervening marker",
+			contract: problemContract,
+			body: strings.Replace(
+				validProblemNarrativeTemplate,
+				problemBlock+affectedBlock,
+				"<!-- loaf:field problem -->\n## Problem\n<!-- loaf:field affected_people -->\n{{problem}}\n\n## Affected People\n{{affected_people}}\n\n",
+				1,
+			),
+		},
+		{
+			name:             "orphan placeholder",
+			contract:         workContract,
+			body:             strings.Replace(validWorkContractTemplate, "{{risks}}", "{{unexpected}}", 1),
+			additionalRule:   "template.placeholder",
+			additionalDetail: "orphan field \"unexpected\"",
+		},
+		{
+			name:             "orphan marker",
+			contract:         updateContract,
+			body:             strings.Replace(validTrackerUpdateTemplate, "<!-- loaf:field blockers -->", "<!-- loaf:field unexpected -->", 1),
+			additionalRule:   "template.marker",
+			additionalDetail: "orphan field \"unexpected\"",
+		},
+	}
+
+	for _, fixtureCase := range fixtures {
+		fixtureCase := fixtureCase
+		t.Run(fixtureCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			findings := validateTemplateFields(fixtureCase.contract, fixtureCase.body)
+			assertContractFinding(t, findings, "template.structure", "marker-to-placeholder")
+			if fixtureCase.additionalRule != "" {
+				assertContractFinding(t, findings, fixtureCase.additionalRule, fixtureCase.additionalDetail)
+			}
+		})
+	}
+}
+
+func swapFragments(body, left, right string) string {
+	const sentinel = "__LOAF_TEMPLATE_SWAP_SENTINEL__"
+	body = strings.Replace(body, left, sentinel, 1)
+	body = strings.Replace(body, right, left, 1)
+	return strings.Replace(body, sentinel, right, 1)
+}
+
 func TestTrackerSkillContractRejectsUndeclaredInventoryAndBrokenLinks(t *testing.T) {
 	t.Parallel()
 
