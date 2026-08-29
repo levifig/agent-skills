@@ -25,6 +25,7 @@ func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 		"facts.go",
 		"identity.go",
 		"payloads.go",
+		"projections.go",
 		"semantics.go",
 		"sqlite/admission.go",
 		"sqlite/append_kernel.go",
@@ -75,6 +76,22 @@ func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 		"VerificationEvidencePayload", "VerificationFailed", "VerificationIndeterminate", "VerificationOutcome", "VerificationPassed",
 		"WrapRecordedPayload",
 	)
+	wantExports = append(wantExports,
+		"ActiveSparksProjection",
+		"Checkpoint", "ContextCheckpointLayer", "ContextDecisionLayer", "ContextDigest", "ContextExternalReference", "ContextExternalReferenceLayer", "ContextFindingLayer", "ContextHandoffLayer", "ContextIdeaLayer", "ContextJournalLayer", "ContextRequest", "ContextSelection", "ContextSparkLayer", "ContextVerificationEvidenceLayer", "ContextWrapLayer", "CurrentDecisionsProjection", "CurrentFindingsProjection", "CurrentIdeasProjection",
+		"Decision", "DecisionOpen", "DecisionResolved", "DecisionState", "DecisionSuperseded",
+		"EffectiveJournalProjection", "Exploration", "ExplorationsProjection", "ExternalReference", "ExternalReferenceAttachment", "ExternalReferencesProjection",
+		"FactStamp", "Finding", "FindingCurrent", "FindingRetracted", "FindingState",
+		"Handoff",
+		"Idea", "IdeaActive", "IdeaArchived", "IdeaDisposition", "IdeaPromoted", "IdeaResolved",
+		"JournalEntry",
+		"LatestCheckpointsProjection", "LatestHandoffsProjection", "LatestWrapsProjection",
+		"ProjectIdentity", "ProjectIdentityProjection",
+		"RecordVersion",
+		"Scratchpad", "ScratchpadClaim", "ScratchpadClosed", "ScratchpadMessage", "ScratchpadOpen", "ScratchpadParticipant", "ScratchpadsProjection", "ScratchpadState", "Snapshot", "SnapshotRequest", "Spark",
+		"VerificationEvidence", "VerificationEvidenceProjection",
+		"Wrap",
+	)
 	sort.Strings(wantExports)
 
 	production, exports := inspectContinuitySource(t)
@@ -83,6 +100,66 @@ func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 	}
 	if strings.Join(exports, "\n") != strings.Join(wantExports, "\n") {
 		t.Fatalf("exported API = %v, want %v", exports, wantExports)
+	}
+}
+
+func TestContinuityProjectionContractHasExactConcreteShapes(t *testing.T) {
+	t.Parallel()
+
+	want := map[string][]string{
+		"ActiveSparksProjection":           {"Sparks:[]Spark"},
+		"Checkpoint":                       {"Record:RecordVersion", "ExplorationID:SubjectID", "CurrentFraming:string", "Conclusions:string", "UnresolvedQuestion:string", "NextAction:string", "Items:[]CheckpointItem", "HeadObservation:Observation"},
+		"ContextCheckpointLayer":           {"Selection:ContextSelection", "Checkpoints:[]Checkpoint"},
+		"ContextDecisionLayer":             {"Selection:ContextSelection", "Decisions:[]Decision"},
+		"ContextDigest":                    {"Project:ProjectIdentityProjection", "Focus:*SubjectRef", "Scope:string", "Branch:string", "AtMillis:int64", "FocusedJournal:ContextJournalLayer", "ProjectJournal:ContextJournalLayer", "Wraps:ContextWrapLayer", "Sparks:ContextSparkLayer", "Ideas:ContextIdeaLayer", "Decisions:ContextDecisionLayer", "Checkpoints:ContextCheckpointLayer", "Findings:ContextFindingLayer", "Handoffs:ContextHandoffLayer", "ExternalReferences:ContextExternalReferenceLayer", "VerificationEvidence:ContextVerificationEvidenceLayer"},
+		"ContextExternalReference":         {"ProjectID:ProjectID", "ReferenceID:SubjectID", "Registration:FactStamp", "Locator:string", "RegisteredObservation:Observation", "MatchingAttachments:[]ExternalReferenceAttachment"},
+		"ContextExternalReferenceLayer":    {"Selection:ContextSelection", "References:[]ContextExternalReference"},
+		"ContextFindingLayer":              {"Selection:ContextSelection", "Findings:[]Finding"},
+		"ContextHandoffLayer":              {"Selection:ContextSelection", "Handoffs:[]Handoff"},
+		"ContextIdeaLayer":                 {"Selection:ContextSelection", "Ideas:[]Idea"},
+		"ContextJournalLayer":              {"Selection:ContextSelection", "Entries:[]JournalEntry"},
+		"ContextRequest":                   {"Focus:*SubjectRef", "Scope:string", "Branch:string", "AtMillis:int64"},
+		"ContextSelection":                 {"AvailableCount:int", "ShownCount:int", "Truncated:bool"},
+		"ContextSparkLayer":                {"Selection:ContextSelection", "Sparks:[]Spark"},
+		"ContextVerificationEvidenceLayer": {"Selection:ContextSelection", "Evidence:[]VerificationEvidence"},
+		"ContextWrapLayer":                 {"Selection:ContextSelection", "Wraps:[]Wrap"},
+		"CurrentDecisionsProjection":       {"Decisions:[]Decision"},
+		"CurrentFindingsProjection":        {"Findings:[]Finding"},
+		"CurrentIdeasProjection":           {"Ideas:[]Idea"},
+		"Decision":                         {"Record:RecordVersion", "Scope:string", "Question:string", "Context:string", "State:DecisionState", "Resolution:string", "ResolutionRationale:string", "ResolutionStamp:FactStamp", "SuccessorID:SubjectID", "SupersessionRationale:string", "OpenedObservation:Observation", "ResolutionObservation:Observation", "HeadObservation:Observation"},
+		"EffectiveJournalProjection":       {"Entries:[]JournalEntry"},
+		"Exploration":                      {"Record:RecordVersion", "Label:string", "Purpose:string", "HeadObservation:Observation"},
+		"ExplorationsProjection":           {"Explorations:[]Exploration"},
+		"ExternalReference":                {"Record:RecordVersion", "Locator:string", "RegisteredObservation:Observation", "HeadObservation:Observation", "Attachments:[]ExternalReferenceAttachment"},
+		"ExternalReferenceAttachment":      {"Target:SubjectRef", "Stamp:FactStamp", "Observation:Observation"},
+		"ExternalReferencesProjection":     {"References:[]ExternalReference"},
+		"FactStamp":                        {"Clock:HybridTime", "EnvironmentID:EnvironmentID", "EnvironmentSequence:int64", "FactID:FactID"},
+		"Finding":                          {"Record:RecordVersion", "Content:FindingContent", "ContentStamp:FactStamp", "State:FindingState", "RetractionReason:string", "ContentObservation:Observation", "HeadObservation:Observation"},
+		"Handoff":                          {"Record:RecordVersion", "Focus:*SubjectRef", "Purpose:string", "Situation:string", "NextActions:string", "QuestionsAndRisks:string", "SuggestedSkills:[]string", "HeadObservation:Observation"},
+		"Idea":                             {"Record:RecordVersion", "Content:IdeaContent", "ContentStamp:FactStamp", "Disposition:IdeaDisposition", "Resolution:string", "ArchiveReason:string", "ExternalReferenceID:SubjectID", "ContentObservation:Observation", "HeadObservation:Observation"},
+		"JournalEntry":                     {"Record:RecordVersion", "Content:JournalContent", "RecordedObservation:Observation", "HeadObservation:Observation"},
+		"LatestCheckpointsProjection":      {"Checkpoints:[]Checkpoint"},
+		"LatestHandoffsProjection":         {"Handoffs:[]Handoff"},
+		"LatestWrapsProjection":            {"Wraps:[]Wrap"},
+		"ProjectIdentity":                  {"Record:RecordVersion", "Label:string", "RegisteredObservation:Observation", "HeadObservation:Observation"},
+		"ProjectIdentityProjection":        {"Identity:ProjectIdentity"},
+		"RecordVersion":                    {"ProjectID:ProjectID", "Subject:SubjectRef", "Root:FactStamp", "Head:FactStamp"},
+		"Scratchpad":                       {"Record:RecordVersion", "Focus:*SubjectRef", "Label:string", "State:ScratchpadState", "ClosedBy:SubjectID", "CloseReason:string", "OpenedObservation:Observation", "HeadObservation:Observation", "Participants:[]ScratchpadParticipant", "Messages:[]ScratchpadMessage", "Claims:[]ScratchpadClaim"},
+		"ScratchpadClaim":                  {"ClaimID:SubjectID", "ParticipantID:SubjectID", "Resource:string", "ExpiresAtMillis:int64", "Root:FactStamp", "Head:FactStamp", "HeadObservation:Observation"},
+		"ScratchpadMessage":                {"Stamp:FactStamp", "ParticipantID:SubjectID", "Text:string", "Observation:Observation"},
+		"ScratchpadParticipant":            {"Stamp:FactStamp", "ParticipantID:SubjectID", "Name:string", "Focus:*SubjectRef", "Observation:Observation"},
+		"ScratchpadsProjection":            {"Scratchpads:[]Scratchpad"},
+		"Snapshot":                         {"AtMillis:int64", "Project:ProjectIdentityProjection", "EffectiveJournal:EffectiveJournalProjection", "LatestWraps:LatestWrapsProjection", "ActiveSparks:ActiveSparksProjection", "CurrentIdeas:CurrentIdeasProjection", "CurrentDecisions:CurrentDecisionsProjection", "Explorations:ExplorationsProjection", "LatestCheckpoints:LatestCheckpointsProjection", "CurrentFindings:CurrentFindingsProjection", "LatestHandoffs:LatestHandoffsProjection", "Scratchpads:ScratchpadsProjection", "ExternalReferences:ExternalReferencesProjection", "VerificationEvidence:VerificationEvidenceProjection"},
+		"SnapshotRequest":                  {"AtMillis:int64"},
+		"Spark":                            {"Record:RecordVersion", "Scope:string", "Text:string", "HeadObservation:Observation"},
+		"VerificationEvidence":             {"Record:RecordVersion", "Target:SubjectRef", "Check:string", "Method:string", "Outcome:VerificationOutcome", "Detail:string", "HeadObservation:Observation"},
+		"VerificationEvidenceProjection":   {"Evidence:[]VerificationEvidence"},
+		"Wrap":                             {"Record:RecordVersion", "Focus:*SubjectRef", "Scope:string", "Synthesis:string", "HeadObservation:Observation"},
+	}
+
+	got := inspectExportedStructShapes(t, filepath.Join(continuityRoot, "projections.go"))
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("projection struct shapes = %#v, want %#v", got, want)
 	}
 }
 
@@ -145,6 +222,7 @@ func TestContinuityDomainContractHasExactExportedMethods(t *testing.T) {
 	want := map[string]string{
 		"*Problem.Error":                                "func() string",
 		"CheckpointRecordedPayload.Validate":            "func() error",
+		"ContextRequest.Validate":                       "func() error",
 		"DecisionOpenedPayload.Validate":                "func() error",
 		"DecisionResolutionPayload.Validate":            "func() error",
 		"DecisionSupersessionPayload.Validate":          "func() error",
@@ -178,6 +256,7 @@ func TestContinuityDomainContractHasExactExportedMethods(t *testing.T) {
 		"ScratchpadMessagePayload.Validate":             "func() error",
 		"ScratchpadOpenedPayload.Validate":              "func() error",
 		"ScratchpadParticipantPayload.Validate":         "func() error",
+		"SnapshotRequest.Validate":                      "func() error",
 		"SparkCapturedPayload.Validate":                 "func() error",
 		"SparkDismissedPayload.Validate":                "func() error",
 		"SparkPromotionPayload.Validate":                "func() error",
@@ -195,6 +274,7 @@ func TestContinuityDomainContractHasExactExportedMethods(t *testing.T) {
 func TestContinuityDomainContractRejectsMutableAndDynamicSurfaces(t *testing.T) {
 	t.Parallel()
 
+	declaredTypes := inspectDeclaredContinuityTypes(t)
 	entries, err := os.ReadDir(continuityRoot)
 	if err != nil {
 		t.Fatalf("read continuity root: %v", err)
@@ -241,32 +321,86 @@ func TestContinuityDomainContractRejectsMutableAndDynamicSurfaces(t *testing.T) 
 			case *ast.GenDecl:
 				for _, specification := range declaration.Specs {
 					if specification, ok := specification.(*ast.TypeSpec); ok && ast.IsExported(specification.Name.Name) {
-						assertNoDynamicExport(t, entry.Name(), specification.Type)
+						if specification.TypeParams != nil {
+							t.Errorf("%s exports a generic type", entry.Name())
+						}
+						assertNoDynamicExport(t, entry.Name(), specification.Type, declaredTypes)
 					}
 				}
 			case *ast.FuncDecl:
 				if ast.IsExported(declaration.Name.Name) {
-					assertNoDynamicExport(t, entry.Name(), declaration.Type)
+					if declaration.Type.TypeParams != nil {
+						t.Errorf("%s exports a generic function", entry.Name())
+					}
+					assertNoDynamicExport(t, entry.Name(), declaration.Type, declaredTypes)
 				}
 			}
 		}
 	}
 }
 
-func assertNoDynamicExport(t *testing.T, fileName string, node ast.Node) {
+func assertNoDynamicExport(t *testing.T, fileName string, node ast.Node, declaredTypes map[string]bool) {
 	t.Helper()
 
-	ast.Inspect(node, func(node ast.Node) bool {
-		switch node := node.(type) {
+	root := node
+	ast.Inspect(node, func(current ast.Node) bool {
+		switch current := current.(type) {
 		case *ast.MapType, *ast.InterfaceType:
 			t.Errorf("%s exports a map or interface escape hatch", fileName)
+		case *ast.FuncType:
+			if current != root {
+				t.Errorf("%s exports a function-typed escape hatch", fileName)
+			}
+		case *ast.ArrayType:
+			identifier, ok := current.Elt.(*ast.Ident)
+			if current.Len == nil && ok && (identifier.Name == "byte" || identifier.Name == "uint8") {
+				t.Errorf("%s exports a byte-slice escape hatch", fileName)
+			}
+		case *ast.SelectorExpr:
+			if current.Sel.Name == "RawMessage" {
+				t.Errorf("%s exports a raw-message escape hatch", fileName)
+			}
 		case *ast.Ident:
-			if node.Name == "any" {
+			if current.Name == "any" {
 				t.Errorf("%s exports an any escape hatch", fileName)
+			}
+			if declaredTypes[current.Name] && !ast.IsExported(current.Name) {
+				t.Errorf("%s exposes unexported named type %s through its public surface", fileName, current.Name)
 			}
 		}
 		return true
 	})
+}
+
+func inspectDeclaredContinuityTypes(t *testing.T) map[string]bool {
+	t.Helper()
+
+	declared := make(map[string]bool)
+	entries, err := os.ReadDir(continuityRoot)
+	if err != nil {
+		t.Fatalf("read continuity root: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(continuityRoot, entry.Name()), nil, parser.AllErrors)
+		if err != nil {
+			t.Fatalf("parse %s: %v", entry.Name(), err)
+		}
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range general.Specs {
+				if specification, ok := specification.(*ast.TypeSpec); ok {
+					declared[specification.Name.Name] = true
+				}
+			}
+		}
+	}
+	return declared
 }
 
 func inspectExportedStructShapes(t *testing.T, path string) map[string][]string {
