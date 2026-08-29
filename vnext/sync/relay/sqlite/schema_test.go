@@ -18,7 +18,7 @@ func TestRelaySchemaInventoryIsExactAndOpaqueOnly(t *testing.T) {
 	wantColumns := map[string][]string{
 		"relay_acknowledgements": {
 			"channel_id", "environment_id", "membership_generation", "applied_arrival_sequence",
-			"producer_sequence", "certificate_id", "acknowledgement_digest", "acknowledgement_bytes",
+			"producer_sequence", "producer_envelope_digest", "certificate_id", "acknowledgement_digest", "acknowledgement_bytes",
 			"acknowledged_at_millis",
 		},
 		"relay_arrivals": {
@@ -133,8 +133,45 @@ INSERT INTO relay_arrivals(
 	); err == nil {
 		t.Fatal("raw insert with key_generation = 0 succeeded")
 	}
-	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environment, Envelope: testEnvelope(environment, "fact-a", 1, relay.Digest{}, 0xc2)}); err != nil {
+	accepted := testEnvelope(environment, "fact-a", 1, relay.Digest{}, 0xc2)
+	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environment, Envelope: accepted}); err != nil {
 		t.Fatalf("Append(valid) error = %v", err)
+	}
+	zeroDigest := relay.Digest{}
+	invalidAcknowledgementDigest := testDigest(0xc4)
+	if _, err := store.db.Exec(`
+INSERT INTO relay_acknowledgements(
+  channel_id, environment_id, membership_generation, applied_arrival_sequence,
+  producer_sequence, producer_envelope_digest, certificate_id,
+  acknowledgement_digest, acknowledgement_bytes, acknowledged_at_millis
+) VALUES(?, ?, 1, 1, 1, ?, ?, ?, ?, 1)`,
+		owner.ChannelID[:], string(environment.EnvironmentID), zeroDigest[:], environment.CertificateID[:],
+		invalidAcknowledgementDigest[:], []byte("opaque-signed-acknowledgement"),
+	); err == nil {
+		t.Fatal("raw acknowledgement with nonzero producer and zero envelope digest succeeded")
+	}
+	if err := store.Acknowledge(t.Context(), relay.AcknowledgeRequest{
+		Authorization: environment,
+		Acknowledgement: relay.Acknowledgement{
+			ChannelID:              owner.ChannelID,
+			EnvironmentID:          environment.EnvironmentID,
+			MembershipGeneration:   1,
+			AppliedArrivalSequence: 1,
+			ProducerSequence:       1,
+			ProducerEnvelopeDigest: accepted.EnvelopeDigest,
+			CertificateID:          environment.CertificateID,
+			AcknowledgementDigest:  testDigest(0xc5),
+			AcknowledgementBytes:   []byte("opaque-signed-acknowledgement"),
+		},
+	}); err != nil {
+		t.Fatalf("Acknowledge(valid) error = %v", err)
+	}
+	replacementDigest := testDigest(0xc6)
+	if _, err := store.db.Exec(`
+UPDATE relay_acknowledgements
+SET producer_envelope_digest = ?
+WHERE channel_id = ? AND environment_id = ?`, replacementDigest[:], owner.ChannelID[:], string(environment.EnvironmentID)); err == nil {
+		t.Fatal("raw acknowledgement producer digest replacement at the same sequence succeeded")
 	}
 	if _, err := store.db.Exec(`DELETE FROM relay_arrivals WHERE channel_id = ?`, owner.ChannelID[:]); err == nil {
 		t.Fatal("raw delete of append-only arrival succeeded")

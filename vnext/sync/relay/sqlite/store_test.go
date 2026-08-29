@@ -220,6 +220,7 @@ func TestRelayAcknowledgementExactRetrySurvivesProducerAdvanceAndRetirement(t *t
 			MembershipGeneration:   1,
 			AppliedArrivalSequence: 1,
 			ProducerSequence:       1,
+			ProducerEnvelopeDigest: first.EnvelopeDigest,
 			CertificateID:          environment.CertificateID,
 			AcknowledgementDigest:  testDigest(0x58),
 			AcknowledgementBytes:   []byte("opaque-signed-acknowledgement"),
@@ -457,6 +458,7 @@ func TestRelayEnvironmentTokenExpiryPrecedesCertificateExpiry(t *testing.T) {
 			MembershipGeneration:   1,
 			AppliedArrivalSequence: 1,
 			ProducerSequence:       1,
+			ProducerEnvelopeDigest: envelope.EnvelopeDigest,
 			CertificateID:          environment.CertificateID,
 			AcknowledgementDigest:  testDigest(0x63),
 			AcknowledgementBytes:   []byte("opaque-signed-acknowledgement"),
@@ -481,7 +483,8 @@ func TestRelayEnvironmentTokenExpiryPrecedesCertificateExpiry(t *testing.T) {
 func TestRelayAcknowledgementsGatePruneAndTombstonesPreserveOpaqueIdentity(t *testing.T) {
 	t.Parallel()
 
-	store, owner, environmentA := newTestStoreWithEnvironment(t, relay.TrustedEnvironment, 0)
+	verifier := &gatedTestVerifier{}
+	store, owner, environmentA := newTestStoreWithEnvironmentAndVerifier(t, relay.TrustedEnvironment, 0, verifier)
 	environmentB := testEnvironmentAuthorization(owner, "environment-b", 0x62, 0x82)
 	if _, err := store.RegisterEnvironment(t.Context(), relay.RegisterEnvironmentRequest{
 		Authorization: owner,
@@ -523,14 +526,26 @@ func TestRelayAcknowledgementsGatePruneAndTombstonesPreserveOpaqueIdentity(t *te
 		t.Fatalf("Tombstone(without acknowledgements) error = %v, want ErrAcknowledgementRequired", err)
 	}
 
-	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, 0x73)
-	acknowledgeTestHead(t, store, environmentB, 2, 2, 1, 0x74)
+	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, first.EnvelopeDigest, 0x73)
+	acknowledgeTestHead(t, store, environmentB, 2, 2, 1, second.EnvelopeDigest, 0x74)
 	result, err := store.Tombstone(t.Context(), prune)
 	if err != nil {
 		t.Fatalf("Tombstone() error = %v", err)
 	}
 	if result.Duplicate || result.Tombstoned != 1 || result.RelayHead != 2 {
 		t.Fatalf("Tombstone() = %#v, want one new tombstone at head 2", result)
+	}
+	if len(verifier.pruneAuthority.Environments) != 2 || len(verifier.pruneAuthority.Acknowledgements) != 2 {
+		t.Fatalf("prune authority witness counts = %d environments, %d acknowledgements, want 2 and 2",
+			len(verifier.pruneAuthority.Environments), len(verifier.pruneAuthority.Acknowledgements))
+	}
+	if verifier.pruneAuthority.Environments[0].EnvironmentID != environmentA.EnvironmentID ||
+		verifier.pruneAuthority.Environments[1].EnvironmentID != environmentB.EnvironmentID ||
+		verifier.pruneAuthority.Acknowledgements[0].EnvironmentID != environmentA.EnvironmentID ||
+		verifier.pruneAuthority.Acknowledgements[1].EnvironmentID != environmentB.EnvironmentID ||
+		verifier.pruneAuthority.Acknowledgements[0].ProducerEnvelopeDigest != first.EnvelopeDigest ||
+		verifier.pruneAuthority.Acknowledgements[1].ProducerEnvelopeDigest != second.EnvelopeDigest {
+		t.Fatalf("prune authority = %#v, want sorted, index-matched active witness set", verifier.pruneAuthority)
 	}
 
 	page, err := store.Page(t.Context(), relay.PageRequest{Authorization: environmentA, Limit: 10})
@@ -691,6 +706,7 @@ func TestRelayVerifierRefusalCannotReachPersistence(t *testing.T) {
 			MembershipGeneration:   1,
 			AppliedArrivalSequence: 1,
 			ProducerSequence:       1,
+			ProducerEnvelopeDigest: envelope.EnvelopeDigest,
 			CertificateID:          authorization.CertificateID,
 			AcknowledgementDigest:  testDigest(0xb2),
 			AcknowledgementBytes:   []byte("opaque-signed-acknowledgement"),
@@ -728,6 +744,34 @@ func TestRelayVerifierRefusalCannotReachPersistence(t *testing.T) {
 	verifier.rejectPrune = true
 	if _, err := store.Tombstone(t.Context(), prune); !errors.Is(err, relay.ErrUnverified) {
 		t.Fatalf("Tombstone(rejected) error = %v, want ErrUnverified", err)
+	}
+	authority := verifier.pruneAuthority
+	if authority.Channel.ChannelID != owner.ChannelID || authority.Channel.RelayGeneration != owner.RelayGeneration ||
+		len(authority.Environments) != 1 || len(authority.Acknowledgements) != 1 {
+		t.Fatalf("prune authority = %#v, want channel and one matched active witness", authority)
+	}
+	gotEnvironment := authority.Environments[0]
+	if gotEnvironment.EnvironmentID != authorization.EnvironmentID ||
+		gotEnvironment.CertificateID != registration.Environment.CertificateID ||
+		!bytes.Equal(gotEnvironment.CertificateBytes, registration.Environment.CertificateBytes) ||
+		gotEnvironment.Mode != registration.Environment.Mode ||
+		gotEnvironment.ExpiresAtMillis != registration.Environment.ExpiresAtMillis ||
+		gotEnvironment.RelayTokenExpiresAtMillis != registration.Environment.RelayTokenExpiresAtMillis ||
+		gotEnvironment.MembershipGeneration != registration.Environment.MembershipGeneration {
+		t.Fatalf("prune environment authority = %#v, want exact registered authority", gotEnvironment)
+	}
+	gotAcknowledgement := authority.Acknowledgements[0]
+	wantAcknowledgement := acknowledgement.Acknowledgement
+	if gotAcknowledgement.ChannelID != wantAcknowledgement.ChannelID ||
+		gotAcknowledgement.EnvironmentID != wantAcknowledgement.EnvironmentID ||
+		gotAcknowledgement.MembershipGeneration != wantAcknowledgement.MembershipGeneration ||
+		gotAcknowledgement.AppliedArrivalSequence != wantAcknowledgement.AppliedArrivalSequence ||
+		gotAcknowledgement.ProducerSequence != wantAcknowledgement.ProducerSequence ||
+		gotAcknowledgement.ProducerEnvelopeDigest != wantAcknowledgement.ProducerEnvelopeDigest ||
+		gotAcknowledgement.CertificateID != wantAcknowledgement.CertificateID ||
+		gotAcknowledgement.AcknowledgementDigest != wantAcknowledgement.AcknowledgementDigest ||
+		!bytes.Equal(gotAcknowledgement.AcknowledgementBytes, wantAcknowledgement.AcknowledgementBytes) {
+		t.Fatalf("prune acknowledgement = %#v, want exact latest acknowledgement %#v", gotAcknowledgement, wantAcknowledgement)
 	}
 	assertTableCount(t, store, "relay_prune_certificates", 0)
 	var ciphertext []byte
@@ -788,8 +832,8 @@ func TestRelayAuthenticatedInventoryPagesExposeBoundedVerificationMaterial(t *te
 	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentB, Envelope: second}); err != nil {
 		t.Fatalf("Append(B) error = %v", err)
 	}
-	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, 0xd3)
-	acknowledgeTestHead(t, store, environmentB, 2, 2, 1, 0xd4)
+	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, first.EnvelopeDigest, 0xd3)
+	acknowledgeTestHead(t, store, environmentB, 2, 2, 1, second.EnvelopeDigest, 0xd4)
 	prune := relay.PruneCertificate{
 		ChannelID:            owner.ChannelID,
 		PruneID:              testDigest(0xd5),
@@ -994,8 +1038,8 @@ func TestRelayInventoryContinuationsPinSnapshotsAndRejectMembershipChanges(t *te
 		t.Fatalf("EnvironmentInventory(continued) = %#v, want producer heads bounded through arrival 1", continuedEnvironmentPage)
 	}
 
-	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, 0xe3)
-	acknowledgeTestHead(t, store, environmentB, 2, 2, 1, 0xe4)
+	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, first.EnvelopeDigest, 0xe3)
+	acknowledgeTestHead(t, store, environmentB, 2, 2, 1, second.EnvelopeDigest, 0xe4)
 	prune := relay.PruneCertificate{
 		ChannelID:            owner.ChannelID,
 		PruneID:              testDigest(0xe5),
@@ -1148,8 +1192,13 @@ func TestRelaySequenceIncrementRefusesInt64Exhaustion(t *testing.T) {
 
 func newTestStoreWithEnvironment(t *testing.T, mode relay.EnvironmentMode, expiresAtMillis int64) (*Store, relay.OwnerAuthorization, relay.EnvironmentAuthorization) {
 	t.Helper()
+	return newTestStoreWithEnvironmentAndVerifier(t, mode, expiresAtMillis, allowTestVerifier{})
+}
 
-	store, err := Open(filepath.Join(t.TempDir(), "relay.sqlite"), allowTestVerifier{})
+func newTestStoreWithEnvironmentAndVerifier(t *testing.T, mode relay.EnvironmentMode, expiresAtMillis int64, verifier relay.Verifier) (*Store, relay.OwnerAuthorization, relay.EnvironmentAuthorization) {
+	t.Helper()
+
+	store, err := Open(filepath.Join(t.TempDir(), "relay.sqlite"), verifier)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -1246,7 +1295,7 @@ func testEnvelope(authorization relay.EnvironmentAuthorization, factID relay.Fac
 	}
 }
 
-func acknowledgeTestHead(t *testing.T, store *Store, authorization relay.EnvironmentAuthorization, membership uint32, applied, producer int64, seed byte) {
+func acknowledgeTestHead(t *testing.T, store *Store, authorization relay.EnvironmentAuthorization, membership uint32, applied, producer int64, producerDigest relay.Digest, seed byte) {
 	t.Helper()
 	if err := store.Acknowledge(t.Context(), relay.AcknowledgeRequest{
 		Authorization: authorization,
@@ -1256,6 +1305,7 @@ func acknowledgeTestHead(t *testing.T, store *Store, authorization relay.Environ
 			MembershipGeneration:   membership,
 			AppliedArrivalSequence: applied,
 			ProducerSequence:       producer,
+			ProducerEnvelopeDigest: producerDigest,
 			CertificateID:          authorization.CertificateID,
 			AcknowledgementDigest:  testDigest(seed),
 			AcknowledgementBytes:   []byte{seed, seed + 1},
@@ -1354,7 +1404,7 @@ func (allowTestVerifier) VerifyRetirement(_ context.Context, _ relay.ChannelAuth
 	return nil
 }
 
-func (allowTestVerifier) VerifyPruneCertificate(_ context.Context, _ relay.ChannelAuthority, _ relay.PruneCertificate) error {
+func (allowTestVerifier) VerifyPruneCertificate(_ context.Context, _ relay.PruneAuthority, _ relay.PruneCertificate) error {
 	return nil
 }
 
@@ -1364,6 +1414,7 @@ type gatedTestVerifier struct {
 	acknowledgementCalls  int
 	retirementCalls       int
 	pruneCalls            int
+	pruneAuthority        relay.PruneAuthority
 	rejectCertificate     bool
 	rejectEnvelope        bool
 	rejectAcknowledgement bool
@@ -1403,8 +1454,9 @@ func (verifier *gatedTestVerifier) VerifyRetirement(_ context.Context, _ relay.C
 	return nil
 }
 
-func (verifier *gatedTestVerifier) VerifyPruneCertificate(_ context.Context, _ relay.ChannelAuthority, _ relay.PruneCertificate) error {
+func (verifier *gatedTestVerifier) VerifyPruneCertificate(_ context.Context, authority relay.PruneAuthority, _ relay.PruneCertificate) error {
 	verifier.pruneCalls++
+	verifier.pruneAuthority = authority
 	if verifier.rejectPrune {
 		return errors.New("rejected test prune")
 	}

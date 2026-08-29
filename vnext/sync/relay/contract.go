@@ -10,17 +10,20 @@ import (
 )
 
 const (
-	ProtocolVersionV1           uint16 = 1
-	CipherSuiteV1               uint16 = 1
-	MinimumCiphertextBytes             = 16
-	MaxCiphertextBytes                 = 1_100_016
-	MaxEnvelopeBytes                   = 1_102_000
-	MaxCertificateBytes                = 8_192
-	MaxControlObjectBytes              = 1_048_576
-	MaxPageSize                        = 256
-	MaxPruneTargets                    = 4_096
-	MaxEnvironmentInventoryPage        = 4
-	MaxPruneInventoryPage              = 4
+	ProtocolVersionV1             uint16 = 1
+	CipherSuiteV1                 uint16 = 1
+	MinimumCiphertextBytes               = 16
+	MaxCiphertextBytes                   = 1_100_016
+	MaxEnvelopeBytes                     = 1_102_000
+	MaxCertificateBytes                  = 8_192
+	MaxAcknowledgementBytes              = 4_096
+	MaxRetirementBytes                   = 4_096
+	MaxControlObjectBytes                = 1_048_576
+	MaxPageSize                          = 256
+	MaxPruneTargets                      = 4_096
+	MaxPruneAuthorityEnvironments        = 256
+	MaxEnvironmentInventoryPage          = 4
+	MaxPruneInventoryPage                = 4
 )
 
 var (
@@ -209,6 +212,7 @@ type Acknowledgement struct {
 	MembershipGeneration   uint32
 	AppliedArrivalSequence int64
 	ProducerSequence       int64
+	ProducerEnvelopeDigest Digest
 	CertificateID          Digest
 	AcknowledgementDigest  Digest
 	AcknowledgementBytes   []byte
@@ -241,6 +245,16 @@ type PruneCertificate struct {
 	CertificateID        Digest
 	CertificateBytes     []byte
 	Targets              []PruneTarget
+}
+
+// PruneAuthority is the bounded, relay-visible control-plane state against
+// which a prune certificate must be verified. Environments and
+// Acknowledgements are ordered by environment ID and have exactly matching
+// indexes. Bearer lookup IDs and token hashes never cross this boundary.
+type PruneAuthority struct {
+	Channel          ChannelAuthority
+	Environments     []EnvironmentAuthority
+	Acknowledgements []Acknowledgement
 }
 
 type TombstoneResult struct {
@@ -367,5 +381,5 @@ type Verifier interface {
 	VerifyEnvelope(context.Context, EnvironmentAuthority, Envelope) error
 	VerifyAcknowledgement(context.Context, EnvironmentAuthority, Acknowledgement) error
 	VerifyRetirement(context.Context, ChannelAuthority, Retirement) error
-	VerifyPruneCertificate(context.Context, ChannelAuthority, PruneCertificate) error
+	VerifyPruneCertificate(context.Context, PruneAuthority, PruneCertificate) error
 }
