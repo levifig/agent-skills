@@ -35,12 +35,14 @@ func TestTrackerSkillContractRejectsUndeclaredInventoryAndBrokenLinks(t *testing
 
 	fixture := validFlowFixture()
 	fixture["skills/undeclared/SKILL.md"] = &fstest.MapFile{Data: []byte(validSkill("undeclared", "Explains undeclared behavior. Use when testing inventory."))}
+	fixture["skills/loaf-reference/SKILL.codex.yaml"] = &fstest.MapFile{Data: []byte("target: codex\n")}
 	declared := fixture["skills/loaf-reference/SKILL.md"]
 	declared.Data = append(declared.Data, []byte("\n[Missing](references/missing.md)\n")...)
 	fixture["skills/loaf-reference/SKILL.md"] = declared
 
 	findings := validateFlowContract(fixture)
 	assertContractFinding(t, findings, "skill.inventory", "skill is not declared")
+	assertContractFinding(t, findings, "skill.surface", "sidecar")
 	assertContractFinding(t, findings, "content.link", "broken link")
 }
 
