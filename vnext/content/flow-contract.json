@@ -1,0 +1,61 @@
+{
+  "schema": "loaf-flow/v1",
+  "tracker_contract": "project-management/v1",
+  "authority": {
+    "shared_work": "tracker",
+    "service_connections": "harness",
+    "flow_ceremonies": "loaf",
+    "code": "git"
+  },
+  "local_work_record": false,
+  "tracker_proxy": false,
+  "tracker_sync": false,
+  "skills": [
+    {
+      "name": "loaf-reference",
+      "path": "skills/loaf-reference/SKILL.md",
+      "kind": "reference"
+    }
+  ],
+  "templates": [
+    {
+      "id": "problem-narrative",
+      "path": "templates/problem-narrative.md",
+      "required_fields": [
+        "problem",
+        "affected_people",
+        "current_reality",
+        "desired_outcome",
+        "constraints",
+        "unknowns",
+        "handoff"
+      ]
+    },
+    {
+      "id": "work-contract",
+      "path": "templates/work-contract.md",
+      "required_fields": [
+        "title",
+        "problem",
+        "definition_of_done",
+        "out_of_scope",
+        "relationships",
+        "verification",
+        "risks"
+      ]
+    },
+    {
+      "id": "tracker-update",
+      "path": "templates/tracker-update.md",
+      "required_fields": [
+        "native_ref",
+        "summary",
+        "evidence",
+        "status_intent",
+        "blockers",
+        "next_step"
+      ]
+    }
+  ],
+  "agents": []
+}
