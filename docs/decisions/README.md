@@ -27,6 +27,8 @@ Immutable records of significant architectural decisions.
 | [ADR-021](ADR-021-markdown-reimport-authority.md) | Markdown re-import authority — fingerprint reclaim, insert-only status, snapshot simulation | Accepted | 2026-07-24 |
 | [ADR-022](ADR-022-change-anatomy-and-release-cohorts.md) | Change anatomy — role-named narrative, task-file state, and release cohorts via target_release | Deprecated | 2026-07-28 |
 | [ADR-023](ADR-023-execution-provenance-and-cohort-receipts.md) | Execution provenance and cohort receipts — git as the witness, verify as the only runner | Deprecated | 2026-07-28 |
+| [ADR-029](ADR-029-fact-envelope-sync-contract.md) | Fact envelope as the grow-only sync contract | Accepted | 2026-08-26 |
 | [ADR-030](ADR-030-vnext-continuity-persistence.md) | vNext continuity persists as SQLite-backed typed facts | Accepted | 2026-08-29 |
+| [ADR-031](ADR-031-vnext-private-sync.md) | vNext private sync uses signed E2E fact envelopes and an opaque relay | Accepted | 2026-08-29 |
 
 See [../knowledge/](../knowledge/) for domain knowledge files.
