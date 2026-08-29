@@ -3,6 +3,7 @@ package credential
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -289,6 +290,33 @@ func TestCredentialErrorsDoNotEchoWireOrTokens(t *testing.T) {
 	ownerSecret := recovery.OwnerRelayAuthorization.Secret()
 	if strings.Contains(decodeErr.Error(), corrupt) || bytes.Contains([]byte(decodeErr.Error()), ownerSecret[:]) {
 		t.Fatalf("credential error leaked protected input: %q", decodeErr)
+	}
+}
+
+func TestProtectedCredentialsRejectGenericJSONSerialization(t *testing.T) {
+	t.Parallel()
+
+	recovery, trusted, ephemeral := testCredentials(t)
+	tests := []struct {
+		name       string
+		credential any
+	}{
+		{name: "recovery", credential: recovery},
+		{name: "trusted", credential: trusted},
+		{name: "ephemeral", credential: ephemeral},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			encoded, err := json.Marshal(test.credential)
+			if !errors.Is(err, ErrProtectedCredentialEncoding) {
+				t.Fatalf("marshal error = %v, want %v", err, ErrProtectedCredentialEncoding)
+			}
+			if len(encoded) != 0 {
+				t.Fatalf("marshal returned %d protected bytes", len(encoded))
+			}
+		})
 	}
 }
 

@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"errors"
 	"testing"
 
@@ -66,6 +67,28 @@ func TestEnvironmentCertificateRequiresAdminSignature(t *testing.T) {
 	wrongAdmin := AdminPublicKey(testAdminSeed(t, 0x11))
 	if err := VerifyEnvironmentCertificate(signed, wrongAdmin); !errors.Is(err, ErrInvalidCertificateSignature) {
 		t.Fatalf("wrong-admin error = %v, want %v", err, ErrInvalidCertificateSignature)
+	}
+}
+
+func TestEnvironmentCertificateRejectsAdminKeyReuse(t *testing.T) {
+	t.Parallel()
+
+	adminSeed := testAdminSeed(t, 0x10)
+	adminPublic := AdminPublicKey(adminSeed)
+	certificate := testUnsignedCertificate(adminPublic)
+
+	if _, err := SignEnvironmentCertificate(certificate, adminSeed); !errors.Is(err, ErrAuthorityKeyReuse) {
+		t.Fatalf("sign same-key certificate error = %v, want %v", err, ErrAuthorityKeyReuse)
+	}
+
+	transcript, err := protocol.CertificateBodyTranscript(certificate)
+	if err != nil {
+		t.Fatalf("certificate transcript: %v", err)
+	}
+	signature := ed25519.Sign(ed25519.NewKeyFromSeed(adminSeed[:]), transcript)
+	copy(certificate.AdminSignature[:], signature)
+	if err := VerifyEnvironmentCertificate(certificate, adminPublic); !errors.Is(err, ErrAuthorityKeyReuse) {
+		t.Fatalf("verify same-key certificate error = %v, want %v", err, ErrAuthorityKeyReuse)
 	}
 }
 

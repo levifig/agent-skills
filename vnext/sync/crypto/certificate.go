@@ -27,6 +27,9 @@ func SignEnvironmentCertificate(certificate protocol.EnvironmentCertificate, see
 	if err := certificate.Validate(); err != nil {
 		return protocol.EnvironmentCertificate{}, err
 	}
+	if certificate.EnvironmentPublicKey == AdminPublicKey(seed) {
+		return protocol.EnvironmentCertificate{}, ErrAuthorityKeyReuse
+	}
 	transcript, err := protocol.CertificateBodyTranscript(certificate)
 	if err != nil {
 		return protocol.EnvironmentCertificate{}, err
@@ -44,6 +47,9 @@ func VerifyEnvironmentCertificate(certificate protocol.EnvironmentCertificate, a
 	}
 	if err := certificate.Validate(); err != nil {
 		return err
+	}
+	if certificate.EnvironmentPublicKey == adminPublic {
+		return ErrAuthorityKeyReuse
 	}
 	transcript, err := protocol.CertificateBodyTranscript(certificate)
 	if err != nil {

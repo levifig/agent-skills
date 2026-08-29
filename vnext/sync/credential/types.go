@@ -47,6 +47,9 @@ var (
 	ErrCredentialExpired = errors.New("sync credential: ephemeral authority expired")
 	// ErrCredentialRandomSource identifies failure to mint bearer material.
 	ErrCredentialRandomSource = errors.New("sync credential: secure random source failed")
+	// ErrProtectedCredentialEncoding prevents generic serializers from
+	// bypassing the class-specific, checksummed credential codecs.
+	ErrProtectedCredentialEncoding = errors.New("sync credential: use the protected class-specific encoder")
 )
 
 // RelayTokenID is the public high-entropy lookup identity for a bearer token.
@@ -121,6 +124,12 @@ func (ProjectRecoveryCredential) GoString() string {
 	return "credential.ProjectRecoveryCredential([REDACTED])"
 }
 
+// MarshalJSON fails closed so generic serialization cannot expose recovery
+// authority. Use EncodeRecovery for the protected transport representation.
+func (ProjectRecoveryCredential) MarshalJSON() ([]byte, error) {
+	return nil, ErrProtectedCredentialEncoding
+}
+
 // Validate checks recovery structure without logging protected values.
 func (credential ProjectRecoveryCredential) Validate() error {
 	if err := validateCommon(credential.ProjectID, credential.RelayURL, credential.RelayGeneration, credential.ChannelID); err != nil {
@@ -163,6 +172,12 @@ func (TrustedProjectCredential) String() string { return "[REDACTED trusted proj
 // GoString prevents %#v from formatting trusted environment authority.
 func (TrustedProjectCredential) GoString() string {
 	return "credential.TrustedProjectCredential([REDACTED])"
+}
+
+// MarshalJSON fails closed so generic serialization cannot expose trusted
+// environment authority. Use EncodeTrusted for the protected representation.
+func (TrustedProjectCredential) MarshalJSON() ([]byte, error) {
+	return nil, ErrProtectedCredentialEncoding
 }
 
 // Validate checks trusted credential structure and its admin-signed
@@ -209,6 +224,12 @@ func (EphemeralProjectCredential) String() string { return "[REDACTED ephemeral 
 // GoString prevents %#v from formatting ephemeral environment authority.
 func (EphemeralProjectCredential) GoString() string {
 	return "credential.EphemeralProjectCredential([REDACTED])"
+}
+
+// MarshalJSON fails closed so generic serialization cannot expose ephemeral
+// environment authority. Use EncodeEphemeral for the protected representation.
+func (EphemeralProjectCredential) MarshalJSON() ([]byte, error) {
+	return nil, ErrProtectedCredentialEncoding
 }
 
 // Validate checks ephemeral credential structure, exact finite keys, and its
