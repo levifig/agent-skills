@@ -17,6 +17,7 @@ import (
 const (
 	maximumSyncPageFrames      = 256
 	maximumSealedEnvelopeBytes = 1_102_000
+	maximumPrunedArrivalBytes  = 1_024
 )
 
 // SyncChannelID is the protocol's fixed-width opaque channel identity. It is
@@ -67,11 +68,15 @@ func (problem *SyncError) Error() string {
 }
 
 // OpaqueSyncFrame is one untrusted relay arrival staged without interpreting
-// its sealed bytes. Quarantined is populated only by PendingSyncFrames.
+// its exact bytes. Exactly one of SealedEnvelope and PrunedArrival must be
+// populated. EnvelopeDigest always identifies the original immutable sealed
+// envelope; it does not identify the pruned-arrival wrapper. Quarantined is
+// populated only by inbox reads.
 type OpaqueSyncFrame struct {
 	ArrivalSequence int64
 	EnvelopeDigest  [32]byte
 	SealedEnvelope  []byte
+	PrunedArrival   []byte
 	Quarantined     bool
 }
 
@@ -774,6 +779,10 @@ WHERE project_id = ?`, relayHead, string(projectID)); err != nil {
 
 	seenDigests := make(map[[32]byte]struct{}, len(frames))
 	for _, frame := range frames {
+		frameKind, frameBytes, err := opaqueSyncFrameStorageV1(frame)
+		if err != nil {
+			return SyncProgress{}, err
+		}
 		if _, duplicate := seenDigests[frame.EnvelopeDigest]; duplicate {
 			return SyncProgress{}, syncProblem(SyncErrorConflict, "envelope_digest", "appears more than once in the page")
 		}
@@ -808,11 +817,12 @@ SELECT EXISTS (
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO continuity_sync_inbox(
   project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
-) VALUES(?, ?, ?, 'sealed', ?, 'staged')`,
+) VALUES(?, ?, ?, ?, ?, 'staged')`,
 			string(projectID),
 			frame.ArrivalSequence,
 			frame.EnvelopeDigest[:],
-			frame.SealedEnvelope,
+			frameKind,
+			frameBytes,
 		); err != nil {
 			return SyncProgress{}, syncTransactionProblem(ctx)
 		}
@@ -885,25 +895,19 @@ LIMIT ?`, string(projectID), progress.AppliedCursor, limit)
 	frames := make([]OpaqueSyncFrame, 0, limit)
 	expected := progress.AppliedCursor + 1
 	for rows.Next() {
-		var frame OpaqueSyncFrame
+		var arrivalSequence int64
 		var digest []byte
+		var frameBytes []byte
 		var frameKind, state string
-		if err := rows.Scan(&frame.ArrivalSequence, &digest, &frameKind, &frame.SealedEnvelope, &state); err != nil {
+		if err := rows.Scan(&arrivalSequence, &digest, &frameKind, &frameBytes, &state); err != nil {
 			rows.Close()
 			return nil, syncTransactionProblem(ctx)
 		}
-		if frameKind != "sealed" {
-			rows.Close()
-			return nil, syncProblem(SyncErrorTerminalHistoryRequired, "frame_kind", "requires tagged terminal-history handling")
-		}
-		if frame.ArrivalSequence != expected || len(digest) != len(frame.EnvelopeDigest) ||
-			(state != "staged" && state != "quarantined") {
+		frame, err := opaqueSyncFrameFromColumnsV1(arrivalSequence, digest, frameKind, frameBytes, state)
+		if err != nil || frame.ArrivalSequence != expected {
 			rows.Close()
 			return nil, syncProblem(SyncErrorStore, "", "staged inbox is inconsistent")
 		}
-		copy(frame.EnvelopeDigest[:], digest)
-		frame.SealedEnvelope = append([]byte(nil), frame.SealedEnvelope...)
-		frame.Quarantined = state == "quarantined"
 		frames = append(frames, frame)
 		expected++
 	}
@@ -1357,11 +1361,8 @@ func validateStageSyncPage(projectID continuity.ProjectID, channelID SyncChannel
 		if frame.Quarantined {
 			return syncProblem(SyncErrorInvalid, "quarantined", "is output-only state")
 		}
-		if len(frame.SealedEnvelope) < 1 || len(frame.SealedEnvelope) > maximumSealedEnvelopeBytes {
-			return syncProblem(SyncErrorInvalid, "sealed_envelope", "size is outside the protocol limit")
-		}
-		if frame.EnvelopeDigest == [32]byte{} || sha256.Sum256(frame.SealedEnvelope) != frame.EnvelopeDigest {
-			return syncProblem(SyncErrorInvalid, "envelope_digest", "does not identify the sealed envelope bytes")
+		if _, _, err := opaqueSyncFrameStorageV1(frame); err != nil {
+			return err
 		}
 		if expected == math.MaxInt64 && frame.ArrivalSequence != frames[len(frames)-1].ArrivalSequence {
 			return syncProblem(SyncErrorInvalid, "arrival_sequence", "cursor is exhausted")
@@ -1451,7 +1452,7 @@ WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival
 			return syncTransactionProblem(ctx)
 		}
 		if frameKind != "sealed" {
-			return syncProblem(SyncErrorTerminalHistoryRequired, "frame_kind", "requires tagged terminal-history handling")
+			return syncProblem(SyncErrorTerminalHistoryRequired, "", "")
 		}
 		if len(digest) != len(frame.digest) || !bytes.Equal(digest, frame.digest[:]) ||
 			(state != "staged" && state != "quarantined") {
@@ -1465,12 +1466,19 @@ WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival
 func validateStagedPageReplayV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, appliedCursor int64, frames []OpaqueSyncFrame) error {
 	for _, frame := range frames {
 		if frame.ArrivalSequence <= appliedCursor {
+			candidateKind, _, err := opaqueSyncFrameStorageV1(frame)
+			if err != nil {
+				return err
+			}
+			if candidateKind == terminalCandidateFrameKindPrunedV1 {
+				return syncProblem(SyncErrorConflict, "frame_bytes", "applied pruned arrival bytes are no longer retained")
+			}
 			rows, err := tx.QueryContext(ctx, `
-SELECT envelope_digest
+SELECT envelope_digest, 'sealed'
 FROM continuity_sync_receipts
 WHERE project_id = ? AND arrival_sequence = ?
 UNION ALL
-SELECT envelope_digest
+SELECT envelope_digest, 'pruned'
 FROM continuity_sync_tombstones
 WHERE project_id = ? AND arrival_sequence = ?`,
 				string(projectID),
@@ -1484,13 +1492,15 @@ WHERE project_id = ? AND arrival_sequence = ?`,
 			matched := false
 			for rows.Next() {
 				var digest []byte
-				if err := rows.Scan(&digest); err != nil {
+				var retainedKind string
+				if err := rows.Scan(&digest, &retainedKind); err != nil {
 					rows.Close()
 					return syncTransactionProblem(ctx)
 				}
-				if len(digest) != len(frame.EnvelopeDigest) || !bytes.Equal(digest, frame.EnvelopeDigest[:]) {
+				if retainedKind != candidateKind || len(digest) != len(frame.EnvelopeDigest) ||
+					!bytes.Equal(digest, frame.EnvelopeDigest[:]) {
 					rows.Close()
-					return syncProblem(SyncErrorConflict, "envelope_digest", "stage retry conflicts with an applied arrival")
+					return syncProblem(SyncErrorConflict, "frame_bytes", "stage retry conflicts with an applied arrival")
 				}
 				matched = true
 			}
@@ -1502,7 +1512,7 @@ WHERE project_id = ? AND arrival_sequence = ?`,
 			}
 			continue
 		}
-		var digest, sealed []byte
+		var digest, retainedBytes []byte
 		var frameKind string
 		if err := tx.QueryRowContext(ctx, `
 SELECT envelope_digest, frame_kind, frame_bytes
@@ -1510,22 +1520,69 @@ FROM continuity_sync_inbox
 WHERE project_id = ? AND arrival_sequence = ?`,
 			string(projectID),
 			frame.ArrivalSequence,
-		).Scan(&digest, &frameKind, &sealed); err != nil {
+		).Scan(&digest, &frameKind, &retainedBytes); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return syncProblem(SyncErrorStore, "", "downloaded arrival has no staged envelope")
 			}
 			return syncTransactionProblem(ctx)
 		}
-		if frameKind != "sealed" {
-			return syncProblem(SyncErrorConflict, "frame_kind", "stage retry differs from retained frame kind")
+		candidateKind, candidateBytes, err := opaqueSyncFrameStorageV1(frame)
+		if err != nil {
+			return err
 		}
 		if len(digest) != len(frame.EnvelopeDigest) ||
 			!bytes.Equal(digest, frame.EnvelopeDigest[:]) ||
-			!bytes.Equal(sealed, frame.SealedEnvelope) {
-			return syncProblem(SyncErrorConflict, "sealed_envelope", "stage retry differs from retained bytes")
+			frameKind != candidateKind ||
+			!bytes.Equal(retainedBytes, candidateBytes) {
+			return syncProblem(SyncErrorConflict, "frame_bytes", "stage retry differs from retained bytes")
 		}
 	}
 	return nil
+}
+
+func opaqueSyncFrameStorageV1(frame OpaqueSyncFrame) (string, []byte, error) {
+	sealedPresent := frame.SealedEnvelope != nil
+	prunedPresent := frame.PrunedArrival != nil
+	if sealedPresent == prunedPresent {
+		return "", nil, syncProblem(SyncErrorInvalid, "frame_bytes", "must contain exactly one opaque frame representation")
+	}
+	if frame.EnvelopeDigest == ([32]byte{}) {
+		return "", nil, syncProblem(SyncErrorInvalid, "envelope_digest", "is invalid")
+	}
+	if sealedPresent {
+		if len(frame.SealedEnvelope) < 1 || len(frame.SealedEnvelope) > maximumSealedEnvelopeBytes {
+			return "", nil, syncProblem(SyncErrorInvalid, "sealed_envelope", "size is outside the protocol limit")
+		}
+		if sha256.Sum256(frame.SealedEnvelope) != frame.EnvelopeDigest {
+			return "", nil, syncProblem(SyncErrorInvalid, "envelope_digest", "does not identify the sealed envelope bytes")
+		}
+		return terminalCandidateFrameKindSealedV1, frame.SealedEnvelope, nil
+	}
+	if len(frame.PrunedArrival) < 1 || len(frame.PrunedArrival) > maximumPrunedArrivalBytes {
+		return "", nil, syncProblem(SyncErrorInvalid, "pruned_arrival", "size is outside the protocol limit")
+	}
+	return terminalCandidateFrameKindPrunedV1, frame.PrunedArrival, nil
+}
+
+func opaqueSyncFrameFromColumnsV1(arrivalSequence int64, digest []byte, frameKind string, frameBytes []byte, state string) (OpaqueSyncFrame, error) {
+	frame := OpaqueSyncFrame{ArrivalSequence: arrivalSequence, Quarantined: state == "quarantined"}
+	if arrivalSequence < 1 || len(digest) != len(frame.EnvelopeDigest) ||
+		(state != "staged" && state != "quarantined") {
+		return OpaqueSyncFrame{}, syncProblem(SyncErrorStore, "", "staged inbox is inconsistent")
+	}
+	copy(frame.EnvelopeDigest[:], digest)
+	switch frameKind {
+	case terminalCandidateFrameKindSealedV1:
+		frame.SealedEnvelope = append([]byte(nil), frameBytes...)
+	case terminalCandidateFrameKindPrunedV1:
+		frame.PrunedArrival = append([]byte(nil), frameBytes...)
+	default:
+		return OpaqueSyncFrame{}, syncProblem(SyncErrorStore, "", "staged inbox is inconsistent")
+	}
+	if _, _, err := opaqueSyncFrameStorageV1(frame); err != nil {
+		return OpaqueSyncFrame{}, syncProblem(SyncErrorStore, "", "staged inbox is inconsistent")
+	}
+	return frame, nil
 }
 
 func readSyncProgressV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (SyncProgress, bool, error) {
