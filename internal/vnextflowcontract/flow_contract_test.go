@@ -153,6 +153,7 @@ const validFlowManifest = `{
       "kind": "reference"
     }
   ],
+  "ceremonies": [],
   "templates": [
     {
       "id": "problem-narrative",

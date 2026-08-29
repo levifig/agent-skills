@@ -25,6 +25,73 @@
       "name": "linear",
       "path": "skills/linear/SKILL.md",
       "kind": "provider"
+    },
+    {
+      "name": "pitch",
+      "path": "skills/pitch/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "triage",
+      "path": "skills/triage/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "shape",
+      "path": "skills/shape/SKILL.md",
+      "kind": "workflow"
+    }
+  ],
+  "ceremonies": [
+    {
+      "name": "pitch",
+      "skill": "pitch",
+      "input": "human-context",
+      "output": "problem-narrative",
+      "template": "problem-narrative",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "comment.list"
+      ]
+    },
+    {
+      "name": "triage",
+      "skill": "triage",
+      "input": "native-work-candidates",
+      "output": "native-dispositions",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "work.update",
+        "status.read",
+        "status.transition",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "shape",
+      "skill": "shape",
+      "input": "problem-narrative",
+      "output": "work-contract",
+      "template": "work-contract",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "work.create",
+        "work.update",
+        "definition.write",
+        "hierarchy.read",
+        "hierarchy.change",
+        "dependency.read",
+        "dependency.change",
+        "status.read"
+      ]
     }
   ],
   "templates": [
