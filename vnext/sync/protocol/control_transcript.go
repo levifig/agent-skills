@@ -22,13 +22,13 @@ const (
 
 	progressAcknowledgementBodyFieldCount = 11
 	progressAcknowledgementFieldCount     = progressAcknowledgementBodyFieldCount + 1
-	pruneAcknowledgementBodyFieldCount    = 17
+	pruneAcknowledgementBodyFieldCount    = 18
 	pruneAcknowledgementFieldCount        = pruneAcknowledgementBodyFieldCount + 1
 	terminalRetirementBodyFieldCount      = 10
 	terminalRetirementFieldCount          = terminalRetirementBodyFieldCount + 1
 	pruneReferenceFieldCount              = 9
 	pruneManifestFieldCount               = 2
-	pruneCertificateBodyFieldCount        = 15
+	pruneCertificateBodyFieldCount        = 17
 	pruneCertificateFieldCount            = pruneCertificateBodyFieldCount + 1
 )
 
@@ -453,6 +453,7 @@ func pruneAcknowledgementBodyFields(acknowledgement PruneAcknowledgement) [][]by
 		acknowledgement.ClosureReferenceDigest[:],
 		uint32Bytes(acknowledgement.ManifestCount),
 		acknowledgement.ManifestDigest[:],
+		acknowledgement.CapsuleDigest[:],
 	}
 }
 
@@ -460,7 +461,7 @@ func parsePruneAcknowledgementBody(fields [][]byte) (PruneAcknowledgement, error
 	if len(fields) != pruneAcknowledgementBodyFieldCount || len(fields[3]) != len(ChannelID{}) ||
 		len(fields[4]) != len(RelayGeneration{}) || len(fields[6]) != len(Digest{}) || len(fields[8]) != len(Digest{}) ||
 		len(fields[11]) != len(Digest{}) || len(fields[12]) != len(Digest{}) || len(fields[14]) != len(Digest{}) ||
-		len(fields[16]) != len(Digest{}) {
+		len(fields[16]) != len(Digest{}) || len(fields[17]) != len(Digest{}) {
 		return PruneAcknowledgement{}, ErrInvalidPruneAcknowledgement
 	}
 	version, ok := parseUint16(fields[0])
@@ -514,6 +515,7 @@ func parsePruneAcknowledgementBody(fields [][]byte) (PruneAcknowledgement, error
 	copy(acknowledgement.PruneID[:], fields[12])
 	copy(acknowledgement.ClosureReferenceDigest[:], fields[14])
 	copy(acknowledgement.ManifestDigest[:], fields[16])
+	copy(acknowledgement.CapsuleDigest[:], fields[17])
 	return acknowledgement, nil
 }
 
@@ -641,6 +643,10 @@ func pruneCertificateBodyFields(certificate PruneCertificate) ([][]byte, error) 
 	if err != nil {
 		return nil, controlEncodingError(err, ErrInvalidPruneCertificate)
 	}
+	capsule, err := certificate.Capsule.MarshalBinary()
+	if err != nil {
+		return nil, controlEncodingError(err, ErrInvalidPruneCertificate)
+	}
 	acknowledgements := make([][]byte, 0, len(certificate.Acknowledgements))
 	for _, acknowledgement := range certificate.Acknowledgements {
 		encoded, err := acknowledgement.MarshalBinary()
@@ -667,6 +673,8 @@ func pruneCertificateBodyFields(certificate PruneCertificate) ([][]byte, error) 
 		uint32Bytes(certificate.ManifestCount),
 		certificate.ManifestDigest[:],
 		manifest,
+		certificate.CapsuleDigest[:],
+		capsule,
 		uint32Bytes(certificate.ActiveAcknowledgementCount),
 		acknowledgementList,
 	}, nil
@@ -675,7 +683,7 @@ func pruneCertificateBodyFields(certificate PruneCertificate) ([][]byte, error) 
 func parsePruneCertificateBody(fields [][]byte) (PruneCertificate, error) {
 	if len(fields) != pruneCertificateBodyFieldCount || len(fields[3]) != len(ChannelID{}) ||
 		len(fields[4]) != len(RelayGeneration{}) || len(fields[5]) != len(Digest{}) || len(fields[9]) != len(Digest{}) ||
-		len(fields[11]) != len(Digest{}) {
+		len(fields[11]) != len(Digest{}) || len(fields[13]) != len(Digest{}) {
 		return PruneCertificate{}, ErrInvalidPruneCertificate
 	}
 	version, ok := parseUint16(fields[0])
@@ -702,7 +710,7 @@ func parsePruneCertificateBody(fields [][]byte) (PruneCertificate, error) {
 	if !ok {
 		return PruneCertificate{}, ErrInvalidPruneCertificate
 	}
-	activeAcknowledgementCount, ok := parseUint32(fields[13])
+	activeAcknowledgementCount, ok := parseUint32(fields[15])
 	if !ok || activeAcknowledgementCount < 1 || activeAcknowledgementCount > MaxPruneAcknowledgements {
 		return PruneCertificate{}, ErrInvalidPruneCertificate
 	}
@@ -714,7 +722,11 @@ func parsePruneCertificateBody(fields [][]byte) (PruneCertificate, error) {
 	if err != nil {
 		return PruneCertificate{}, controlEncodingError(err, ErrInvalidPruneCertificate)
 	}
-	acknowledgementBytes, err := parseControlObjectList(fields[14], MaxPruneAcknowledgements)
+	capsule, err := ParsePruneBootstrap(fields[14])
+	if err != nil {
+		return PruneCertificate{}, controlEncodingError(err, ErrInvalidPruneCertificate)
+	}
+	acknowledgementBytes, err := parseControlObjectList(fields[16], MaxPruneAcknowledgements)
 	if err != nil || uint32(len(acknowledgementBytes)) != activeAcknowledgementCount {
 		return PruneCertificate{}, ErrInvalidPruneCertificate
 	}
@@ -735,6 +747,7 @@ func parsePruneCertificateBody(fields [][]byte) (PruneCertificate, error) {
 		Closure:                    closure,
 		ManifestCount:              manifestCount,
 		Manifest:                   manifest,
+		Capsule:                    capsule,
 		ActiveAcknowledgementCount: activeAcknowledgementCount,
 		Acknowledgements:           acknowledgements,
 	}
@@ -743,6 +756,7 @@ func parsePruneCertificateBody(fields [][]byte) (PruneCertificate, error) {
 	copy(certificate.PruneID[:], fields[5])
 	copy(certificate.ClosureDigest[:], fields[9])
 	copy(certificate.ManifestDigest[:], fields[11])
+	copy(certificate.CapsuleDigest[:], fields[13])
 	return certificate, nil
 }
 

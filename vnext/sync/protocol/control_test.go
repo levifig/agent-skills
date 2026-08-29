@@ -72,6 +72,16 @@ func TestPruneAcknowledgementCanonicalRoundTripAndBindings(t *testing.T) {
 	if bytes.Equal(mutatedBody, body) {
 		t.Fatal("manifest digest mutation did not change signed transcript")
 	}
+
+	mutated = acknowledgement
+	mutated.CapsuleDigest[0] ^= 0xff
+	mutatedBody, err = PruneAcknowledgementBodyTranscript(mutated)
+	if err != nil {
+		t.Fatalf("build capsule-mutated prune acknowledgement body: %v", err)
+	}
+	if bytes.Equal(mutatedBody, body) {
+		t.Fatal("capsule digest mutation did not change signed transcript")
+	}
 }
 
 func TestTerminalRetirementCanonicalRoundTripAndIdentifier(t *testing.T) {
@@ -141,6 +151,128 @@ func TestPruneReferenceManifestAndCertificateCanonicalRoundTrip(t *testing.T) {
 	if !bytes.Equal(decodedWire, wire) || PruneCertificateID(decoded) != PruneCertificateID(certificate) {
 		t.Fatal("prune certificate changed across canonical round trip")
 	}
+
+	ciphertextOffset := bytes.Index(wire, certificate.Capsule.Ciphertext)
+	if ciphertextOffset < 0 {
+		t.Fatal("encoded prune certificate does not contain its capsule ciphertext")
+	}
+	wire[ciphertextOffset] ^= 1
+	if !bytes.Equal(decoded.Capsule.Ciphertext, certificate.Capsule.Ciphertext) {
+		t.Fatal("parsed prune certificate capsule aliases its input wire")
+	}
+	decoded.Capsule.Ciphertext[0] ^= 1
+	if bytes.Equal(decoded.Capsule.Ciphertext, certificate.Capsule.Ciphertext) {
+		t.Fatal("parsed prune certificate capsule aliases its source value")
+	}
+}
+
+func TestPruneCertificateRequiresExactCapsuleBindingsAndWitnessAgreement(t *testing.T) {
+	t.Parallel()
+
+	valid := testPruneCertificate()
+	mutations := []struct {
+		name   string
+		mutate func(*PruneBootstrap)
+	}{
+		{name: "capsule version", mutate: func(value *PruneBootstrap) { value.CapsuleVersion++ }},
+		{name: "protocol version", mutate: func(value *PruneBootstrap) { value.ProtocolVersion++ }},
+		{name: "cipher suite", mutate: func(value *PruneBootstrap) { value.CipherSuite++ }},
+		{name: "bootstrap purpose", mutate: func(value *PruneBootstrap) { value.BootstrapPurposeVersion++ }},
+		{name: "channel", mutate: func(value *PruneBootstrap) { value.ChannelID[0] ^= 1 }},
+		{name: "relay generation", mutate: func(value *PruneBootstrap) { value.RelayGeneration[0] ^= 1 }},
+		{name: "prune", mutate: func(value *PruneBootstrap) { value.PruneID[0] ^= 1 }},
+		{name: "membership generation", mutate: func(value *PruneBootstrap) { value.MembershipGeneration++ }},
+		{name: "barrier", mutate: func(value *PruneBootstrap) { value.BarrierArrivalSequence++ }},
+		{name: "closure digest", mutate: func(value *PruneBootstrap) { value.ClosureReferenceDigest[0] ^= 1 }},
+		{name: "manifest count", mutate: func(value *PruneBootstrap) { value.ManifestCount++ }},
+		{name: "manifest digest", mutate: func(value *PruneBootstrap) { value.ManifestDigest[0] ^= 1 }},
+	}
+	for _, test := range mutations {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			candidate := cloneTestPruneCertificate(valid)
+			test.mutate(&candidate.Capsule)
+			candidate.CapsuleDigest = PruneBootstrapDigest(candidate.Capsule)
+			for index := range candidate.Acknowledgements {
+				candidate.Acknowledgements[index].CapsuleDigest = candidate.CapsuleDigest
+			}
+			if err := candidate.Validate(); !errors.Is(err, ErrInvalidPruneCertificate) {
+				t.Fatalf("capsule binding error = %v, want %v", err, ErrInvalidPruneCertificate)
+			}
+		})
+	}
+
+	capsuleTamper := cloneTestPruneCertificate(valid)
+	capsuleTamper.Capsule.Ciphertext[0] ^= 1
+	if err := capsuleTamper.Validate(); !errors.Is(err, ErrInvalidPruneCertificate) {
+		t.Fatalf("capsule digest mismatch error = %v, want %v", err, ErrInvalidPruneCertificate)
+	}
+	digestTamper := cloneTestPruneCertificate(valid)
+	digestTamper.CapsuleDigest[0] ^= 1
+	if err := digestTamper.Validate(); !errors.Is(err, ErrInvalidPruneCertificate) {
+		t.Fatalf("capsule digest tamper error = %v, want %v", err, ErrInvalidPruneCertificate)
+	}
+
+	witnessMismatch := cloneTestPruneCertificate(valid)
+	witnessMismatch.Acknowledgements[0].CapsuleDigest[0] ^= 1
+	if err := witnessMismatch.Validate(); !errors.Is(err, ErrInvalidPruneCertificate) {
+		t.Fatalf("witness capsule disagreement error = %v, want %v", err, ErrInvalidPruneCertificate)
+	}
+
+	zeroDigest := cloneTestPruneCertificate(valid)
+	zeroDigest.CapsuleDigest = Digest{}
+	if err := zeroDigest.Validate(); !errors.Is(err, ErrInvalidPruneCertificate) {
+		t.Fatalf("zero capsule digest error = %v, want %v", err, ErrInvalidPruneCertificate)
+	}
+
+	oversizedCapsule := cloneTestPruneCertificate(valid)
+	oversizedCapsule.Capsule.Ciphertext = make([]byte, MaxPruneBootstrapCiphertextBytes+1)
+	if err := oversizedCapsule.Validate(); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("oversized capsule error = %v, want %v", err, ErrTooLarge)
+	}
+}
+
+func TestPruneControlV1RejectsPreCapsuleFieldCounts(t *testing.T) {
+	t.Parallel()
+
+	acknowledgement := testPruneAcknowledgement("environment-legacy", 0x46)
+	legacyAcknowledgementFields := append([][]byte(nil), pruneAcknowledgementBodyFields(acknowledgement)[:17]...)
+	legacyAcknowledgementFields = append(legacyAcknowledgementFields, acknowledgement.EnvironmentSignature[:])
+	legacyAcknowledgement, err := encodeTranscript(pruneAcknowledgementDomain, legacyAcknowledgementFields...)
+	if err != nil {
+		t.Fatalf("encode legacy prune acknowledgement: %v", err)
+	}
+	if _, err := ParsePruneAcknowledgement(legacyAcknowledgement); !errors.Is(err, ErrInvalidPruneAcknowledgement) {
+		t.Fatalf("legacy prune acknowledgement error = %v, want %v", err, ErrInvalidPruneAcknowledgement)
+	}
+
+	certificate := testPruneCertificate()
+	certificateFields, err := pruneCertificateBodyFields(certificate)
+	if err != nil {
+		t.Fatalf("build current prune certificate fields: %v", err)
+	}
+	legacyCertificateFields := append([][]byte(nil), certificateFields[:13]...)
+	legacyCertificateFields = append(legacyCertificateFields, certificateFields[15:]...)
+	legacyCertificateFields = append(legacyCertificateFields, certificate.AdminSignature[:])
+	legacyCertificate, err := encodeTranscript(pruneCertificateDomain, legacyCertificateFields...)
+	if err != nil {
+		t.Fatalf("encode legacy prune certificate: %v", err)
+	}
+	if _, err := ParsePruneCertificate(legacyCertificate); !errors.Is(err, ErrInvalidPruneCertificate) {
+		t.Fatalf("legacy prune certificate error = %v, want %v", err, ErrInvalidPruneCertificate)
+	}
+
+	malformedNestedFields := append([][]byte(nil), certificateFields...)
+	malformedNestedFields[14] = append(append([]byte(nil), malformedNestedFields[14]...), 0)
+	malformedNestedFields = append(malformedNestedFields, certificate.AdminSignature[:])
+	malformedNested, err := encodeTranscript(pruneCertificateDomain, malformedNestedFields...)
+	if err != nil {
+		t.Fatalf("encode malformed nested prune capsule: %v", err)
+	}
+	if _, err := ParsePruneCertificate(malformedNested); !errors.Is(err, ErrInvalidPruneCertificate) {
+		t.Fatalf("malformed nested capsule error = %v, want %v", err, ErrInvalidPruneCertificate)
+	}
 }
 
 func TestPruneReferenceV1RejectsLegacySixFieldEncoding(t *testing.T) {
@@ -169,6 +301,11 @@ func TestControlValidationRejectsNoncanonicalSentinelsAndOrdering(t *testing.T) 
 	pruneAcknowledgement.AppliedArrivalSequence = pruneAcknowledgement.BarrierArrivalSequence - 1
 	if err := pruneAcknowledgement.Validate(); !errors.Is(err, ErrInvalidPruneAcknowledgement) {
 		t.Fatalf("prune acknowledgement before barrier error = %v, want %v", err, ErrInvalidPruneAcknowledgement)
+	}
+	pruneAcknowledgement = testPruneAcknowledgement("environment-a", 0x41)
+	pruneAcknowledgement.CapsuleDigest = Digest{}
+	if err := pruneAcknowledgement.Validate(); !errors.Is(err, ErrInvalidPruneAcknowledgement) {
+		t.Fatalf("zero capsule digest error = %v, want %v", err, ErrInvalidPruneAcknowledgement)
 	}
 
 	retirement := testTerminalRetirement(0x42)
@@ -343,6 +480,25 @@ func TestPruneCertificateMaximumTargetsAndAcknowledgementsFitControlBound(t *tes
 	manifestDigest := PruneManifestDigest(manifest)
 	closureDigest := PruneReferenceDigest(closure)
 	pruneID := testControlDigest(0x4a)
+	capsule := testControlCapsule(
+		testControlChannelID(),
+		testControlRelayGeneration(),
+		pruneID,
+		1,
+		barrier,
+		closureDigest,
+		MaxPruneTargets,
+		manifestDigest,
+		MaxPruneBootstrapCiphertextBytes,
+	)
+	capsuleWire, err := capsule.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal maximum prune capsule: %v", err)
+	}
+	if len(capsuleWire) != MaxPruneBootstrapBytes {
+		t.Fatalf("maximum prune capsule encoded to %d bytes, want exact bound %d", len(capsuleWire), MaxPruneBootstrapBytes)
+	}
+	capsuleDigest := PruneBootstrapDigest(capsule)
 	acknowledgements := make([]PruneAcknowledgement, MaxPruneAcknowledgements)
 	for index := range acknowledgements {
 		environmentID := continuity.EnvironmentID(fmt.Sprintf("%s-%04d", strings.Repeat("a", maxIdentifier-5), index))
@@ -356,6 +512,7 @@ func TestPruneCertificateMaximumTargetsAndAcknowledgementsFitControlBound(t *tes
 		acknowledgements[index].ClosureReferenceDigest = closureDigest
 		acknowledgements[index].ManifestCount = MaxPruneTargets
 		acknowledgements[index].ManifestDigest = manifestDigest
+		acknowledgements[index].CapsuleDigest = capsuleDigest
 	}
 	certificate := PruneCertificate{
 		Version:                    ControlVersionV1,
@@ -371,6 +528,8 @@ func TestPruneCertificateMaximumTargetsAndAcknowledgementsFitControlBound(t *tes
 		ManifestCount:              MaxPruneTargets,
 		ManifestDigest:             manifestDigest,
 		Manifest:                   manifest,
+		CapsuleDigest:              capsuleDigest,
+		Capsule:                    capsule,
 		ActiveAcknowledgementCount: MaxPruneAcknowledgements,
 		Acknowledgements:           acknowledgements,
 	}
@@ -427,6 +586,7 @@ func testPruneAcknowledgement(environmentID continuity.EnvironmentID, seed byte)
 		ClosureReferenceDigest:        testControlDigest(0xa1),
 		ManifestCount:                 2,
 		ManifestDigest:                testControlDigest(0xa2),
+		CapsuleDigest:                 testControlDigest(0xa3),
 		EnvironmentSignature:          testControlSignature(seed + 3),
 	}
 }
@@ -465,6 +625,20 @@ func testPruneCertificate() PruneCertificate {
 		acknowledgement.ManifestCount = uint32(len(targets))
 		acknowledgement.ManifestDigest = manifestDigest
 	}
+	capsule := testControlCapsule(
+		testControlChannelID(),
+		testControlRelayGeneration(),
+		testControlDigest(0xa0),
+		7,
+		17,
+		closureDigest,
+		uint32(len(targets)),
+		manifestDigest,
+		48,
+	)
+	capsuleDigest := PruneBootstrapDigest(capsule)
+	first.CapsuleDigest = capsuleDigest
+	second.CapsuleDigest = capsuleDigest
 	return PruneCertificate{
 		Version:                    ControlVersionV1,
 		ProtocolVersion:            ProtocolVersionV1,
@@ -479,10 +653,53 @@ func testPruneCertificate() PruneCertificate {
 		ManifestCount:              uint32(len(targets)),
 		ManifestDigest:             manifestDigest,
 		Manifest:                   manifest,
+		CapsuleDigest:              capsuleDigest,
+		Capsule:                    capsule,
 		ActiveAcknowledgementCount: 2,
 		Acknowledgements:           []PruneAcknowledgement{first, second},
 		AdminSignature:             testControlSignature(0xb0),
 	}
+}
+
+func testControlCapsule(
+	channelID ChannelID,
+	relayGeneration RelayGeneration,
+	pruneID Digest,
+	membershipGeneration uint32,
+	barrierArrivalSequence int64,
+	closureReferenceDigest Digest,
+	manifestCount uint32,
+	manifestDigest Digest,
+	ciphertextBytes int,
+) PruneBootstrap {
+	ciphertext := make([]byte, ciphertextBytes)
+	for index := range ciphertext {
+		ciphertext[index] = byte(0xe0 + index)
+	}
+	return PruneBootstrap{
+		CapsuleVersion:          PruneBootstrapCapsuleVersionV1,
+		ProtocolVersion:         ProtocolVersionV1,
+		CipherSuite:             CipherSuiteXChaCha20Poly1305,
+		BootstrapPurposeVersion: PruneBootstrapPurposeVersionV1,
+		ChannelID:               channelID,
+		RelayGeneration:         relayGeneration,
+		PruneID:                 pruneID,
+		MembershipGeneration:    membershipGeneration,
+		BarrierArrivalSequence:  barrierArrivalSequence,
+		ClosureReferenceDigest:  closureReferenceDigest,
+		ManifestCount:           manifestCount,
+		ManifestDigest:          manifestDigest,
+		Nonce:                   testPruneBootstrapNonce(0xc0),
+		Ciphertext:              ciphertext,
+	}
+}
+
+func cloneTestPruneCertificate(certificate PruneCertificate) PruneCertificate {
+	cloned := certificate
+	cloned.Manifest.Targets = append([]PruneReference(nil), certificate.Manifest.Targets...)
+	cloned.Capsule.Ciphertext = append([]byte(nil), certificate.Capsule.Ciphertext...)
+	cloned.Acknowledgements = append([]PruneAcknowledgement(nil), certificate.Acknowledgements...)
+	return cloned
 }
 
 func testPruneReference(factID continuity.FactID, environmentID continuity.EnvironmentID, environmentSequence, arrivalSequence int64, seed byte) PruneReference {
