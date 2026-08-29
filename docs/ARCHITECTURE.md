@@ -9,6 +9,11 @@ vNext is an unshipped, isolated Go production boundary. It shares the repository
 ```
 vnext/
 ├── cmd/loaf/                 # Unshipped entry point; not the canonical installed binary
+├── content/
+│   ├── flow-contract.json    # Machine-checked authority and portable Flow inventory
+│   ├── skills/               # Common Flow, provider contract, and Linear mapping
+│   ├── templates/            # Problem narrative, work contract, tracker update
+│   └── agents/               # Optional least-authority project manager profile
 └── internal/
     ├── command/              # Bootstrap command dispatch
     └── kernel/               # Schema identity and ownership contract
@@ -30,6 +35,16 @@ Every responsibility has one canonical authority:
 Loaf may give an agent deterministic instructions and templates for tracker work, but the agent uses its harness-native connection. vNext does not store a shadow issue, hold provider credentials, proxy tracker calls, or reconcile a local work record with the tracker.
 
 Scratchpad coordination is a private, effort-scoped, ephemeral Loaf surface for the operator's agents. It is not durable team memory and never owns tracker work, definition of done, workflow, hierarchy, assignment, or team collaboration state.
+
+### Portable Tracker-Native Flow
+
+The vNext content layer carries one authored set of Agent Skills bytes for pitch, triage, shape, implement, ship, release, and orchestration. `flow-contract.json` binds each ceremony to its input, output, shared template, and closed tracker-operation set. Three marker-bearing templates define the portable problem narrative, canonical work contract, and evidence update. This content is source for later target packaging; LOAF-95 does not add build, install, target-sidecar, or generated-output behavior.
+
+`project-management/v1` is the common semantic boundary. It discovers only connections already exposed by the harness, scopes one exact destination, reads before writing, and verifies mutations through authoritative native readback. The closed operation vocabulary keeps work, definition, hierarchy, dependency, status, and comment semantics distinct. Results always carry the operation, destination, native reference, observed state, verification evidence, one truthful outcome (`confirmed`, `unchanged`, `partial`, `failed`, or `indeterminate`), and one fidelity (`exact`, `advisory`, `manual`, or `unsupported`). Ambiguous creates and comment appends are never retried without first reading native state.
+
+Linear is the only provider mapping in this slice. Its capability file maps common operations to Linear semantics but marks availability as runtime-discovered; it does not claim that every harness connection exposes every operation. No GitHub or Jira placeholder mapping exists. The optional project-manager profile may execute the same common contract through the selected provider skill using only the harness connector. If a harness cannot enforce that least-authority profile, the main agent executes the same contract directly.
+
+The root-module `internal/vnextflowcontract` package is test-only and outside `vnext/`. Its standard-library validator accepts an `fs.FS`, strictly decodes the machine contracts, checks the closed inventory, frontmatter, references, links, template markers, authority, provider fidelity, and profile equivalence, and exercises deterministic negative fixtures. `go test ./internal/vnextflowcontract ./vnext/... -count=1 -run 'Flow|Template|TrackerSkill'` is the canonical Flow gate.
 
 ### Bootstrap Command Ceremonies
 
@@ -507,4 +522,5 @@ When strict invariant enforcement would break existing callers but silent fallba
 
 ## Changelog
 
+- 2026-08-29 - Add the portable tracker-native vNext Flow contract, shared templates, Linear semantic mapping, optional least-authority project manager, and external validation gate.
 - 2026-08-29 - Add the isolated vNext kernel, move its boundary enforcement outside vNext, and cover source imports, native inputs, direct capabilities, schema identity, and bootstrap commands.

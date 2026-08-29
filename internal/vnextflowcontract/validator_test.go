@@ -157,6 +157,7 @@ func validateSkillDeclarations(content fs.FS, declarations []skillDeclaration) [
 	var findings []finding
 	declared := make(map[string]struct{}, len(declarations))
 	for _, declaration := range declarations {
+		findings = append(findings, validateSkillDirectory(content, declaration)...)
 		if !skillNamePattern.MatchString(declaration.Name) || len(declaration.Name) > 64 {
 			findings = append(findings, finding{"skill.name", declaration.Path, fmt.Sprintf("invalid skill name %q", declaration.Name)})
 		}
@@ -220,6 +221,36 @@ func validateSkillDeclarations(content fs.FS, declarations []skillDeclaration) [
 	for name := range actual {
 		if _, exists := declared[name]; !exists {
 			findings = append(findings, finding{"skill.inventory", path.Join("skills", name), "skill is not declared in flow-contract.json"})
+		}
+	}
+	return findings
+}
+
+func validateSkillDirectory(content fs.FS, declaration skillDeclaration) []finding {
+	directory := path.Join("skills", declaration.Name)
+	entries, err := fs.ReadDir(content, directory)
+	if err != nil {
+		return nil
+	}
+	allowedFiles := map[string]map[string]struct{}{
+		"project-management": {"SKILL.md": {}, "contract.json": {}},
+		"linear":             {"SKILL.md": {}, "capabilities.json": {}},
+	}
+	allowed := allowedFiles[declaration.Name]
+	if allowed == nil {
+		allowed = map[string]struct{}{"SKILL.md": {}}
+	}
+	var findings []finding
+	for _, entry := range entries {
+		entryPath := path.Join(directory, entry.Name())
+		if entry.IsDir() {
+			if entry.Name() != "references" {
+				findings = append(findings, finding{"skill.surface", entryPath, "only the references directory is allowed beside SKILL.md"})
+			}
+			continue
+		}
+		if _, exists := allowed[entry.Name()]; !exists {
+			findings = append(findings, finding{"skill.surface", entryPath, "undeclared skill sidecar or configuration file"})
 		}
 	}
 	return findings

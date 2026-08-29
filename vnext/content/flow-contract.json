@@ -40,6 +40,26 @@
       "name": "shape",
       "path": "skills/shape/SKILL.md",
       "kind": "workflow"
+    },
+    {
+      "name": "implement",
+      "path": "skills/implement/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "ship",
+      "path": "skills/ship/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "release",
+      "path": "skills/release/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "orchestration",
+      "path": "skills/orchestration/SKILL.md",
+      "kind": "workflow"
     }
   ],
   "ceremonies": [
@@ -91,6 +111,75 @@
         "dependency.read",
         "dependency.change",
         "status.read"
+      ]
+    },
+    {
+      "name": "implement",
+      "skill": "implement",
+      "input": "work-contract",
+      "output": "implementation-evidence",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "hierarchy.read",
+        "dependency.read",
+        "status.read",
+        "status.transition",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "ship",
+      "skill": "ship",
+      "input": "implementation-evidence",
+      "output": "quality-verdict",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "hierarchy.read",
+        "dependency.read",
+        "status.read",
+        "status.transition",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "release",
+      "skill": "release",
+      "input": "landed-work",
+      "output": "release-outcome",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "work.update",
+        "status.read",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "orchestration",
+      "skill": "orchestration",
+      "input": "work-contract",
+      "output": "execution-coordination",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "hierarchy.read",
+        "dependency.read",
+        "status.read",
+        "comment.list",
+        "comment.append"
       ]
     }
   ],
