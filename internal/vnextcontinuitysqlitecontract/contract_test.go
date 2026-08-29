@@ -77,7 +77,12 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"filesystem_attributes_windows.go",
 		"filesystem_unix.go",
 		"filesystem_windows.go",
+		"read.go",
 		"schema.go",
+		"snapshot_fold_v1.go",
+		"snapshot_records_v1.go",
+		"snapshot_references_v1.go",
+		"snapshot_scratchpad_v1.go",
 		"store.go",
 		"wire_v1.go",
 		"wire_validation_v1.go",
@@ -116,6 +121,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.RetractFinding",
 		"Store.ReviseIdea",
 		"Store.ReviseProjectLabel",
+		"Store.Snapshot",
 		"Store.StartExploration",
 		"Store.SupersedeDecision",
 	}
@@ -160,7 +166,12 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 		"filesystem_attributes_windows.go": {"fmt", "os", "syscall"},
 		"filesystem_unix.go":               {"errors", "fmt", "os", "path/filepath", "strings"},
 		"filesystem_windows.go":            {"errors", "fmt", "os", "path/filepath", "strings"},
+		"read.go":                          {"context", "database/sql", "github.com/levifig/loaf/vnext/continuity"},
 		"schema.go":                        {"crypto/sha256", "database/sql", "encoding/hex", "fmt", "strings"},
+		"snapshot_fold_v1.go":              {"context", "github.com/levifig/loaf/vnext/continuity", "strings"},
+		"snapshot_records_v1.go":           {"github.com/levifig/loaf/vnext/continuity", "sort"},
+		"snapshot_references_v1.go":        {"github.com/levifig/loaf/vnext/continuity", "sort", "strings"},
+		"snapshot_scratchpad_v1.go":        {"github.com/levifig/loaf/vnext/continuity", "sort", "strings"},
 		"store.go": {
 			"context",
 			"database/sql",
@@ -398,6 +409,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"RetractFinding":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingRetractionPayload) (continuity.AppendReceipt, error)",
 		"ReviseIdea":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaRevisionPayload) (continuity.AppendReceipt, error)",
 		"ReviseProjectLabel":             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.ProjectLabelRevisionPayload) (continuity.AppendReceipt, error)",
+		"Snapshot":                       "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.SnapshotRequest) (continuity.Snapshot, error)",
 		"StartExploration":               "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExplorationStartedPayload) (continuity.AppendReceipt, error)",
 		"SupersedeDecision":              "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionSupersessionPayload) (continuity.AppendReceipt, error)",
 	}
@@ -408,6 +420,84 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotMethods, wantMethods) {
 		t.Fatalf("*Store methods = %#v, want %#v", gotMethods, wantMethods)
+	}
+}
+
+func TestContinuitySQLiteContractPinsSnapshotReadBoundary(t *testing.T) {
+	t.Parallel()
+
+	contents, err := os.ReadFile(filepath.Join(sqliteSourceRoot, "read.go"))
+	if err != nil {
+		t.Fatalf("read Snapshot implementation: %v", err)
+	}
+	normalized := strings.Join(strings.Fields(string(contents)), " ")
+	for _, required := range []string{
+		"return store.snapshotV1(ctx, projectID, request.AtMillis)",
+		"store.loadSnapshotFactsV1(ctx, projectID)",
+		"foldProjectSnapshotV1(ctx, projectID, atMillis, facts)",
+		"BeginTx(ctx, &sql.TxOptions{ReadOnly: true})",
+		"WHERE project_id = ? ORDER BY hlc_wall_millis ASC, hlc_logical ASC, environment_id COLLATE BINARY ASC, fact_id COLLATE BINARY ASC",
+	} {
+		if !strings.Contains(normalized, required) {
+			t.Errorf("read.go does not contain pinned Snapshot boundary %q", required)
+		}
+	}
+	for _, forbidden := range []string{"Isolation:", "time.Now", "ExecContext(", "tx.Exec(", "store.db.Exec("} {
+		if strings.Contains(normalized, forbidden) {
+			t.Errorf("read.go contains forbidden Snapshot read behavior %q", forbidden)
+		}
+	}
+}
+
+func TestContinuitySQLiteContractSnapshotQueryUsesProjectOrderIndex(t *testing.T) {
+	t.Parallel()
+
+	db := openContractDatabase(t)
+	defer db.Close()
+	rows, err := db.Query(`
+EXPLAIN QUERY PLAN
+SELECT
+  fact_id,
+  project_id,
+  subject_kind,
+  subject_id,
+  fact_kind,
+  payload_version,
+  content_json,
+  environment_id,
+  environment_sequence,
+  hlc_wall_millis,
+  hlc_logical,
+  envelope_version
+FROM continuity_facts
+WHERE project_id = ?
+ORDER BY
+  hlc_wall_millis ASC,
+  hlc_logical ASC,
+  environment_id COLLATE BINARY ASC,
+  fact_id COLLATE BINARY ASC`, "project-plan")
+	if err != nil {
+		t.Fatalf("explain Snapshot query: %v", err)
+	}
+	defer rows.Close()
+	var details []string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatalf("scan Snapshot query plan: %v", err)
+		}
+		details = append(details, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read Snapshot query plan: %v", err)
+	}
+	joined := strings.Join(details, " | ")
+	if !strings.Contains(joined, "ix_continuity_facts_project_order") {
+		t.Fatalf("Snapshot query plan = %q, want project-order index", joined)
+	}
+	if strings.Contains(strings.ToUpper(joined), "TEMP B-TREE") {
+		t.Fatalf("Snapshot query plan uses a temporary sort: %q", joined)
 	}
 }
 
@@ -539,6 +629,49 @@ func TestContinuitySQLiteContractPinsEveryPublicMethodToOneV1EncoderAndFactKind(
 	got := inspectMethodBindings(t, filepath.Join(sqliteSourceRoot, "append_methods.go"))
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("public method bindings = %#v, want %#v", got, want)
+	}
+}
+
+func TestContinuitySQLiteContractPinsEveryFactKindToOneObservationDecoder(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]string{
+		"FactCheckpointRecorded":              "wireCheckpointRecordedV1",
+		"FactDecisionOpened":                  "wireDecisionOpenedV1",
+		"FactDecisionResolved":                "wireDecisionResolutionV1",
+		"FactDecisionSuperseded":              "wireDecisionSupersessionV1",
+		"FactExplorationStarted":              "wireExplorationStartedV1",
+		"FactExternalReferenceAttached":       "wireExternalReferenceAttachmentV1",
+		"FactExternalReferenceDetached":       "wireExternalReferenceDetachmentV1",
+		"FactExternalReferenceRegistered":     "wireExternalReferenceRegistrationV1",
+		"FactFindingCorrected":                "wireFindingCorrectionV1",
+		"FactFindingRecorded":                 "wireFindingRecordedV1",
+		"FactFindingRetracted":                "wireFindingRetractionV1",
+		"FactHandoffRecorded":                 "wireHandoffRecordedV1",
+		"FactIdeaArchived":                    "wireIdeaArchiveV1",
+		"FactIdeaCreated":                     "wireIdeaCreatedV1",
+		"FactIdeaPromotedToExternalReference": "wireIdeaPromotionV1",
+		"FactIdeaResolved":                    "wireIdeaResolutionV1",
+		"FactIdeaRevised":                     "wireIdeaRevisionV1",
+		"FactJournalCorrectionRecorded":       "wireJournalCorrectionV1",
+		"FactJournalRecorded":                 "wireJournalRecordedV1",
+		"FactProjectLabelRevised":             "wireProjectLabelRevisionV1",
+		"FactProjectRegistered":               "wireProjectRegistrationV1",
+		"FactScratchpadClaimRecorded":         "wireScratchpadClaimV1",
+		"FactScratchpadClaimReleased":         "wireScratchpadClaimReleaseV1",
+		"FactScratchpadClosed":                "wireScratchpadCloseV1",
+		"FactScratchpadMessageRecorded":       "wireScratchpadMessageV1",
+		"FactScratchpadOpened":                "wireScratchpadOpenedV1",
+		"FactScratchpadParticipantIntroduced": "wireScratchpadParticipantV1",
+		"FactSparkCaptured":                   "wireSparkCapturedV1",
+		"FactSparkDismissed":                  "wireSparkDismissedV1",
+		"FactSparkPromotedToIdea":             "wireSparkPromotionV1",
+		"FactVerificationEvidenceRecorded":    "wireVerificationEvidenceV1",
+		"FactWrapRecorded":                    "wireWrapRecordedV1",
+	}
+	got := inspectObservationDecoderBindings(t, filepath.Join(sqliteSourceRoot, "snapshot_fold_v1.go"))
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("observation decoder bindings = %#v, want %#v", got, want)
 	}
 }
 
@@ -1344,6 +1477,72 @@ func inspectMethodBindings(t *testing.T, path string) map[string]methodBinding {
 			t.Fatalf("duplicate Store method %s", function.Name.Name)
 		}
 		bindings[function.Name.Name] = methodBinding{encoder: encoder.Name, record: record, fact: factSelector.Sel.Name}
+	}
+	return bindings
+}
+
+func inspectObservationDecoderBindings(t *testing.T, path string) map[string]string {
+	t.Helper()
+
+	file := parseGoFile(t, path)
+	var function *ast.FuncDecl
+	for _, declaration := range file.Decls {
+		candidate, ok := declaration.(*ast.FuncDecl)
+		if ok && candidate.Name.Name == "observationForStoredFactV1" {
+			function = candidate
+			break
+		}
+	}
+	if function == nil {
+		t.Fatal("observationForStoredFactV1 not found")
+	}
+	bindings := make(map[string]string)
+	defaultFound := false
+	for _, statement := range function.Body.List {
+		switchStatement, ok := statement.(*ast.SwitchStmt)
+		if !ok {
+			continue
+		}
+		for _, caseStatement := range switchStatement.Body.List {
+			clause := caseStatement.(*ast.CaseClause)
+			if len(clause.List) == 0 {
+				defaultFound = true
+				continue
+			}
+			if len(clause.List) != 1 {
+				t.Fatalf("observation decoder case has %d fact kinds", len(clause.List))
+			}
+			selector, ok := clause.List[0].(*ast.SelectorExpr)
+			if !ok {
+				t.Fatalf("observation decoder case is %#v, want continuity selector", clause.List[0])
+			}
+			var decoders []string
+			for _, bodyStatement := range clause.Body {
+				ast.Inspect(bodyStatement, func(node ast.Node) bool {
+					index, ok := node.(*ast.IndexExpr)
+					if !ok {
+						return true
+					}
+					callee, ok := index.X.(*ast.Ident)
+					if !ok || callee.Name != "decodeStoredWireV1" {
+						return true
+					}
+					wireType, ok := index.Index.(*ast.Ident)
+					if !ok {
+						t.Fatalf("decoder for %s uses non-identifier type %#v", selector.Sel.Name, index.Index)
+					}
+					decoders = append(decoders, wireType.Name)
+					return true
+				})
+			}
+			if len(decoders) != 1 {
+				t.Fatalf("decoder for %s = %v, want exactly one", selector.Sel.Name, decoders)
+			}
+			bindings[selector.Sel.Name] = decoders[0]
+		}
+	}
+	if !defaultFound {
+		t.Fatal("observation decoder has no rejecting default")
 	}
 	return bindings
 }

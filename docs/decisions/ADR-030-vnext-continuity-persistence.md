@@ -30,6 +30,8 @@ vNext continuity persistence is SQLite now.
 4. **The API is closed and typed.** Continuity exposes named domain types and a closed semantics catalog. It does not grow tracker, provider, credential, status, title, body, assignment, hierarchy, or dependency surfaces.
 5. **SQLite admission is exact.** `database/sql` is allowed only in package `vnext/continuity/sqlite`. A blank import of `github.com/ncruces/go-sqlite3/driver` is allowed only in file `vnext/continuity/sqlite/driver.go`. The Windows-only filesystem adapter may import `syscall` solely for `Win32FileAttributeData` and `FILE_ATTRIBUTE_REPARSE_POINT`. Path or prefix spoofing, aliased or dot imports, non-blank driver imports, extra `syscall` selectors, and every other ncruces or third-party import remain forbidden.
 6. **Physical scratchpad prune is deferred to LOAF-97 sync safe-points.** Scratchpad facts are ephemeral in the catalog and retained on disk until that slice.
+7. **A snapshot materializes one exact project corpus in one deferred read-only transaction.** The adapter strictly scans canonical rows in total order, commits the read transaction, releases the sole SQLite connection and store lock, and only then performs the cancellable in-memory fold. `AtMillis` evaluates scratchpad claim expiry only; the implementation never reads the current clock.
+8. **Concurrent history converges by canonical causal closure and semantic class.** The least ordered mint is the record root. Successors of that root and its eligible descendants remain candidates even when they are sibling branches. The greatest candidate wins within a semantic class, while terminal classes such as idea disposition, decision supersession, finding retraction, scratchpad close, and claim release dominate later nonterminal candidates. Missing, cross-subject, future, or impossible-transition predecessors make the history corrupt rather than producing a partial projection.
 
 This is a vNext decision. ADR-014 chose Go and left the legacy SQLite driver to SPEC-040. ADR-029 is the shipped grow-only envelope for the current runtime. Neither authorizes vNext packages, schema identity, or the continuity API.
 
@@ -41,6 +43,7 @@ The kernel still does not open a database. The SQLite adapter and write chokepoi
 
 - Continuity can be queried, transactionally appended, and later synced without inventing a second storage engine.
 - Read-time folds keep derived context honest: the digest cannot disagree with the fact log.
+- Deferred read-only snapshots coexist with WAL writers and do not retain the database connection during CPU-heavy projection work.
 - The source gate can admit SQLite without opening a general third-party or `database/sql` allowlist.
 
 ### Negative
@@ -81,3 +84,4 @@ This loses the isolation contract. vNext may learn from that behavior and consum
 
 - 2026-08-29 — Initial record.
 - 2026-08-29 — Pinned the Windows-only `syscall` admission and recorded filesystem authority, ACL, symlink-alias, race, and runtime-validation limits.
+- 2026-08-29 — Pinned deferred read-only snapshot materialization, cancellable post-transaction folding, and branch-tolerant semantic-class convergence.
