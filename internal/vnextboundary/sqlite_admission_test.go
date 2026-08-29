@@ -50,6 +50,44 @@ func reparse(data *syscall.Win32FileAttributeData) bool {
 	assertNoBoundaryViolations(t, inspectFixtureBoundary(t, root))
 }
 
+func TestDependencyBoundaryAllowsUnixOwnershipMetadataInExactRelayPlatformFile(t *testing.T) {
+	t.Parallel()
+
+	root := writeBoundaryFixture(t, "alternate.example/loaf", map[string]string{
+		"vnext/sync/relay/sqlite/filesystem_unix.go": `package sqlite
+
+import "syscall"
+
+func owner(data *syscall.Stat_t) uint32 { return data.Uid }
+`,
+	})
+	assertNoBoundaryViolations(t, inspectFixtureBoundary(t, root))
+}
+
+func TestDependencyBoundaryRejectsUnixOwnershipSyscallAliasesAndCapabilities(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "named import", body: "package sqlite\n\nimport unix \"syscall\"\n"},
+		{name: "dot import", body: "package sqlite\n\nimport . \"syscall\"\n"},
+		{name: "raw syscall", body: "package sqlite\n\nimport \"syscall\"\n\nfunc call() { syscall.Syscall(0, 0, 0, 0) }\n"},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := writeBoundaryFixture(t, "alternate.example/loaf", map[string]string{
+				"vnext/sync/relay/sqlite/filesystem_unix.go": test.body,
+			})
+			assertBoundaryViolation(t, inspectFixtureBoundary(t, root), forbiddenCapabilityRule)
+		})
+	}
+}
+
 func TestDependencyBoundaryRejectsWindowsSyscallOutsideExactPlatformFile(t *testing.T) {
 	t.Parallel()
 

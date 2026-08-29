@@ -242,6 +242,7 @@ func inspectGoSource(metadata moduleMetadata, sourcePath, relativePath string) [
 
 	osAliases := make(map[string]struct{})
 	windowsAttributeAliases := make(map[string]struct{})
+	unixOwnershipAliases := make(map[string]struct{})
 	for _, importSpec := range file.Imports {
 		importPath, unquoteErr := strconv.Unquote(importSpec.Path.Value)
 		if unquoteErr != nil {
@@ -257,6 +258,9 @@ func inspectGoSource(metadata moduleMetadata, sourcePath, relativePath string) [
 		}
 		if isAdmittedWindowsFileAttributesImport(relativePath, importPath, importName(importSpec)) {
 			windowsAttributeAliases["syscall"] = struct{}{}
+		}
+		if isAdmittedUnixOwnershipImport(relativePath, importPath, importName(importSpec)) {
+			unixOwnershipAliases["syscall"] = struct{}{}
 		}
 		if importPath != "os" {
 			continue
@@ -315,6 +319,14 @@ func inspectGoSource(metadata moduleMetadata, sourcePath, relativePath string) [
 				Detail: fmt.Sprintf("syscall.%s exceeds the Windows file-attribute boundary at line %d", selector.Sel.Name, position.Line),
 			})
 		}
+		if _, exists := unixOwnershipAliases[qualifier.Name]; exists && selector.Sel.Name != "Stat_t" {
+			position := fileSet.Position(selector.Pos())
+			violations = append(violations, boundaryViolation{
+				Path:   relativePath,
+				Rule:   forbiddenCapabilityRule,
+				Detail: fmt.Sprintf("syscall.%s exceeds the Unix file-ownership metadata boundary at line %d", selector.Sel.Name, position.Line),
+			})
+		}
 		return true
 	})
 
@@ -332,6 +344,7 @@ const (
 	xCryptoModuleRoot            = "golang.org/x/crypto"
 	xCryptoModulePrefix          = "golang.org/x/crypto/"
 	windowsAttributesFile        = "vnext/continuity/sqlite/filesystem_attributes_windows.go"
+	unixOwnershipFile            = "vnext/sync/relay/sqlite/filesystem_unix.go"
 	ncrucesModuleRoot            = "github.com/ncruces"
 	ncrucesModulePrefix          = "github.com/ncruces/"
 )
@@ -361,6 +374,16 @@ func inspectImport(metadata moduleMetadata, relativePath, importPath, importName
 			Path:   relativePath,
 			Rule:   forbiddenCapabilityRule,
 			Detail: "the Windows file-attribute boundary requires an unaliased syscall import",
+		}, true
+	}
+	if importPath == "syscall" && relativePath == unixOwnershipFile {
+		if isAdmittedUnixOwnershipImport(relativePath, importPath, importName) {
+			return boundaryViolation{}, false
+		}
+		return boundaryViolation{
+			Path:   relativePath,
+			Rule:   forbiddenCapabilityRule,
+			Detail: "the Unix file-ownership metadata boundary requires an unaliased syscall import",
 		}, true
 	}
 	if isNcrucesImport(importPath) {
@@ -423,6 +446,10 @@ func isAdmittedXChaChaImport(relativePath, importPath, importName string) bool {
 
 func isAdmittedWindowsFileAttributesImport(relativePath, importPath, importName string) bool {
 	return relativePath == windowsAttributesFile && importPath == "syscall" && importName == ""
+}
+
+func isAdmittedUnixOwnershipImport(relativePath, importPath, importName string) bool {
+	return relativePath == unixOwnershipFile && importPath == "syscall" && importName == ""
 }
 
 func isNcrucesImport(importPath string) bool {

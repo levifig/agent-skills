@@ -89,7 +89,7 @@ The scenarios below are design hypotheses until implementation testing or review
 | P0 | Relay tampers with or relocates ciphertext | XChaCha20-Poly1305; complete routing header as AAD; environment signature; exact outer/inner equality | Relay can withhold or destroy valid ciphertext |
 | P0 | Attached client impersonates another environment | Admin-signed environment certificate and Ed25519 envelope signature | Compromised client can still author as itself |
 | P0 | Same fact ID is preempted with different bytes | Sealed-once durable outbox; relay digest equality; local full immutable fact comparison; hard conflict | A valid compromised writer can cause an attributable denial of service |
-| P0 | Stolen ephemeral bundle grants permanent or cross-project access | One project only; explicit finite generation keys; expiring token/certificate; no root/admin/owner secret | Copied plaintext and received keys cannot be revoked retroactively |
+| P0 | Stolen ephemeral bundle grants permanent or cross-project access | One project only; explicit finite generation keys; independently enforced token/certificate expiry; admin-signed terminal producer fence; no root/admin/owner secret | Copied plaintext and received keys cannot be revoked retroactively; an unfenced expired tail is recovery-required |
 | P0 | Malicious checkout redirects attach or supplies secrets | Repository carries only expected opaque identity/fingerprint; endpoint and secret arrive out of band; explicit display/confirmation | Operator can still approve a malicious endpoint |
 | P1 | Relay omits a prefix, interior object, or previously observed tail | Source sequence begins at one; previous-envelope digest; contiguous arrival pages; retained frontiers/inventory digests/checkpoints | A fresh recovery client cannot prove an unseen newest suffix |
 | P1 | Future HLC dominates projections or old offline work is rejected | Quarantine future-only skew before insert; accept old valid clocks; enforce increasing HLC per source sequence | A quarantined valid fact blocks complete convergence until resolved |
@@ -122,6 +122,8 @@ It stores no project root, generation key, signing private key, bearer token pla
 
 Bearer tokens are project- and environment-scoped high-entropy values looked up by a public token ID and compared in constant time. Owner control operations also require an admin-signed object. HTTPS is mandatory except an explicit loopback-only test mode. Authentication errors do not disclose whether a token, channel, or environment exists.
 
+Ephemeral certificate and relay-token expiry are honest admission policy, not cryptographic proof of authoring time. A hostile relay can accept a newly signed envelope after expiry and lie about timing, and encrypted HLC cannot establish when the signature was made. Before expiry, an administrator-signed terminal fence must be retained outside the relay and bind the relay database incarnation, certificate, final source sequence, and final digest. First-seen expired history is accepted only at or below that verified fence; an absent fence or later source sequence is quarantined. Historical opening without a clock is limited to already retained authenticated bytes or bytes covered by that fence.
+
 ## Failure Behavior
 
 - Unknown protocol, suite, key generation, certificate, fact kind, field, or noncanonical payload fails closed and does not advance applied progress.
@@ -129,6 +131,7 @@ Bearer tokens are project- and environment-scoped high-entropy values looked up 
 - Future-skewed frames remain durably quarantined but unapplied; later frames may stage but cannot move the applied prefix past them.
 - Old offline facts are accepted when signature, sequence, HLC monotonicity, canonical fact shape, and causal closure are valid.
 - Relay cursors never prove completeness. Lower head, missing known object, changed digest, or changed relay generation requires recovery.
+- Relay certificate and bearer-token expiry reject new requests uniformly before signature verification or collision-specific lookup. A terminal fence, not relay time, bounds first-seen expired history.
 - Once attached, missing authority or relay failure is visible. Ephemeral writes require relay acknowledgement or a durable encrypted outbox that survives the environment.
 
 The relay cannot be forced to provide availability. A local replica and independent backup remain the durability boundary.

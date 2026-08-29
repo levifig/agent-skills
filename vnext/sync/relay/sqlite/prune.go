@@ -1,0 +1,306 @@
+package sqlite
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+
+	"github.com/levifig/loaf/vnext/sync/relay"
+)
+
+func (store *Store) Tombstone(ctx context.Context, request relay.TombstoneRequest) (relay.TombstoneResult, error) {
+	if err := validateContext(ctx); err != nil {
+		return relay.TombstoneResult{}, err
+	}
+	if err := request.Validate(); err != nil {
+		return relay.TombstoneResult{}, err
+	}
+	certificate := request.Certificate
+	if request.Authorization.ChannelID != certificate.ChannelID {
+		return relay.TombstoneResult{}, fmt.Errorf("%w: prune channel binding", relay.ErrInvalidArgument)
+	}
+	if err := store.readLock(); err != nil {
+		return relay.TombstoneResult{}, err
+	}
+	defer store.readUnlock()
+
+	var result relay.TombstoneResult
+	err := transact(ctx, store.db, func(tx *sql.Tx) error {
+		channel, err := authenticateOwner(ctx, tx, request.Authorization)
+		if err != nil {
+			return err
+		}
+		existing, err := readExistingPrune(ctx, tx, certificate)
+		if err != nil {
+			return err
+		}
+		if existing {
+			head, err := channelHead(ctx, tx, certificate.ChannelID)
+			if err != nil {
+				return err
+			}
+			result = relay.TombstoneResult{Duplicate: true, Tombstoned: len(certificate.Targets), RelayHead: head}
+			return nil
+		}
+		if certificate.MembershipGeneration != channel.membershipGeneration {
+			return relay.ErrMembershipChanged
+		}
+		head, err := channelHead(ctx, tx, certificate.ChannelID)
+		if err != nil {
+			return err
+		}
+		if certificate.Barrier > head {
+			return relay.ErrSourceGap
+		}
+		if err := requirePruneAcknowledgements(ctx, tx, certificate); err != nil {
+			return err
+		}
+		if err := verifyPruneTargets(ctx, tx, certificate); err != nil {
+			return err
+		}
+		if err := store.verifier.VerifyPruneCertificate(ctx, channel.authority, certificate); err != nil {
+			return fmt.Errorf("%w: prune certificate", relay.ErrUnverified)
+		}
+		currentPruneHead, err := pruneHead(ctx, tx, certificate.ChannelID)
+		if err != nil {
+			return err
+		}
+		pruneSequence, err := nextSequence(currentPruneHead)
+		if err != nil {
+			return fmt.Errorf("prune sequence: %w", err)
+		}
+		nowMillis := store.now().UTC().UnixMilli()
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO relay_prune_certificates(
+  channel_id,
+  prune_sequence,
+  prune_id,
+  membership_generation,
+  barrier_arrival_sequence,
+  certificate_id,
+  certificate_bytes,
+  target_count,
+  created_at_millis
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			certificate.ChannelID[:],
+			pruneSequence,
+			certificate.PruneID[:],
+			certificate.MembershipGeneration,
+			certificate.Barrier,
+			certificate.CertificateID[:],
+			certificate.CertificateBytes,
+			len(certificate.Targets),
+			nowMillis,
+		); err != nil {
+			return fmt.Errorf("insert relay prune certificate: %w", err)
+		}
+		for _, target := range certificate.Targets {
+			update, err := tx.ExecContext(ctx, `
+UPDATE relay_arrivals
+SET ciphertext = NULL, prune_id = ?, pruned_at_millis = ?
+WHERE channel_id = ?
+  AND arrival_sequence = ?
+  AND fact_id = ?
+  AND environment_id = ?
+  AND environment_sequence = ?
+  AND envelope_digest = ?
+  AND certificate_id = ?
+  AND ciphertext IS NOT NULL
+  AND prune_id IS NULL`,
+				certificate.PruneID[:],
+				nowMillis,
+				certificate.ChannelID[:],
+				target.ArrivalSequence,
+				string(target.FactID),
+				string(target.EnvironmentID),
+				target.EnvironmentSequence,
+				target.EnvelopeDigest[:],
+				target.CertificateID[:],
+			)
+			if err != nil {
+				return fmt.Errorf("tombstone relay arrival: %w", err)
+			}
+			updated, err := update.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("read tombstoned relay arrival count: %w", err)
+			}
+			if updated != 1 {
+				return relay.ErrImmutableConflict
+			}
+		}
+		result = relay.TombstoneResult{Tombstoned: len(certificate.Targets), RelayHead: head}
+		return nil
+	})
+	if err != nil {
+		return relay.TombstoneResult{}, err
+	}
+	return result, nil
+}
+
+func requirePruneAcknowledgements(ctx context.Context, tx *sql.Tx, certificate relay.PruneCertificate) error {
+	rows, err := tx.QueryContext(ctx, `
+SELECT e.environment_id,
+       COALESCE((
+         SELECT MAX(a.environment_sequence)
+         FROM relay_arrivals AS a
+         WHERE a.channel_id = e.channel_id AND a.environment_id = e.environment_id
+       ), 0),
+       k.membership_generation,
+       k.applied_arrival_sequence,
+       k.producer_sequence
+FROM relay_environments AS e
+LEFT JOIN relay_acknowledgements AS k
+  ON k.channel_id = e.channel_id AND k.environment_id = e.environment_id
+WHERE e.channel_id = ? AND e.retired_at_millis IS NULL
+ORDER BY e.environment_id`, certificate.ChannelID[:])
+	if err != nil {
+		return fmt.Errorf("query relay prune acknowledgements: %w", err)
+	}
+	for rows.Next() {
+		var environmentID string
+		var producerHead int64
+		var membership sql.NullInt64
+		var applied, producer sql.NullInt64
+		if err := rows.Scan(&environmentID, &producerHead, &membership, &applied, &producer); err != nil {
+			closeErr := rows.Close()
+			if closeErr != nil {
+				return errors.Join(fmt.Errorf("scan relay prune acknowledgement: %w", err), fmt.Errorf("close relay prune acknowledgements: %w", closeErr))
+			}
+			return fmt.Errorf("scan relay prune acknowledgement: %w", err)
+		}
+		if !membership.Valid || !applied.Valid || !producer.Valid ||
+			membership.Int64 != int64(certificate.MembershipGeneration) ||
+			applied.Int64 < certificate.Barrier || producer.Int64 != producerHead {
+			if closeErr := rows.Close(); closeErr != nil {
+				return errors.Join(relay.ErrAcknowledgementRequired, fmt.Errorf("close relay prune acknowledgements: %w", closeErr))
+			}
+			return relay.ErrAcknowledgementRequired
+		}
+	}
+	if err := rows.Err(); err != nil {
+		closeErr := rows.Close()
+		if closeErr != nil {
+			return errors.Join(fmt.Errorf("iterate relay prune acknowledgements: %w", err), fmt.Errorf("close relay prune acknowledgements: %w", closeErr))
+		}
+		return fmt.Errorf("iterate relay prune acknowledgements: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close relay prune acknowledgements: %w", err)
+	}
+	return nil
+}
+
+func verifyPruneTargets(ctx context.Context, tx *sql.Tx, certificate relay.PruneCertificate) error {
+	for _, target := range certificate.Targets {
+		var factID, environmentID string
+		var environmentSequence, arrivalSequence int64
+		var envelopeDigest, certificateID, ciphertext []byte
+		var pruneID []byte
+		err := tx.QueryRowContext(ctx, `
+SELECT fact_id, environment_id, environment_sequence, arrival_sequence,
+       envelope_digest, certificate_id, ciphertext, prune_id
+FROM relay_arrivals
+WHERE channel_id = ? AND arrival_sequence = ?`,
+			certificate.ChannelID[:], target.ArrivalSequence,
+		).Scan(
+			&factID,
+			&environmentID,
+			&environmentSequence,
+			&arrivalSequence,
+			&envelopeDigest,
+			&certificateID,
+			&ciphertext,
+			&pruneID,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return relay.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("read relay prune target: %w", err)
+		}
+		if relay.FactID(factID) != target.FactID || relay.EnvironmentID(environmentID) != target.EnvironmentID ||
+			environmentSequence != target.EnvironmentSequence || arrivalSequence != target.ArrivalSequence ||
+			!bytes.Equal(envelopeDigest, target.EnvelopeDigest[:]) || !bytes.Equal(certificateID, target.CertificateID[:]) ||
+			ciphertext == nil || pruneID != nil {
+			return relay.ErrImmutableConflict
+		}
+	}
+	return nil
+}
+
+func readExistingPrune(ctx context.Context, tx *sql.Tx, candidate relay.PruneCertificate) (bool, error) {
+	var pruneID, certificateID, certificateBytes []byte
+	var membership uint32
+	var barrier int64
+	var targetCount int
+	err := tx.QueryRowContext(ctx, `
+SELECT prune_id, membership_generation, barrier_arrival_sequence,
+       certificate_id, certificate_bytes, target_count
+FROM relay_prune_certificates
+WHERE channel_id = ? AND (prune_id = ? OR certificate_id = ?)`,
+		candidate.ChannelID[:], candidate.PruneID[:], candidate.CertificateID[:],
+	).Scan(&pruneID, &membership, &barrier, &certificateID, &certificateBytes, &targetCount)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read relay prune certificate: %w", err)
+	}
+	if !bytes.Equal(pruneID, candidate.PruneID[:]) || membership != candidate.MembershipGeneration ||
+		barrier != candidate.Barrier || !bytes.Equal(certificateID, candidate.CertificateID[:]) ||
+		!bytes.Equal(certificateBytes, candidate.CertificateBytes) || targetCount != len(candidate.Targets) {
+		return false, relay.ErrImmutableConflict
+	}
+	want := make(map[int64]relay.PruneTarget, len(candidate.Targets))
+	for _, target := range candidate.Targets {
+		want[target.ArrivalSequence] = target
+	}
+	rows, err := tx.QueryContext(ctx, `
+SELECT fact_id, environment_id, environment_sequence, arrival_sequence,
+       envelope_digest, certificate_id
+FROM relay_arrivals
+WHERE channel_id = ? AND prune_id = ?
+ORDER BY arrival_sequence`, candidate.ChannelID[:], candidate.PruneID[:])
+	if err != nil {
+		return false, fmt.Errorf("query relay prune targets: %w", err)
+	}
+	seen := 0
+	for rows.Next() {
+		var factID, environmentID string
+		var environmentSequence, arrivalSequence int64
+		var envelopeDigest, environmentCertificateID []byte
+		if err := rows.Scan(&factID, &environmentID, &environmentSequence, &arrivalSequence, &envelopeDigest, &environmentCertificateID); err != nil {
+			closeErr := rows.Close()
+			if closeErr != nil {
+				return false, errors.Join(fmt.Errorf("scan relay existing prune target: %w", err), fmt.Errorf("close relay existing prune targets: %w", closeErr))
+			}
+			return false, fmt.Errorf("scan relay existing prune target: %w", err)
+		}
+		target, exists := want[arrivalSequence]
+		if !exists || target.FactID != relay.FactID(factID) || target.EnvironmentID != relay.EnvironmentID(environmentID) ||
+			target.EnvironmentSequence != environmentSequence || !bytes.Equal(target.EnvelopeDigest[:], envelopeDigest) ||
+			!bytes.Equal(target.CertificateID[:], environmentCertificateID) {
+			if closeErr := rows.Close(); closeErr != nil {
+				return false, errors.Join(relay.ErrImmutableConflict, fmt.Errorf("close relay existing prune targets: %w", closeErr))
+			}
+			return false, relay.ErrImmutableConflict
+		}
+		seen++
+	}
+	if err := rows.Err(); err != nil {
+		closeErr := rows.Close()
+		if closeErr != nil {
+			return false, errors.Join(fmt.Errorf("iterate relay existing prune targets: %w", err), fmt.Errorf("close relay existing prune targets: %w", closeErr))
+		}
+		return false, fmt.Errorf("iterate relay existing prune targets: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return false, fmt.Errorf("close relay existing prune targets: %w", err)
+	}
+	if seen != len(candidate.Targets) {
+		return false, relay.ErrImmutableConflict
+	}
+	return true, nil
+}
