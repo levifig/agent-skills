@@ -19,6 +19,10 @@ func TestContinuitySQLiteContractPinsExactPersistenceImplementation(t *testing.T
 
 	wantSources := expectedPersistenceSourceDigests()
 	wantFunctions := expectedPersistenceFunctionDigests()
+	productionFiles, _ := inspectSQLiteSource(t)
+	if !reflect.DeepEqual(productionFiles, sortedMapKeys(wantSources)) {
+		t.Fatalf("digest/source inventories differ: production=%v digested=%v", productionFiles, sortedMapKeys(wantSources))
+	}
 	if !reflect.DeepEqual(sortedMapKeys(wantSources), sortedMapKeys(wantFunctions)) {
 		t.Fatalf("source/function digest inventories differ: sources=%v functions=%v", sortedMapKeys(wantSources), sortedMapKeys(wantFunctions))
 	}
@@ -43,7 +47,12 @@ func expectedPersistenceSourceDigests() map[string]string {
 		"filesystem_attributes_windows.go": "1e3b5f12e4debbc5432f2153818862cdc39ec617409e526b750e6db093dcb0a0",
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
+		"read.go":                          "904d938e849a168db4f231045c64dfa86e91df5fd10a6dfdf301e13feaeb722f",
 		"schema.go":                        "5eb35bcf96fed17242202e75b24af1a82555b42c3079a87d4d491d67051d57ab",
+		"snapshot_fold_v1.go":              "46eb065dd03dec6e4be97815a7785bd9c9c4e2af658a9b89ea7c1b6a0e3f389d",
+		"snapshot_records_v1.go":           "3e4a4b83029b62777d941b3f70501c1d5cffca08153473c8f8fda9dab042e1a3",
+		"snapshot_references_v1.go":        "61d8c47d16b90d630a697d9daecbce10a0c91fbc62b9680ccd3126986dfe920f",
+		"snapshot_scratchpad_v1.go":        "8eaf2d3dfc3e209966eb29fe6a334fdf60b7531d253d3466fcdc1d9b0c03e6d9",
 		"store.go":                         "07fb4c03e28e989b2f8d3155b4899e1d81b3a69e1de4aef48d29fe99f6cbd8a6",
 		"wire_v1.go":                       "1b632f0aa5a96077e00ee660ef566a0da204cf004870dda2576b0bf141d32bbd",
 		"wire_validation_v1.go":            "783dff45234fa3717969d364c8e9e7d2b78aa420da262b6be230c238b57ba2f9",
@@ -202,12 +211,57 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 			"validateWindowsPathComponents":         "7613a329580b81601f4f6d08cc74abcab3d132504ed9e7ccebb075a7c38a2a0a",
 			"windowsUserDataRoot":                   "97b6595bfcf4d216279ef990542b9b02509a1763f09ac0cfdd1898a69b5bc3d9",
 		},
+		"read.go": {
+			"Store.Snapshot":            "5b1eb0e45e9573077d5b95f4b1b55d3e21a6092fdb2345460015191bc5a5e4e1",
+			"Store.loadSnapshotFactsV1": "64d08c0bc4ee4e3523565aa52e720dce9ed3dcb3c4274fe74c803b58a7304516",
+			"Store.snapshotV1":          "892543bd17f2f183bf7092c781d1ca1ffde5802486a4779d0024191121732742",
+			"loadProjectFactsV1":        "4d54c6714aa07da620d0c302ab37c8e9560325bb92b8b245daf5afb2fd1b7f3f",
+		},
 		"schema.go": {
 			"checksumSchema":          "e697037955f01095488bb1258a6f4ed1107c40fb10407ad2beb7e473e389efdb",
 			"expectedSchemaObjects":   "966a8404232d9612b7c59245b2a709786930097715d60b547ecc962f403ed204",
 			"initializeSchemaIfEmpty": "373d4af0aac75988cdb891d1494a6d0560fa0959a9f5635d95a6b0d183dbca09",
 			"normalizeSQL":            "ba395a0d4dddb73b4b9669ad5a6cd12d28494ba464560910074abbddd0d96e98",
 			"validateSchema":          "0ee48b24d251815fa8ba379118493edf06fd843ea4a3ea6ba41d9febf9fb6079",
+		},
+		"snapshot_fold_v1.go": {
+			"canonicalSubjectFactsV1":      "c459b4938a9e1f9cad987b6669c4cf92aa540e609929e0e2a65b299515385b04",
+			"copyOptionalSubjectV1":        "32a6602848689bbd9a02778aeb21e1c5a7cd7e98f4447f2c725775980a9d2c80",
+			"eligiblePredecessorV1":        "3449dec562ac7685a029058211b9bfaeff7bcddc2ea6bc8afa8da8a7257edf8b",
+			"factStampLessV1":              "9136e814c0ed1fd1f4b0ca8af5ad696fc0d12005bf33474a134f94701ea7fe34",
+			"factStampV1":                  "c03ea0b484d75d1956437b62ac8bc3dd5a1e9931f92c43202c5dc8216874f30b",
+			"foldProjectSnapshotV1":        "03e9add2b9ec2db431cb3eb6bc08fa693f8673a68b32f11d67f0f4cb13805ac8",
+			"indexProjectCorpusV1":         "a591f543cde076848bdc69efe68410fe50fac9b74fef865bbba8f51a40234f0c",
+			"observationForStoredFactV1":   "d7f97f4b41ece76303fa414f757cac328aec49507edc11db78feb20a35f90c5f",
+			"optionalSubjectEqualV1":       "63b9cdafdbf64a50003fee00c9a4981dd9d7a2f773c7b65b0c80dcfc0c1b9a1c",
+			"projectCorpusV1.contextErrV1": "8127021e3caca7615c54301fa29d5b5ad080f6c2a651c271e99637299b05e783",
+			"recordVersionV1":              "f968c610de4ab5e8c24faf890a9c4e91dd5439d26436434a53ce7a7131e696b6",
+			"requireEarlierSubjectV1":      "0eea938f2a63e050acf70e20be6fed29de27fb30f7d2be53013d709fe57a130b",
+			"storedFactLessV1":             "8284518a2b73837cdf3d0de265072964e4f87068e471b16e0186942ef54a2aaf",
+		},
+		"snapshot_records_v1.go": {
+			"foldCheckpointsV1":      "8d124ef5a9a4feca1b2144bc743ad27025b0236b40bafe8ce3b70033d8afdfaf",
+			"foldDecisionsV1":        "1f24028a5fdab515c5dd0d898eb151172b54fb215dce0114ecd130aa9e3b11bd",
+			"foldExplorationsV1":     "b4795e91140c17e5f1e693a9e1f6ebf7e57e9a5185e5526837d765503525b3e0",
+			"foldFindingsV1":         "a38e9c5d20996dabd525c771c748f297e30c8840499896f2fc722389b30cb6eb",
+			"foldHandoffsV1":         "fde8275c83355f09078647778266160651fa2c4072baf75e4b7de5f6470f6c57",
+			"foldIdeasV1":            "5b34231c7017b82a032c52c0d3c72e1d9c3f8fc044a084fdd22141fde453e039",
+			"foldJournalV1":          "e6ac1fc81dd68909eef750e191772dcc9875bd7f4869b5b7484428d8de68a669",
+			"foldProjectIdentityV1":  "67dce85dbe92adefe44d50ae8b6d4a7447c01bc27c8500f56939b4da08cd2a56",
+			"foldSparksV1":           "861d1ca02848756fb97cc5bceb7f1935b40a3ca726862ed7ed54fda1fb5db062",
+			"foldWrapsV1":            "cfba64f087a52ef3e5e5e1c13da45fe04127f4a35c03ad299b3b1f8ca4f7af46",
+			"optionalFocusKeyFromV1": "df962522682bc1355b4a54dcf4539412108c99c892a19586dcd4f6abc8e076f4",
+			"subjectsOfKindV1":       "dc7bed48c028952be2432b3df3623ae7173246f1f697c1067902a1eadd0ffa6f",
+		},
+		"snapshot_references_v1.go": {
+			"eligibleExternalEdgeFactV1": "590493a28acaee8f33d59ee438444c43a7e600541f7fbf58b792ac06f00f8e03",
+			"foldExternalReferenceV1":    "160df51fb9f62692625609f2263704abab9e6d327d8e8ae67b0e61ed572df9c2",
+			"foldExternalReferencesV1":   "3ad66e12d5e8a01ed2b5679d559e009ef2b91d406960e25b34d5c70c2dcef42a",
+			"foldVerificationEvidenceV1": "12bb1f758c768906d2263de0e32330250d406742ef0226d950a5476ec8c05104",
+		},
+		"snapshot_scratchpad_v1.go": {
+			"foldScratchpadV1":  "1ed1abd052dc116ed7f4e9373d4276046b7fde47e512d62009b5a0b5c083ad65",
+			"foldScratchpadsV1": "1553322f493c33138504c700b1596c089e9eb99fd3eb6787759bbe048d71327a",
 		},
 		"store.go": {
 			"Open":                      "c5e946b2c2be830e01091143f2a8f0e3b19a8428d434b3b31cdf032dfc197971",
