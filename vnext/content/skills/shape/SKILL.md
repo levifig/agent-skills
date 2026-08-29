@@ -5,7 +5,7 @@ description: Shapes a problem narrative into a bounded canonical tracker work co
 
 # Shape
 
-Write the complete [work contract](../../templates/work-contract.md) directly to the canonical tracker through [`project-management/v1`](../project-management/SKILL.md). The provider owns native identity and state; Loaf owns the questions and template that make the definition actionable.
+Route the ephemeral [work contract](../../templates/work-contract.md) once into canonical native tracker fields through [`project-management/v1`](../project-management/SKILL.md). The provider owns native identity and state; Loaf owns the questions and packet shape that make the definition actionable.
 
 ## Contents
 
@@ -20,7 +20,7 @@ Write the complete [work contract](../../templates/work-contract.md) directly to
 - Confirm the destination, runtime capabilities, and whether a matching native record already exists before creation.
 - If creation returns an ambiguous result, search and re-read native state; never repeat the create blindly.
 - Preserve the problem narrative's intent while removing solution assumptions not required by constraints.
-- Fill every work-contract field. Definition of done uses observable criteria; out of scope names what this work deliberately will not solve.
+- Set the title through the native work field, then fill every definition-packet field. Definition of done uses observable criteria; out of scope names what this work deliberately will not solve.
 - Keep hierarchy and dependencies in their native relationship fields, not in comments or body prose alone.
 - Decompose only when a child earns an independently verifiable definition of done. Read [Decomposition](references/decomposition.md) before changing hierarchy.
 - Read back the native record, definition, hierarchy, dependencies, and current status before declaring it ready.
@@ -28,7 +28,7 @@ Write the complete [work contract](../../templates/work-contract.md) directly to
 
 ## Verification
 
-- The tracker-issued native reference is retained and the final read matches the intended title and complete work contract.
+- The tracker-issued native reference is retained and the final read matches the intended native title and every routed definition field.
 - Each completion criterion names observable evidence and can be evaluated without reconstructing the pitch conversation.
 - Out-of-scope boundaries prevent likely expansion rather than restating the goal.
 - Parent/child and dependency relationships are confirmed through their native fields.
@@ -40,6 +40,7 @@ Write the complete [work contract](../../templates/work-contract.md) directly to
 |------|------------------|
 | Find existing work | `work.read` |
 | Mint native identity | `work.create` |
+| Change native title | `work.update` |
 | Write canonical body | `definition.write` |
 | Set parent/child | `hierarchy.change` |
 | Set blocking edge | `dependency.change` |

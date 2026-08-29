@@ -8,7 +8,7 @@
 2. Select one exact native destination; stop if the choice changes workspace or team and remains ambiguous.
 3. Run `capability.discover` and select the highest honest fidelity for the requested operation.
 4. Read current native state.
-5. Apply one bounded mutation when requested and authorized.
+5. Route each requested semantic once to its canonical native field and apply one bounded mutation when requested and authorized.
 6. Re-read native state and return the result envelope.
 
 Creation includes a prior search or destination read for an existing matching record. If a create or comment request returns no authoritative identity or state, do not repeat it blindly: inspect native state and report `indeterminate` when duplication cannot be excluded.
@@ -29,10 +29,11 @@ Creation includes a prior search or destination read for an existing matching re
 
 ## Semantic Separation
 
-- `definition.write` changes canonical problem or completion fields.
+- `work.create` and `work.update` write native work fields such as the title; the definition packet does not carry a second title copy.
+- `definition.write` routes the ephemeral work-contract packet into canonical problem, completion, exclusion, verification, and risk fields. The packet is not stored or copied as a monolithic shadow artifact.
 - `hierarchy.change` changes parent/child structure.
 - `dependency.change` changes blocking or related-work edges.
 - `status.transition` selects a valid native workflow state after reading available states.
 - `comment.append` adds collaboration or evidence only.
 
-When a provider or connection lacks an exact mapping, report the lower fidelity. Do not encode a relationship in prose, claim a status through a comment, or replace a canonical definition with an activity note.
+When a provider or connection lacks an exact mapping, report the lower fidelity. Do not encode a relationship in prose, claim a status through a comment, or replace a canonical definition with an activity note. Unsupported hierarchy or dependency semantics remain unsupported; prose is not a substitute.

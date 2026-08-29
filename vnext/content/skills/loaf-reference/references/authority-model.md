@@ -13,7 +13,7 @@ One responsibility has one canonical owner. Loaf guides the agent; it does not s
 
 ## Consequences
 
-- A template shapes a tracker field; it is not a stored work item.
+- A template is an ephemeral semantic packet routed once to native tracker fields; it is not a stored work item or monolithic body copy.
 - A native reference returned by the tracker remains the identity throughout the Flow.
 - A comment records collaboration or evidence. It cannot replace the canonical definition, relationship, or workflow field.
 - Failure to reach the tracker is a connection boundary, not permission to mint a substitute record.

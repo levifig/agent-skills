@@ -201,11 +201,9 @@
       "id": "work-contract",
       "path": "templates/work-contract.md",
       "required_fields": [
-        "title",
         "problem",
         "definition_of_done",
         "out_of_scope",
-        "relationships",
         "verification",
         "risks"
       ]

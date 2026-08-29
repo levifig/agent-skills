@@ -45,7 +45,7 @@ Use the closed [`project-management/v1`](contract.json) operation vocabulary. A 
 | Status | `status.read` | `status.transition` |
 | Comment | `comment.list` | `comment.append` |
 
-Use the [work contract](../../templates/work-contract.md) for canonical definition fields and the [tracker update](../../templates/tracker-update.md) for evidence-bearing collaboration.
+Use the [work contract](../../templates/work-contract.md) as an ephemeral packet for routing definition fields to the native record, and use the [tracker update](../../templates/tracker-update.md) for evidence-bearing collaboration. A template is never a second stored work record.
 
 ## Topics
 

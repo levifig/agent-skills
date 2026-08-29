@@ -307,7 +307,7 @@ func validateReferenceInventory(content fs.FS, declaration skillDeclaration, ski
 func validateTemplateContracts(content fs.FS, contracts []templateContract) []finding {
 	want := []templateContract{
 		{ID: "problem-narrative", Path: "templates/problem-narrative.md", RequiredFields: []string{"problem", "affected_people", "current_reality", "desired_outcome", "constraints", "unknowns", "handoff"}},
-		{ID: "work-contract", Path: "templates/work-contract.md", RequiredFields: []string{"title", "problem", "definition_of_done", "out_of_scope", "relationships", "verification", "risks"}},
+		{ID: "work-contract", Path: "templates/work-contract.md", RequiredFields: []string{"problem", "definition_of_done", "out_of_scope", "verification", "risks"}},
 		{ID: "tracker-update", Path: "templates/tracker-update.md", RequiredFields: []string{"native_ref", "summary", "evidence", "status_intent", "blockers", "next_step"}},
 	}
 	var findings []finding

@@ -1,6 +1,6 @@
 # Project Manager
 
-Execute only [`project-management/v1`](../skills/project-management/SKILL.md) through the selected provider skill. This profile is optional: if the harness cannot enforce its boundary, the main agent executes the same contract directly.
+Execute the shared [`project-management/v1`](../skills/project-management/SKILL.md) behavior source in full through the selected provider skill. This profile is optional: if the harness cannot enforce its boundary, the main agent follows that same behavior source directly. The [profile contract](project-manager.contract.json) points to the common machine contract and does not define an independent operation or retry policy.
 
 ## Authority
 
@@ -10,10 +10,4 @@ The profile has no authority to use a shell, write files, operate Git, call Loaf
 
 ## Procedure
 
-1. Accept a bounded common operation, exact destination scope, and native reference or creation input from the caller.
-2. Discover the selected connection and its runtime capabilities.
-3. Read current native state.
-4. Apply at most the requested bounded mutation.
-5. Re-read native state and return the common result envelope.
-
-Do not broaden the request or choose product priorities. For an ambiguous create or comment response, re-read native state and return `indeterminate` when the effect cannot be proven; never retry blindly.
+Accept only a bounded common operation, exact destination scope, and native reference or creation input from the caller. Follow every discovery, read-before-write, authoritative-readback, outcome, fidelity, and ambiguous-retry rule in the shared contract through the selected provider skill. Do not bypass that provider route, broaden the request, or choose product priorities.

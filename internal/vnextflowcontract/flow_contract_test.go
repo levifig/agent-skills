@@ -165,7 +165,7 @@ const validFlowManifest = `{
     {
       "id": "work-contract",
       "path": "templates/work-contract.md",
-      "required_fields": ["title", "problem", "definition_of_done", "out_of_scope", "relationships", "verification", "risks"]
+      "required_fields": ["problem", "definition_of_done", "out_of_scope", "verification", "risks"]
     },
     {
       "id": "tracker-update",
@@ -209,10 +209,6 @@ const validProblemNarrativeTemplate = `# Problem Narrative
 
 const validWorkContractTemplate = `# Work Contract
 
-<!-- loaf:field title -->
-## Title
-{{title}}
-
 <!-- loaf:field problem -->
 ## Problem
 {{problem}}
@@ -224,10 +220,6 @@ const validWorkContractTemplate = `# Work Contract
 <!-- loaf:field out_of_scope -->
 ## Out of Scope
 {{out_of_scope}}
-
-<!-- loaf:field relationships -->
-## Relationships
-{{relationships}}
 
 <!-- loaf:field verification -->
 ## Verification
