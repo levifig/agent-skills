@@ -68,8 +68,57 @@ func TestContinuitySQLiteContractOracleIsTestOnlyAndImportClosed(t *testing.T) {
 func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 	t.Parallel()
 
-	wantFiles := []string{"driver.go", "filesystem_attributes_windows.go", "filesystem_unix.go", "filesystem_windows.go", "schema.go", "store.go"}
-	wantExports := []string{"Open", "Store", "Store.Close"}
+	wantFiles := []string{
+		"admission.go",
+		"append_kernel.go",
+		"append_methods.go",
+		"codec_v1.go",
+		"driver.go",
+		"filesystem_attributes_windows.go",
+		"filesystem_unix.go",
+		"filesystem_windows.go",
+		"schema.go",
+		"store.go",
+		"wire_v1.go",
+		"wire_validation_v1.go",
+	}
+	wantExports := []string{
+		"Open",
+		"Store",
+		"Store.ArchiveIdea",
+		"Store.AttachExternalReference",
+		"Store.CaptureSpark",
+		"Store.Close",
+		"Store.CloseScratchpad",
+		"Store.CorrectFinding",
+		"Store.CorrectJournalEntry",
+		"Store.CreateIdea",
+		"Store.DetachExternalReference",
+		"Store.DismissSpark",
+		"Store.IntroduceScratchpadParticipant",
+		"Store.OpenDecision",
+		"Store.OpenScratchpad",
+		"Store.PromoteIdeaToExternalReference",
+		"Store.PromoteSparkToIdea",
+		"Store.RecordCheckpoint",
+		"Store.RecordFinding",
+		"Store.RecordHandoff",
+		"Store.RecordJournalEntry",
+		"Store.RecordScratchpadClaim",
+		"Store.RecordScratchpadMessage",
+		"Store.RecordVerificationEvidence",
+		"Store.RecordWrap",
+		"Store.RegisterExternalReference",
+		"Store.RegisterProject",
+		"Store.ReleaseScratchpadClaim",
+		"Store.ResolveDecision",
+		"Store.ResolveIdea",
+		"Store.RetractFinding",
+		"Store.ReviseIdea",
+		"Store.ReviseProjectLabel",
+		"Store.StartExploration",
+		"Store.SupersedeDecision",
+	}
 	files, exports := inspectSQLiteSource(t)
 	if !reflect.DeepEqual(files, wantFiles) {
 		t.Fatalf("SQLite production source inventory = %v, want %v", files, wantFiles)
@@ -83,6 +132,30 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 	t.Parallel()
 
 	wantImports := map[string][]string{
+		"admission.go": {
+			"context",
+			"database/sql",
+			"errors",
+			"github.com/levifig/loaf/vnext/continuity",
+		},
+		"append_kernel.go": {
+			"context",
+			"database/sql",
+			"errors",
+			"github.com/levifig/loaf/vnext/continuity",
+			"math",
+		},
+		"append_methods.go": {
+			"context",
+			"github.com/levifig/loaf/vnext/continuity",
+		},
+		"codec_v1.go": {
+			"bytes",
+			"encoding/json",
+			"github.com/levifig/loaf/vnext/continuity",
+			"io",
+			"strings",
+		},
 		"driver.go":                        {"_:github.com/ncruces/go-sqlite3/driver"},
 		"filesystem_attributes_windows.go": {"fmt", "os", "syscall"},
 		"filesystem_unix.go":               {"errors", "fmt", "os", "path/filepath", "strings"},
@@ -98,8 +171,11 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 			"os",
 			"path/filepath",
 			"strings",
+			"sync",
 			"time",
 		},
+		"wire_v1.go":            nil,
+		"wire_validation_v1.go": {"github.com/levifig/loaf/vnext/continuity"},
 	}
 
 	for fileName, want := range wantImports {
@@ -279,20 +355,277 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		})
 	}
 	wantFields := []fieldSpec{
+		{name: "mu", typeName: "sync.RWMutex"},
 		{name: "db", typeName: "*sql.DB"},
 		{name: "environmentID", typeName: "continuity.EnvironmentID"},
+		{name: "wallMillis", typeName: "func() int64"},
+		{name: "closed", typeName: "bool"},
 	}
 	if !reflect.DeepEqual(gotFields, wantFields) {
 		t.Fatalf("Store fields = %#v, want %#v", gotFields, wantFields)
 	}
 
 	pointerType := reflect.TypeOf((*continuitysqlite.Store)(nil))
-	if pointerType.NumMethod() != 1 {
-		t.Fatalf("*Store method count = %d, want 1", pointerType.NumMethod())
+	wantMethods := map[string]string{
+		"ArchiveIdea":                    "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaArchivePayload) (continuity.AppendReceipt, error)",
+		"AttachExternalReference":        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceAttachmentPayload) (continuity.AppendReceipt, error)",
+		"CaptureSpark":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkCapturedPayload) (continuity.AppendReceipt, error)",
+		"Close":                          "func(*sqlite.Store) error",
+		"CloseScratchpad":                "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadClosePayload) (continuity.AppendReceipt, error)",
+		"CorrectFinding":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingCorrectionPayload) (continuity.AppendReceipt, error)",
+		"CorrectJournalEntry":            "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.JournalCorrectionPayload) (continuity.AppendReceipt, error)",
+		"CreateIdea":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaCreatedPayload) (continuity.AppendReceipt, error)",
+		"DetachExternalReference":        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceDetachmentPayload) (continuity.AppendReceipt, error)",
+		"DismissSpark":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkDismissedPayload) (continuity.AppendReceipt, error)",
+		"IntroduceScratchpadParticipant": "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadParticipantPayload) (continuity.AppendReceipt, error)",
+		"OpenDecision":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionOpenedPayload) (continuity.AppendReceipt, error)",
+		"OpenScratchpad":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadOpenedPayload) (continuity.AppendReceipt, error)",
+		"PromoteIdeaToExternalReference": "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaPromotionPayload) (continuity.AppendReceipt, error)",
+		"PromoteSparkToIdea":             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkPromotionPayload) (continuity.AppendReceipt, error)",
+		"RecordCheckpoint":               "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.CheckpointRecordedPayload) (continuity.AppendReceipt, error)",
+		"RecordFinding":                  "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingRecordedPayload) (continuity.AppendReceipt, error)",
+		"RecordHandoff":                  "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.HandoffRecordedPayload) (continuity.AppendReceipt, error)",
+		"RecordJournalEntry":             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.JournalRecordedPayload) (continuity.AppendReceipt, error)",
+		"RecordScratchpadClaim":          "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadClaimPayload) (continuity.AppendReceipt, error)",
+		"RecordScratchpadMessage":        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadMessagePayload) (continuity.AppendReceipt, error)",
+		"RecordVerificationEvidence":     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.VerificationEvidencePayload) (continuity.AppendReceipt, error)",
+		"RecordWrap":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.WrapRecordedPayload) (continuity.AppendReceipt, error)",
+		"RegisterExternalReference":      "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceRegistrationPayload) (continuity.AppendReceipt, error)",
+		"RegisterProject":                "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.ProjectRegistrationPayload) (continuity.AppendReceipt, error)",
+		"ReleaseScratchpadClaim":         "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadClaimReleasePayload) (continuity.AppendReceipt, error)",
+		"ResolveDecision":                "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionResolutionPayload) (continuity.AppendReceipt, error)",
+		"ResolveIdea":                    "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaResolutionPayload) (continuity.AppendReceipt, error)",
+		"RetractFinding":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingRetractionPayload) (continuity.AppendReceipt, error)",
+		"ReviseIdea":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaRevisionPayload) (continuity.AppendReceipt, error)",
+		"ReviseProjectLabel":             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.ProjectLabelRevisionPayload) (continuity.AppendReceipt, error)",
+		"StartExploration":               "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExplorationStartedPayload) (continuity.AppendReceipt, error)",
+		"SupersedeDecision":              "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionSupersessionPayload) (continuity.AppendReceipt, error)",
 	}
-	method := pointerType.Method(0)
-	if method.Name != "Close" || method.Type.String() != "func(*sqlite.Store) error" {
-		t.Fatalf("*Store method = %s %s, want Close with error result", method.Name, method.Type)
+	gotMethods := make(map[string]string, pointerType.NumMethod())
+	for index := 0; index < pointerType.NumMethod(); index++ {
+		method := pointerType.Method(index)
+		gotMethods[method.Name] = method.Type.String()
+	}
+	if !reflect.DeepEqual(gotMethods, wantMethods) {
+		t.Fatalf("*Store methods = %#v, want %#v", gotMethods, wantMethods)
+	}
+}
+
+func TestContinuitySQLiteContractPinsV1WireShapesAndClosedUnion(t *testing.T) {
+	t.Parallel()
+
+	wantShapes := map[string][]string{
+		"wireCheckpointItemV1":                {"Kind:string:`json:\"kind\"`", "Text:string:`json:\"text\"`"},
+		"wireCheckpointRecordedV1":            {"Observation:wireObservationV1:`json:\"observation\"`", "ExplorationID:string:`json:\"exploration_id\"`", "CurrentFraming:string:`json:\"current_framing\"`", "Conclusions:string:`json:\"conclusions\"`", "UnresolvedQuestion:string:`json:\"unresolved_question\"`", "NextAction:string:`json:\"next_action\"`", "Items:[]wireCheckpointItemV1:`json:\"items\"`"},
+		"wireDecisionOpenedV1":                {"Observation:wireObservationV1:`json:\"observation\"`", "Scope:string:`json:\"scope\"`", "Question:string:`json:\"question\"`", "Context:string:`json:\"context\"`"},
+		"wireDecisionResolutionV1":            {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "Resolution:string:`json:\"resolution\"`", "Rationale:string:`json:\"rationale\"`"},
+		"wireDecisionSupersessionV1":          {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "SuccessorID:string:`json:\"successor_id\"`", "Rationale:string:`json:\"rationale\"`"},
+		"wireExplorationStartedV1":            {"Observation:wireObservationV1:`json:\"observation\"`", "Label:string:`json:\"label\"`", "Purpose:string:`json:\"purpose\"`"},
+		"wireExternalReferenceAttachmentV1":   {"Observation:wireObservationV1:`json:\"observation\"`", "Target:wireSubjectRefV1:`json:\"target\"`", "Predecessor:string:`json:\"predecessor\"`"},
+		"wireExternalReferenceDetachmentV1":   {"Observation:wireObservationV1:`json:\"observation\"`", "Target:wireSubjectRefV1:`json:\"target\"`", "Predecessor:string:`json:\"predecessor\"`", "Reason:string:`json:\"reason\"`"},
+		"wireExternalReferenceRegistrationV1": {"Observation:wireObservationV1:`json:\"observation\"`", "Locator:string:`json:\"locator\"`"},
+		"wireFindingContentV1":                {"Scope:string:`json:\"scope\"`", "Summary:string:`json:\"summary\"`", "Detail:string:`json:\"detail\"`", "Recommendation:string:`json:\"recommendation\"`"},
+		"wireFindingCorrectionV1":             {"Observation:wireObservationV1:`json:\"observation\"`", "Corrects:string:`json:\"corrects\"`", "Content:wireFindingContentV1:`json:\"content\"`"},
+		"wireFindingRecordedV1":               {"Observation:wireObservationV1:`json:\"observation\"`", "Content:wireFindingContentV1:`json:\"content\"`"},
+		"wireFindingRetractionV1":             {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "Reason:string:`json:\"reason\"`"},
+		"wireHandoffRecordedV1":               {"Observation:wireObservationV1:`json:\"observation\"`", "Focus:*wireSubjectRefV1:`json:\"focus\"`", "Purpose:string:`json:\"purpose\"`", "Situation:string:`json:\"situation\"`", "NextActions:string:`json:\"next_actions\"`", "QuestionsAndRisks:string:`json:\"questions_and_risks\"`", "SuggestedSkills:[]string:`json:\"suggested_skills\"`"},
+		"wireIdeaArchiveV1":                   {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "Reason:string:`json:\"reason\"`"},
+		"wireIdeaContentV1":                   {"Label:string:`json:\"label\"`", "Text:string:`json:\"text\"`"},
+		"wireIdeaCreatedV1":                   {"Observation:wireObservationV1:`json:\"observation\"`", "Content:wireIdeaContentV1:`json:\"content\"`"},
+		"wireIdeaPromotionV1":                 {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "ReferenceID:string:`json:\"reference_id\"`"},
+		"wireIdeaResolutionV1":                {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "Resolution:string:`json:\"resolution\"`"},
+		"wireIdeaRevisionV1":                  {"Observation:wireObservationV1:`json:\"observation\"`", "Revises:string:`json:\"revises\"`", "Content:wireIdeaContentV1:`json:\"content\"`"},
+		"wireJournalContentV1":                {"Category:string:`json:\"category\"`", "Scope:string:`json:\"scope\"`", "Text:string:`json:\"text\"`"},
+		"wireJournalCorrectionV1":             {"Observation:wireObservationV1:`json:\"observation\"`", "Corrects:string:`json:\"corrects\"`", "Content:wireJournalContentV1:`json:\"content\"`"},
+		"wireJournalRecordedV1":               {"Observation:wireObservationV1:`json:\"observation\"`", "Content:wireJournalContentV1:`json:\"content\"`"},
+		"wireObservationV1":                   {"ObservedAtMillis:int64:`json:\"observed_at_millis\"`", "HarnessSessionID:string:`json:\"harness_session_id\"`", "Branch:string:`json:\"branch\"`", "Worktree:string:`json:\"worktree\"`"},
+		"wireProjectLabelRevisionV1":          {"Observation:wireObservationV1:`json:\"observation\"`", "Revises:string:`json:\"revises\"`", "Label:string:`json:\"label\"`"},
+		"wireProjectRegistrationV1":           {"Observation:wireObservationV1:`json:\"observation\"`", "Label:string:`json:\"label\"`"},
+		"wireScratchpadClaimReleaseV1":        {"Observation:wireObservationV1:`json:\"observation\"`", "ClaimID:string:`json:\"claim_id\"`", "ReleasedBy:string:`json:\"released_by\"`", "Reason:string:`json:\"reason\"`"},
+		"wireScratchpadClaimV1":               {"Observation:wireObservationV1:`json:\"observation\"`", "ClaimID:string:`json:\"claim_id\"`", "ParticipantID:string:`json:\"participant_id\"`", "Resource:string:`json:\"resource\"`", "ExpiresAtMillis:int64:`json:\"expires_at_millis\"`"},
+		"wireScratchpadCloseV1":               {"Observation:wireObservationV1:`json:\"observation\"`", "ClosedBy:string:`json:\"closed_by\"`", "Reason:string:`json:\"reason\"`"},
+		"wireScratchpadMessageV1":             {"Observation:wireObservationV1:`json:\"observation\"`", "ParticipantID:string:`json:\"participant_id\"`", "Text:string:`json:\"text\"`"},
+		"wireScratchpadOpenedV1":              {"Observation:wireObservationV1:`json:\"observation\"`", "Focus:*wireSubjectRefV1:`json:\"focus\"`", "Label:string:`json:\"label\"`"},
+		"wireScratchpadParticipantV1":         {"Observation:wireObservationV1:`json:\"observation\"`", "ParticipantID:string:`json:\"participant_id\"`", "Name:string:`json:\"name\"`", "Focus:*wireSubjectRefV1:`json:\"focus\"`"},
+		"wireSparkCapturedV1":                 {"Observation:wireObservationV1:`json:\"observation\"`", "Scope:string:`json:\"scope\"`", "Text:string:`json:\"text\"`"},
+		"wireSparkDismissedV1":                {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "Reason:string:`json:\"reason\"`"},
+		"wireSparkPromotionV1":                {"Observation:wireObservationV1:`json:\"observation\"`", "Predecessor:string:`json:\"predecessor\"`", "IdeaID:string:`json:\"idea_id\"`"},
+		"wireSubjectRefV1":                    {"Kind:string:`json:\"kind\"`", "ID:string:`json:\"id\"`"},
+		"wireVerificationEvidenceV1":          {"Observation:wireObservationV1:`json:\"observation\"`", "Target:wireSubjectRefV1:`json:\"target\"`", "Check:string:`json:\"check\"`", "Method:string:`json:\"method\"`", "Outcome:string:`json:\"outcome\"`", "Detail:string:`json:\"detail\"`"},
+		"wireWrapRecordedV1":                  {"Observation:wireObservationV1:`json:\"observation\"`", "Focus:*wireSubjectRefV1:`json:\"focus\"`", "Scope:string:`json:\"scope\"`", "Synthesis:string:`json:\"synthesis\"`"},
+	}
+	gotShapes := inspectPrivateStructShapes(t, filepath.Join(sqliteSourceRoot, "wire_v1.go"))
+	if !reflect.DeepEqual(gotShapes, wantShapes) {
+		t.Fatalf("V1 wire shapes = %#v, want %#v", gotShapes, wantShapes)
+	}
+
+	wantUnion := []string{
+		"wireCheckpointRecordedV1",
+		"wireDecisionOpenedV1",
+		"wireDecisionResolutionV1",
+		"wireDecisionSupersessionV1",
+		"wireExplorationStartedV1",
+		"wireExternalReferenceAttachmentV1",
+		"wireExternalReferenceDetachmentV1",
+		"wireExternalReferenceRegistrationV1",
+		"wireFindingCorrectionV1",
+		"wireFindingRecordedV1",
+		"wireFindingRetractionV1",
+		"wireHandoffRecordedV1",
+		"wireIdeaArchiveV1",
+		"wireIdeaCreatedV1",
+		"wireIdeaPromotionV1",
+		"wireIdeaResolutionV1",
+		"wireIdeaRevisionV1",
+		"wireJournalCorrectionV1",
+		"wireJournalRecordedV1",
+		"wireProjectLabelRevisionV1",
+		"wireProjectRegistrationV1",
+		"wireScratchpadClaimReleaseV1",
+		"wireScratchpadClaimV1",
+		"wireScratchpadCloseV1",
+		"wireScratchpadMessageV1",
+		"wireScratchpadOpenedV1",
+		"wireScratchpadParticipantV1",
+		"wireSparkCapturedV1",
+		"wireSparkDismissedV1",
+		"wireSparkPromotionV1",
+		"wireVerificationEvidenceV1",
+		"wireWrapRecordedV1",
+	}
+	gotUnion, methodSignature := inspectClosedWireUnion(t, filepath.Join(sqliteSourceRoot, "wire_v1.go"))
+	if !reflect.DeepEqual(gotUnion, wantUnion) || methodSignature != "func() error" {
+		t.Fatalf("V1 wire union = %v with %q, want %v with func() error", gotUnion, methodSignature, wantUnion)
+	}
+}
+
+func TestContinuitySQLiteContractPinsEveryPublicMethodToOneV1EncoderAndFactKind(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]methodBinding{
+		"ArchiveIdea":                    {encoder: "encodeIdeaArchiveV1", record: "RecordIdea", fact: "FactIdeaArchived"},
+		"AttachExternalReference":        {encoder: "encodeExternalReferenceAttachmentV1", record: "RecordExternalReference", fact: "FactExternalReferenceAttached"},
+		"CaptureSpark":                   {encoder: "encodeSparkCapturedV1", record: "RecordSpark", fact: "FactSparkCaptured"},
+		"CloseScratchpad":                {encoder: "encodeScratchpadCloseV1", record: "RecordScratchpad", fact: "FactScratchpadClosed"},
+		"CorrectFinding":                 {encoder: "encodeFindingCorrectionV1", record: "RecordFinding", fact: "FactFindingCorrected"},
+		"CorrectJournalEntry":            {encoder: "encodeJournalCorrectionV1", record: "RecordJournalEntry", fact: "FactJournalCorrectionRecorded"},
+		"CreateIdea":                     {encoder: "encodeIdeaCreatedV1", record: "RecordIdea", fact: "FactIdeaCreated"},
+		"DetachExternalReference":        {encoder: "encodeExternalReferenceDetachmentV1", record: "RecordExternalReference", fact: "FactExternalReferenceDetached"},
+		"DismissSpark":                   {encoder: "encodeSparkDismissedV1", record: "RecordSpark", fact: "FactSparkDismissed"},
+		"IntroduceScratchpadParticipant": {encoder: "encodeScratchpadParticipantV1", record: "RecordScratchpad", fact: "FactScratchpadParticipantIntroduced"},
+		"OpenDecision":                   {encoder: "encodeDecisionOpenedV1", record: "RecordDecision", fact: "FactDecisionOpened"},
+		"OpenScratchpad":                 {encoder: "encodeScratchpadOpenedV1", record: "RecordScratchpad", fact: "FactScratchpadOpened"},
+		"PromoteIdeaToExternalReference": {encoder: "encodeIdeaPromotionV1", record: "RecordIdea", fact: "FactIdeaPromotedToExternalReference"},
+		"PromoteSparkToIdea":             {encoder: "encodeSparkPromotionV1", record: "RecordSpark", fact: "FactSparkPromotedToIdea"},
+		"RecordCheckpoint":               {encoder: "encodeCheckpointRecordedV1", record: "RecordCheckpoint", fact: "FactCheckpointRecorded"},
+		"RecordFinding":                  {encoder: "encodeFindingRecordedV1", record: "RecordFinding", fact: "FactFindingRecorded"},
+		"RecordHandoff":                  {encoder: "encodeHandoffRecordedV1", record: "RecordHandoff", fact: "FactHandoffRecorded"},
+		"RecordJournalEntry":             {encoder: "encodeJournalRecordedV1", record: "RecordJournalEntry", fact: "FactJournalRecorded"},
+		"RecordScratchpadClaim":          {encoder: "encodeScratchpadClaimV1", record: "RecordScratchpad", fact: "FactScratchpadClaimRecorded"},
+		"RecordScratchpadMessage":        {encoder: "encodeScratchpadMessageV1", record: "RecordScratchpad", fact: "FactScratchpadMessageRecorded"},
+		"RecordVerificationEvidence":     {encoder: "encodeVerificationEvidenceV1", record: "RecordVerificationEvidence", fact: "FactVerificationEvidenceRecorded"},
+		"RecordWrap":                     {encoder: "encodeWrapRecordedV1", record: "RecordWrap", fact: "FactWrapRecorded"},
+		"RegisterExternalReference":      {encoder: "encodeExternalReferenceRegistrationV1", record: "RecordExternalReference", fact: "FactExternalReferenceRegistered"},
+		"RegisterProject":                {encoder: "encodeProjectRegistrationV1", record: "RecordProjectIdentity", fact: "FactProjectRegistered"},
+		"ReleaseScratchpadClaim":         {encoder: "encodeScratchpadClaimReleaseV1", record: "RecordScratchpad", fact: "FactScratchpadClaimReleased"},
+		"ResolveDecision":                {encoder: "encodeDecisionResolutionV1", record: "RecordDecision", fact: "FactDecisionResolved"},
+		"ResolveIdea":                    {encoder: "encodeIdeaResolutionV1", record: "RecordIdea", fact: "FactIdeaResolved"},
+		"RetractFinding":                 {encoder: "encodeFindingRetractionV1", record: "RecordFinding", fact: "FactFindingRetracted"},
+		"ReviseIdea":                     {encoder: "encodeIdeaRevisionV1", record: "RecordIdea", fact: "FactIdeaRevised"},
+		"ReviseProjectLabel":             {encoder: "encodeProjectLabelRevisionV1", record: "RecordProjectIdentity", fact: "FactProjectLabelRevised"},
+		"StartExploration":               {encoder: "encodeExplorationStartedV1", record: "RecordExploration", fact: "FactExplorationStarted"},
+		"SupersedeDecision":              {encoder: "encodeDecisionSupersessionV1", record: "RecordDecision", fact: "FactDecisionSuperseded"},
+	}
+	got := inspectMethodBindings(t, filepath.Join(sqliteSourceRoot, "append_methods.go"))
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("public method bindings = %#v, want %#v", got, want)
+	}
+}
+
+func TestContinuitySQLiteContractRejectsDynamicPersistenceEscapeHatches(t *testing.T) {
+	t.Parallel()
+
+	wantGenericFunctions := []string{
+		"codec_v1.go:canonicalizeWireV1",
+		"codec_v1.go:decodeStoredWireV1",
+		"codec_v1.go:decodeWireV1",
+		"codec_v1.go:encodeWireV1",
+		"codec_v1.go:requireCanonicalV1",
+	}
+	wantInterfaces := []string{"wire_v1.go:wireValueV1"}
+
+	entries, err := os.ReadDir(sqliteSourceRoot)
+	if err != nil {
+		t.Fatalf("read SQLite source root: %v", err)
+	}
+	var genericFunctions, interfaces []string
+	for _, entry := range entries {
+		fileName := entry.Name()
+		if entry.IsDir() || filepath.Ext(fileName) != ".go" || strings.HasSuffix(fileName, "_test.go") {
+			continue
+		}
+		file := parseGoFile(t, filepath.Join(sqliteSourceRoot, fileName))
+		for _, declaration := range file.Decls {
+			switch declaration := declaration.(type) {
+			case *ast.GenDecl:
+				if declaration.Tok == token.VAR {
+					t.Errorf("%s declares package state; persistence behavior must remain Store-owned or constant", fileName)
+				}
+				for _, specification := range declaration.Specs {
+					typeSpecification, ok := specification.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					if typeSpecification.TypeParams != nil {
+						t.Errorf("%s:%s is an unadmitted generic type", fileName, typeSpecification.Name.Name)
+					}
+					if _, ok := typeSpecification.Type.(*ast.InterfaceType); ok {
+						interfaces = append(interfaces, fileName+":"+typeSpecification.Name.Name)
+					}
+				}
+			case *ast.FuncDecl:
+				if declaration.Name.Name == "init" {
+					t.Errorf("%s declares init; persistence setup must remain explicit", fileName)
+				}
+				if declaration.Type.TypeParams != nil {
+					genericFunctions = append(genericFunctions, fileName+":"+declaration.Name.Name)
+				}
+				if declaration.Name.Name == "MarshalJSON" || declaration.Name.Name == "UnmarshalJSON" {
+					t.Errorf("%s declares %s; the V1 codec owns JSON behavior", fileName, declaration.Name.Name)
+				}
+			}
+		}
+
+		if fileName != "codec_v1.go" && fileName != "wire_v1.go" && fileName != "wire_validation_v1.go" {
+			continue
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch node := node.(type) {
+			case *ast.Ident:
+				if node.Name == "any" {
+					t.Errorf("%s uses any in the closed V1 codec", fileName)
+				}
+			case *ast.MapType:
+				t.Errorf("%s uses a map in the closed V1 codec", fileName)
+			case *ast.SelectorExpr:
+				if identifier, ok := node.X.(*ast.Ident); ok && identifier.Name == "json" && node.Sel.Name == "RawMessage" {
+					t.Errorf("%s uses json.RawMessage in the closed V1 codec", fileName)
+				}
+			case *ast.Field:
+				if node.Tag != nil && strings.Contains(node.Tag.Value, "omitempty") {
+					t.Errorf("%s uses omitempty in the closed V1 codec", fileName)
+				}
+			}
+			return true
+		})
+	}
+	sort.Strings(genericFunctions)
+	sort.Strings(interfaces)
+	if !reflect.DeepEqual(genericFunctions, wantGenericFunctions) {
+		t.Fatalf("generic persistence functions = %v, want %v", genericFunctions, wantGenericFunctions)
+	}
+	if !reflect.DeepEqual(interfaces, wantInterfaces) {
+		t.Fatalf("persistence interfaces = %v, want %v", interfaces, wantInterfaces)
 	}
 }
 
@@ -305,7 +638,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
 		"schema.go":                        "5eb35bcf96fed17242202e75b24af1a82555b42c3079a87d4d491d67051d57ab",
-		"store.go":                         "24e0f153ff6f36d1f827f5034e5bdc2c27ca760ce67e755987a06b7255eb1ec1",
+		"store.go":                         "07fb4c03e28e989b2f8d3155b4899e1d81b3a69e1de4aef48d29fe99f6cbd8a6",
 	}
 	for fileName, wantDigest := range wantSourceDigests {
 		gotDigest := digestSourceFile(t, filepath.Join(sqliteSourceRoot, fileName))
@@ -350,8 +683,8 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 			"validateSchema":          "0ee48b24d251815fa8ba379118493edf06fd843ea4a3ea6ba41d9febf9fb6079",
 		},
 		"store.go": {
-			"Close":                     "5e7af3f47dfc7188a8078f2fa6f02f7d0cd1109be72d119a38c2fae00f6f6558",
-			"Open":                      "77457caca0cdd1027505d492281681247ca6e4001e839b2572809dab35d1aeb3",
+			"Close":                     "69f3a1056e0ce920d07dbdbf96c0559b9edf375218c904d29ea307d6623006f1",
+			"Open":                      "c5e946b2c2be830e01091143f2a8f0e3b19a8428d434b3b31cdf032dfc197971",
 			"databaseDSN":               "31b0b9b4bd1269c1e5f8c521c17fcac5ed99cfe1609e48e1937744a729788e19",
 			"inspectRegularPrivateFile": "177aaa7ec2087d38ca322829f4a54d9c333a51aea70be68823d1d9d34772e64a",
 			"openDatabase":              "63865fcf446d578fad398587c9c01c6e7330f6117673125cd4afd351b57c3dfc",
@@ -359,7 +692,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 			"preparePrivateDirectory":   "5024c5c56c7bf3b92ba98eaf138d8c78542146bdc992051583772566fb629fa0",
 			"retryableOpenError":        "b359c6f459c7490b1f8aed8df8e3f137456003c3a1d5b0a842cc639f53e437ca",
 			"schemaIsEmpty":             "d96549881a4a329b5815e73d4b144cbe6b8c3cb49a56b5e98c7736d7532ac4fc",
-			"secureSQLiteSidecars":      "07822026b1400cdb4eca86b9da2a5feac0cb18bca51e0f9d8c0a2b276671d410",
+			"secureSQLiteSidecars":      "403d22fdce31128b08551f01f6cb68102332930ed3c6ebaf0cceaf0d32fb0e89",
 			"validOpaqueID":             "c0072295d2bd1701a690020b9a9b3791eba2c22429671460ffac401896d1bdb1",
 			"validateEnvironmentID":     "6f4006fba6c237bb97b739529c6a82f739cf3a75758fa97625b36da20389fb67",
 			"verifySQLiteFiles":         "32e01c16e83df7de6a0034055df7ff29d169823a2d268fc412b824609ad8891d",
@@ -636,6 +969,12 @@ type objectDigest struct {
 	digest string
 }
 
+type methodBinding struct {
+	encoder string
+	record  string
+	fact    string
+}
+
 type columnSpec struct {
 	name       string
 	dataType   string
@@ -815,6 +1154,224 @@ func digestSourceFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return fmt.Sprintf("%x", sha256.Sum256(contents))
+}
+
+func inspectPrivateStructShapes(t *testing.T, path string) map[string][]string {
+	t.Helper()
+
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, path, nil, parser.AllErrors)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	shapes := make(map[string][]string)
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpecification, ok := specification.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			structure, ok := typeSpecification.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			var fields []string
+			for _, field := range structure.Fields.List {
+				if len(field.Names) == 0 || field.Tag == nil {
+					t.Fatalf("%s has an anonymous or untagged V1 wire field", typeSpecification.Name.Name)
+				}
+				var formatted bytes.Buffer
+				if err := format.Node(&formatted, fileSet, field.Type); err != nil {
+					t.Fatalf("format %s field type: %v", typeSpecification.Name.Name, err)
+				}
+				for _, name := range field.Names {
+					fields = append(fields, name.Name+":"+formatted.String()+":"+field.Tag.Value)
+				}
+			}
+			shapes[typeSpecification.Name.Name] = fields
+		}
+	}
+	return shapes
+}
+
+func inspectClosedWireUnion(t *testing.T, path string) ([]string, string) {
+	t.Helper()
+
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, path, nil, parser.AllErrors)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	var members []string
+	var methodSignature string
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpecification, ok := specification.(*ast.TypeSpec)
+			if !ok || typeSpecification.Name.Name != "wireValueV1" {
+				continue
+			}
+			contract, ok := typeSpecification.Type.(*ast.InterfaceType)
+			if !ok {
+				t.Fatal("wireValueV1 is not an interface constraint")
+			}
+			for _, field := range contract.Methods.List {
+				if len(field.Names) == 0 {
+					members = append(members, flattenUnionNames(t, field.Type)...)
+					continue
+				}
+				if len(field.Names) != 1 || field.Names[0].Name != "validate" {
+					t.Fatalf("wireValueV1 has unexpected method field %#v", field.Names)
+				}
+				var formatted bytes.Buffer
+				if err := format.Node(&formatted, fileSet, field.Type); err != nil {
+					t.Fatalf("format wireValueV1 method: %v", err)
+				}
+				methodSignature = formatted.String()
+			}
+		}
+	}
+	sort.Strings(members)
+	return members, methodSignature
+}
+
+func inspectMethodBindings(t *testing.T, path string) map[string]methodBinding {
+	t.Helper()
+
+	wantSubjectByRecord := map[string]string{
+		"RecordProjectIdentity":      "continuity.SubjectID(projectID)",
+		"RecordJournalEntry":         "journalID",
+		"RecordWrap":                 "wrapID",
+		"RecordSpark":                "sparkID",
+		"RecordIdea":                 "ideaID",
+		"RecordDecision":             "decisionID",
+		"RecordExploration":          "explorationID",
+		"RecordCheckpoint":           "checkpointID",
+		"RecordFinding":              "findingID",
+		"RecordHandoff":              "handoffID",
+		"RecordScratchpad":           "scratchpadID",
+		"RecordExternalReference":    "referenceID",
+		"RecordVerificationEvidence": "evidenceID",
+	}
+	file := parseGoFile(t, path)
+	bindings := make(map[string]methodBinding)
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || !ast.IsExported(function.Name.Name) || function.Recv == nil || len(function.Recv.List) != 1 {
+			continue
+		}
+		if receiverName(function.Recv.List[0].Type) != "Store" {
+			continue
+		}
+		if len(function.Recv.List[0].Names) != 1 || function.Recv.List[0].Names[0].Name != "store" {
+			t.Fatalf("%s receiver is not the canonical store receiver", function.Name.Name)
+		}
+		if function.Body == nil || len(function.Body.List) != 3 {
+			t.Fatalf("%s body has %d statements, want canonical encode/guard/append", function.Name.Name, len(function.Body.List))
+		}
+
+		assignment, ok := function.Body.List[0].(*ast.AssignStmt)
+		if !ok || assignment.Tok != token.DEFINE || len(assignment.Lhs) != 2 || compactNode(t, assignment.Lhs[0]) != "content" || compactNode(t, assignment.Lhs[1]) != "err" || len(assignment.Rhs) != 1 {
+			t.Fatalf("%s does not begin with canonical content/error assignment", function.Name.Name)
+		}
+		encoderCall, ok := assignment.Rhs[0].(*ast.CallExpr)
+		if !ok || len(encoderCall.Args) != 1 || compactNode(t, encoderCall.Args[0]) != "payload" {
+			t.Fatalf("%s encoder does not consume exactly payload", function.Name.Name)
+		}
+		encoder, ok := encoderCall.Fun.(*ast.Ident)
+		if !ok || !strings.HasPrefix(encoder.Name, "encode") || !strings.HasSuffix(encoder.Name, "V1") {
+			t.Fatalf("%s uses non-V1 encoder %s", function.Name.Name, compactNode(t, encoderCall.Fun))
+		}
+		if got := strings.Join(strings.Fields(compactNode(t, function.Body.List[1])), " "); got != "if err != nil { return continuity.AppendReceipt{}, err }" {
+			t.Fatalf("%s error guard = %q, want canonical fail-fast guard", function.Name.Name, got)
+		}
+
+		returnStatement, ok := function.Body.List[2].(*ast.ReturnStmt)
+		if !ok || len(returnStatement.Results) != 1 {
+			t.Fatalf("%s does not end in one append return", function.Name.Name)
+		}
+		appendCall, ok := returnStatement.Results[0].(*ast.CallExpr)
+		if !ok || len(appendCall.Args) != 6 {
+			t.Fatalf("%s append return does not have six closed arguments", function.Name.Name)
+		}
+		appendSelector, ok := appendCall.Fun.(*ast.SelectorExpr)
+		if !ok || compactNode(t, appendSelector.X) != "store" || appendSelector.Sel.Name != "appendFactV1" {
+			t.Fatalf("%s does not delegate exactly once to store.appendFactV1", function.Name.Name)
+		}
+		for index, wantArgument := range []string{"ctx", "projectID", "factID"} {
+			if got := compactNode(t, appendCall.Args[index]); got != wantArgument {
+				t.Fatalf("%s append argument %d = %q, want %q", function.Name.Name, index, got, wantArgument)
+			}
+		}
+		if got := compactNode(t, appendCall.Args[5]); got != "content" {
+			t.Fatalf("%s append content argument = %q, want encoded content", function.Name.Name, got)
+		}
+
+		subject, ok := appendCall.Args[3].(*ast.CompositeLit)
+		if !ok || compactNode(t, subject.Type) != "continuity.SubjectRef" || len(subject.Elts) != 2 {
+			t.Fatalf("%s does not construct one closed continuity.SubjectRef", function.Name.Name)
+		}
+		kindField, ok := subject.Elts[0].(*ast.KeyValueExpr)
+		if !ok || compactNode(t, kindField.Key) != "Kind" {
+			t.Fatalf("%s subject does not begin with Kind", function.Name.Name)
+		}
+		recordSelector, ok := kindField.Value.(*ast.SelectorExpr)
+		if !ok || compactNode(t, recordSelector.X) != "continuity" || !strings.HasPrefix(recordSelector.Sel.Name, "Record") {
+			t.Fatalf("%s subject kind is not a closed continuity record", function.Name.Name)
+		}
+		record := recordSelector.Sel.Name
+		idField, ok := subject.Elts[1].(*ast.KeyValueExpr)
+		if !ok || compactNode(t, idField.Key) != "ID" {
+			t.Fatalf("%s subject does not end with ID", function.Name.Name)
+		}
+		wantSubject, ok := wantSubjectByRecord[record]
+		if !ok || compactNode(t, idField.Value) != wantSubject {
+			t.Fatalf("%s subject id = %q for %s, want %q", function.Name.Name, compactNode(t, idField.Value), record, wantSubject)
+		}
+
+		factSelector, ok := appendCall.Args[4].(*ast.SelectorExpr)
+		if !ok || compactNode(t, factSelector.X) != "continuity" || !strings.HasPrefix(factSelector.Sel.Name, "Fact") {
+			t.Fatalf("%s fact kind is not a closed continuity fact", function.Name.Name)
+		}
+		if _, exists := bindings[function.Name.Name]; exists {
+			t.Fatalf("duplicate Store method %s", function.Name.Name)
+		}
+		bindings[function.Name.Name] = methodBinding{encoder: encoder.Name, record: record, fact: factSelector.Sel.Name}
+	}
+	return bindings
+}
+
+func compactNode(t *testing.T, node ast.Node) string {
+	t.Helper()
+
+	var formatted bytes.Buffer
+	if err := format.Node(&formatted, token.NewFileSet(), node); err != nil {
+		t.Fatalf("format AST node: %v", err)
+	}
+	return formatted.String()
+}
+
+func flattenUnionNames(t *testing.T, expression ast.Expr) []string {
+	t.Helper()
+	switch expression := expression.(type) {
+	case *ast.Ident:
+		return []string{expression.Name}
+	case *ast.BinaryExpr:
+		if expression.Op != token.OR {
+			t.Fatalf("wire union uses operator %s", expression.Op)
+		}
+		return append(flattenUnionNames(t, expression.X), flattenUnionNames(t, expression.Y)...)
+	default:
+		t.Fatalf("wire union contains %T", expression)
+		return nil
+	}
 }
 
 func readObjectDigests(t *testing.T, db *sql.DB) []objectDigest {

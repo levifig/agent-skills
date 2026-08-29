@@ -354,6 +354,7 @@ const (
 	ProblemClockExhausted           ProblemCode = "clock-exhausted"
 	ProblemCorruptFact              ProblemCode = "corrupt-fact"
 	ProblemStoreClosed              ProblemCode = "store-closed"
+	ProblemStoreUnavailable         ProblemCode = "store-unavailable"
 	ProblemCommitUnknown            ProblemCode = "commit-unknown"
 )
 
