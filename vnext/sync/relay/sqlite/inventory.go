@@ -150,6 +150,7 @@ func (store *Store) PruneInventory(ctx context.Context, request relay.PruneInven
 SELECT prune_sequence, prune_id, membership_generation, barrier_arrival_sequence,
        closure_fact_id, closure_environment_id, closure_environment_sequence,
        closure_arrival_sequence, closure_envelope_digest, closure_certificate_id,
+       closure_previous_envelope_digest, closure_key_generation, closure_nonce,
        certificate_id, certificate_bytes, target_count, created_at_millis
 FROM relay_prune_certificates
 WHERE channel_id = ? AND prune_sequence > ? AND prune_sequence <= ?
@@ -285,9 +286,10 @@ func zeroDigest(value relay.Digest) bool {
 
 func scanPruneInventory(scanner rowScanner, channelID relay.ChannelID) (relay.PruneInventoryRecord, int, error) {
 	var record relay.PruneInventoryRecord
-	var pruneID, closureEnvelopeDigest, closureCertificateID, certificateID, certificateBytes []byte
+	var pruneID, closureEnvelopeDigest, closureCertificateID, closurePreviousEnvelopeDigest, closureNonce, certificateID, certificateBytes []byte
 	var createdAtMillis int64
 	var targetCount int
+	var closureKeyGeneration int64
 	record.Certificate.ChannelID = channelID
 	if err := scanner.Scan(
 		&record.PruneSequence,
@@ -300,6 +302,9 @@ func scanPruneInventory(scanner rowScanner, channelID relay.ChannelID) (relay.Pr
 		&record.Certificate.Closure.ArrivalSequence,
 		&closureEnvelopeDigest,
 		&closureCertificateID,
+		&closurePreviousEnvelopeDigest,
+		&closureKeyGeneration,
+		&closureNonce,
 		&certificateID,
 		&certificateBytes,
 		&targetCount,
@@ -310,9 +315,13 @@ func scanPruneInventory(scanner rowScanner, channelID relay.ChannelID) (relay.Pr
 	if !scanFixed(record.Certificate.PruneID[:], pruneID) ||
 		!scanFixed(record.Certificate.Closure.EnvelopeDigest[:], closureEnvelopeDigest) ||
 		!scanFixed(record.Certificate.Closure.CertificateID[:], closureCertificateID) ||
+		!scanFixed(record.Certificate.Closure.PreviousEnvelopeDigest[:], closurePreviousEnvelopeDigest) ||
+		closureKeyGeneration < 1 || closureKeyGeneration > int64(^uint32(0)) ||
+		!scanFixed(record.Certificate.Closure.Nonce[:], closureNonce) ||
 		!scanFixed(record.Certificate.CertificateID[:], certificateID) {
 		return relay.PruneInventoryRecord{}, 0, fmt.Errorf("relay prune inventory contains invalid fixed-width metadata")
 	}
+	record.Certificate.Closure.KeyGeneration = uint32(closureKeyGeneration)
 	record.Certificate.CertificateBytes = append([]byte(nil), certificateBytes...)
 	record.CreatedAt = millisTime(createdAtMillis)
 	return record, targetCount, nil
@@ -321,7 +330,8 @@ func scanPruneInventory(scanner rowScanner, channelID relay.ChannelID) (relay.Pr
 func readPruneInventoryTargets(ctx context.Context, tx *sql.Tx, channelID relay.ChannelID, pruneID relay.Digest, want int) ([]relay.PruneTarget, error) {
 	rows, err := tx.QueryContext(ctx, `
 SELECT fact_id, environment_id, environment_sequence, arrival_sequence,
-       envelope_digest, certificate_id
+       envelope_digest, certificate_id, previous_envelope_digest,
+       key_generation, nonce
 FROM relay_arrivals
 WHERE channel_id = ? AND prune_id = ?
 ORDER BY arrival_sequence`, channelID[:], pruneID[:])
@@ -331,7 +341,8 @@ ORDER BY arrival_sequence`, channelID[:], pruneID[:])
 	targets := make([]relay.PruneTarget, 0, want)
 	for rows.Next() {
 		var target relay.PruneTarget
-		var envelopeDigest, certificateID []byte
+		var envelopeDigest, certificateID, previousEnvelopeDigest, nonce []byte
+		var keyGeneration int64
 		if err := rows.Scan(
 			&target.FactID,
 			&target.EnvironmentID,
@@ -339,12 +350,18 @@ ORDER BY arrival_sequence`, channelID[:], pruneID[:])
 			&target.ArrivalSequence,
 			&envelopeDigest,
 			&certificateID,
+			&previousEnvelopeDigest,
+			&keyGeneration,
+			&nonce,
 		); err != nil {
 			return nil, closeRowsWithError(rows, fmt.Errorf("scan relay prune inventory target: %w", err), "relay prune inventory targets")
 		}
-		if !scanFixed(target.EnvelopeDigest[:], envelopeDigest) || !scanFixed(target.CertificateID[:], certificateID) {
+		if keyGeneration < 1 || keyGeneration > int64(^uint32(0)) ||
+			!scanFixed(target.EnvelopeDigest[:], envelopeDigest) || !scanFixed(target.CertificateID[:], certificateID) ||
+			!scanFixed(target.PreviousEnvelopeDigest[:], previousEnvelopeDigest) || !scanFixed(target.Nonce[:], nonce) {
 			return nil, closeRowsWithError(rows, fmt.Errorf("relay prune inventory target contains invalid fixed-width metadata"), "relay prune inventory targets")
 		}
+		target.KeyGeneration = uint32(keyGeneration)
 		targets = append(targets, target)
 	}
 	if err := rows.Err(); err != nil {

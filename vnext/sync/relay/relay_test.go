@@ -142,17 +142,21 @@ func TestRelayPruneCertificateValidationRequiresDisjointClosureReference(t *test
 
 	envelope := testValidEnvelope()
 	target := PruneTarget{
-		FactID:              envelope.FactID,
-		EnvironmentID:       envelope.EnvironmentID,
-		EnvironmentSequence: 1,
-		ArrivalSequence:     1,
-		EnvelopeDigest:      envelope.EnvelopeDigest,
-		CertificateID:       envelope.CertificateID,
+		FactID:                 envelope.FactID,
+		EnvironmentID:          envelope.EnvironmentID,
+		EnvironmentSequence:    1,
+		ArrivalSequence:        1,
+		EnvelopeDigest:         envelope.EnvelopeDigest,
+		CertificateID:          envelope.CertificateID,
+		PreviousEnvelopeDigest: envelope.PreviousEnvelopeDigest,
+		KeyGeneration:          envelope.KeyGeneration,
+		Nonce:                  envelope.Nonce,
 	}
 	closure := target
 	closure.FactID = "fact-close"
 	closure.EnvironmentSequence = 2
 	closure.ArrivalSequence = 2
+	closure.PreviousEnvelopeDigest = envelope.EnvelopeDigest
 	closure.EnvelopeDigest[0] ^= 0xff
 	certificate := PruneCertificate{
 		ChannelID:            envelope.ChannelID,
@@ -173,6 +177,14 @@ func TestRelayPruneCertificateValidationRequiresDisjointClosureReference(t *test
 		mutate func(*PruneCertificate)
 	}{
 		{name: "zero closure", mutate: func(value *PruneCertificate) { value.Closure = PruneTarget{} }},
+		{name: "zero target key generation", mutate: func(value *PruneCertificate) { value.Targets[0].KeyGeneration = 0 }},
+		{name: "target first envelope has previous digest", mutate: func(value *PruneCertificate) {
+			value.Targets[0].PreviousEnvelopeDigest = envelope.EnvelopeDigest
+		}},
+		{name: "target later envelope lacks previous digest", mutate: func(value *PruneCertificate) {
+			value.Targets[0].EnvironmentSequence = 2
+			value.Targets[0].PreviousEnvelopeDigest = Digest{}
+		}},
 		{name: "closure above barrier", mutate: func(value *PruneCertificate) { value.Closure.ArrivalSequence = 3 }},
 		{name: "closure target arrival", mutate: func(value *PruneCertificate) { value.Closure.ArrivalSequence = 1 }},
 		{name: "closure target fact", mutate: func(value *PruneCertificate) { value.Closure.FactID = value.Targets[0].FactID }},
@@ -186,6 +198,7 @@ func TestRelayPruneCertificateValidationRequiresDisjointClosureReference(t *test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			candidate := certificate
+			candidate.Targets = append([]PruneTarget(nil), certificate.Targets...)
 			test.mutate(&candidate)
 			if err := candidate.Validate(); !errors.Is(err, ErrInvalidArgument) {
 				t.Fatalf("Validate() error = %v, want ErrInvalidArgument", err)

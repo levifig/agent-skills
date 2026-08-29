@@ -26,7 +26,7 @@ const (
 	pruneAcknowledgementFieldCount        = pruneAcknowledgementBodyFieldCount + 1
 	terminalRetirementBodyFieldCount      = 10
 	terminalRetirementFieldCount          = terminalRetirementBodyFieldCount + 1
-	pruneReferenceFieldCount              = 6
+	pruneReferenceFieldCount              = 9
 	pruneManifestFieldCount               = 2
 	pruneCertificateBodyFieldCount        = 15
 	pruneCertificateFieldCount            = pruneCertificateBodyFieldCount + 1
@@ -580,11 +580,15 @@ func pruneReferenceFields(reference PruneReference) [][]byte {
 		int64Bytes(reference.ArrivalSequence),
 		reference.EnvelopeDigest[:],
 		reference.CertificateID[:],
+		reference.PreviousEnvelopeDigest[:],
+		uint32Bytes(reference.KeyGeneration),
+		reference.Nonce[:],
 	}
 }
 
 func parsePruneReferenceFields(fields [][]byte) (PruneReference, error) {
-	if len(fields) != pruneReferenceFieldCount || len(fields[4]) != len(Digest{}) || len(fields[5]) != len(Digest{}) {
+	if len(fields) != pruneReferenceFieldCount || len(fields[4]) != len(Digest{}) || len(fields[5]) != len(Digest{}) ||
+		len(fields[6]) != len(Digest{}) || len(fields[8]) != len(Nonce{}) {
 		return PruneReference{}, ErrInvalidPruneReference
 	}
 	environmentSequence, ok := parseInt64(fields[2])
@@ -595,14 +599,21 @@ func parsePruneReferenceFields(fields [][]byte) (PruneReference, error) {
 	if !ok {
 		return PruneReference{}, ErrInvalidPruneReference
 	}
+	keyGeneration, ok := parseUint32(fields[7])
+	if !ok {
+		return PruneReference{}, ErrInvalidPruneReference
+	}
 	reference := PruneReference{
 		FactID:              continuity.FactID(string(fields[0])),
 		EnvironmentID:       continuity.EnvironmentID(string(fields[1])),
 		EnvironmentSequence: environmentSequence,
 		ArrivalSequence:     arrivalSequence,
+		KeyGeneration:       keyGeneration,
 	}
 	copy(reference.EnvelopeDigest[:], fields[4])
 	copy(reference.CertificateID[:], fields[5])
+	copy(reference.PreviousEnvelopeDigest[:], fields[6])
+	copy(reference.Nonce[:], fields[8])
 	return reference, nil
 }
 

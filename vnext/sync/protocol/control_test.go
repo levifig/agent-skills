@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -142,6 +143,19 @@ func TestPruneReferenceManifestAndCertificateCanonicalRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPruneReferenceV1RejectsLegacySixFieldEncoding(t *testing.T) {
+	t.Parallel()
+
+	reference := testPruneReference("fact-legacy", "environment-legacy", 1, 1, 0x47)
+	legacyWire, err := encodeTranscript(pruneReferenceDomain, pruneReferenceFields(reference)[:6]...)
+	if err != nil {
+		t.Fatalf("encode legacy prune reference: %v", err)
+	}
+	if _, err := ParsePruneReference(legacyWire); !errors.Is(err, ErrInvalidPruneReference) {
+		t.Fatalf("legacy six-field parse error = %v, want %v", err, ErrInvalidPruneReference)
+	}
+}
+
 func TestControlValidationRejectsNoncanonicalSentinelsAndOrdering(t *testing.T) {
 	t.Parallel()
 
@@ -161,6 +175,38 @@ func TestControlValidationRejectsNoncanonicalSentinelsAndOrdering(t *testing.T) 
 	retirement.FinalEnvelopeDigest = Digest{}
 	if err := retirement.Validate(); !errors.Is(err, ErrInvalidRetirement) {
 		t.Fatalf("nonempty retirement with zero digest error = %v, want %v", err, ErrInvalidRetirement)
+	}
+
+	pruneReference := testPruneReference("fact-reference", "environment-reference", 1, 1, 0x43)
+	if err := pruneReference.Validate(); err != nil {
+		t.Fatalf("valid prune reference error = %v", err)
+	}
+	invalidPruneReferences := []struct {
+		name   string
+		mutate func(*PruneReference)
+	}{
+		{name: "zero key generation", mutate: func(value *PruneReference) { value.KeyGeneration = 0 }},
+		{name: "first envelope has previous digest", mutate: func(value *PruneReference) { value.PreviousEnvelopeDigest = testControlDigest(0x44) }},
+		{name: "later envelope lacks previous digest", mutate: func(value *PruneReference) {
+			value.EnvironmentSequence = 2
+			value.PreviousEnvelopeDigest = Digest{}
+		}},
+	}
+	for _, test := range invalidPruneReferences {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			candidate := pruneReference
+			test.mutate(&candidate)
+			if err := candidate.Validate(); !errors.Is(err, ErrInvalidPruneReference) {
+				t.Fatalf("prune reference validation error = %v, want %v", err, ErrInvalidPruneReference)
+			}
+		})
+	}
+	zeroNonceReference := pruneReference
+	zeroNonceReference.Nonce = Nonce{}
+	if err := zeroNonceReference.Validate(); err != nil {
+		t.Fatalf("zero nonce prune reference error = %v", err)
 	}
 
 	manifest := testPruneCertificate().Manifest
@@ -267,6 +313,83 @@ func TestPruneReferenceBoundAccommodatesMaximumContinuityIdentifiers(t *testing.
 	}
 }
 
+func TestPruneCertificateMaximumTargetsAndAcknowledgementsFitControlBound(t *testing.T) {
+	t.Parallel()
+
+	const (
+		closureArrival = int64(1)
+		maxIdentifier  = 128
+	)
+	closure := testPruneReference(
+		continuity.FactID(strings.Repeat("c", maxIdentifier)),
+		continuity.EnvironmentID(strings.Repeat("d", maxIdentifier)),
+		1,
+		closureArrival,
+		0x48,
+	)
+	targets := make([]PruneReference, MaxPruneTargets)
+	barrier := int64(MaxPruneTargets + 1)
+	for index := range targets {
+		targets[index] = testPruneReference(
+			continuity.FactID(fmt.Sprintf("%s-%04d", strings.Repeat("f", maxIdentifier-5), index)),
+			continuity.EnvironmentID(strings.Repeat("e", maxIdentifier)),
+			int64(index+2),
+			int64(index+2),
+			byte(index+0x49),
+		)
+		targets[index].PreviousEnvelopeDigest = testControlDigest(byte(index + 0x99))
+	}
+	manifest := PruneManifest{Targets: targets}
+	manifestDigest := PruneManifestDigest(manifest)
+	closureDigest := PruneReferenceDigest(closure)
+	pruneID := testControlDigest(0x4a)
+	acknowledgements := make([]PruneAcknowledgement, MaxPruneAcknowledgements)
+	for index := range acknowledgements {
+		environmentID := continuity.EnvironmentID(fmt.Sprintf("%s-%04d", strings.Repeat("a", maxIdentifier-5), index))
+		acknowledgements[index] = testPruneAcknowledgement(environmentID, byte(index+0x4b))
+		acknowledgements[index].ChannelID = testControlChannelID()
+		acknowledgements[index].RelayGeneration = testControlRelayGeneration()
+		acknowledgements[index].MembershipGeneration = 1
+		acknowledgements[index].PruneID = pruneID
+		acknowledgements[index].AppliedArrivalSequence = barrier
+		acknowledgements[index].BarrierArrivalSequence = barrier
+		acknowledgements[index].ClosureReferenceDigest = closureDigest
+		acknowledgements[index].ManifestCount = MaxPruneTargets
+		acknowledgements[index].ManifestDigest = manifestDigest
+	}
+	certificate := PruneCertificate{
+		Version:                    ControlVersionV1,
+		ProtocolVersion:            ProtocolVersionV1,
+		CipherSuite:                CipherSuiteXChaCha20Poly1305,
+		ChannelID:                  testControlChannelID(),
+		RelayGeneration:            testControlRelayGeneration(),
+		PruneID:                    pruneID,
+		MembershipGeneration:       1,
+		BarrierArrivalSequence:     barrier,
+		Closure:                    closure,
+		ClosureDigest:              closureDigest,
+		ManifestCount:              MaxPruneTargets,
+		ManifestDigest:             manifestDigest,
+		Manifest:                   manifest,
+		ActiveAcknowledgementCount: MaxPruneAcknowledgements,
+		Acknowledgements:           acknowledgements,
+	}
+	wire, err := certificate.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal maximum prune certificate: %v", err)
+	}
+	if len(wire) > MaxControlObjectBytes {
+		t.Fatalf("maximum prune certificate encoded to %d bytes, limit %d", len(wire), MaxControlObjectBytes)
+	}
+	decoded, err := ParsePruneCertificate(wire)
+	if err != nil {
+		t.Fatalf("parse maximum prune certificate: %v", err)
+	}
+	if len(decoded.Manifest.Targets) != MaxPruneTargets || len(decoded.Acknowledgements) != MaxPruneAcknowledgements {
+		t.Fatalf("maximum prune certificate decoded as %d targets and %d acknowledgements", len(decoded.Manifest.Targets), len(decoded.Acknowledgements))
+	}
+}
+
 func testProgressAcknowledgement(environmentID continuity.EnvironmentID, seed byte) ProgressAcknowledgement {
 	return ProgressAcknowledgement{
 		Version:                ControlVersionV1,
@@ -363,13 +486,24 @@ func testPruneCertificate() PruneCertificate {
 }
 
 func testPruneReference(factID continuity.FactID, environmentID continuity.EnvironmentID, environmentSequence, arrivalSequence int64, seed byte) PruneReference {
+	var previous Digest
+	if environmentSequence > 1 {
+		previous = testControlDigest(seed + 2)
+	}
+	var nonce Nonce
+	for index := range nonce {
+		nonce[index] = seed + byte(index+3)
+	}
 	return PruneReference{
-		FactID:              factID,
-		EnvironmentID:       environmentID,
-		EnvironmentSequence: environmentSequence,
-		ArrivalSequence:     arrivalSequence,
-		EnvelopeDigest:      testControlDigest(seed),
-		CertificateID:       testControlDigest(seed + 1),
+		FactID:                 factID,
+		EnvironmentID:          environmentID,
+		EnvironmentSequence:    environmentSequence,
+		ArrivalSequence:        arrivalSequence,
+		EnvelopeDigest:         testControlDigest(seed),
+		CertificateID:          testControlDigest(seed + 1),
+		PreviousEnvelopeDigest: previous,
+		KeyGeneration:          7,
+		Nonce:                  nonce,
 	}
 }
 

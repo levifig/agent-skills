@@ -184,7 +184,8 @@ func (certificate PruneCertificate) Validate() error {
 func validPruneReference(reference PruneTarget, barrier int64) bool {
 	return validOpaqueID(string(reference.FactID)) && validOpaqueID(string(reference.EnvironmentID)) &&
 		reference.EnvironmentSequence >= 1 && reference.ArrivalSequence >= 1 && reference.ArrivalSequence <= barrier &&
-		!zeroBytes(reference.EnvelopeDigest[:]) && !zeroBytes(reference.CertificateID[:])
+		reference.KeyGeneration >= 1 && !zeroBytes(reference.EnvelopeDigest[:]) && !zeroBytes(reference.CertificateID[:]) &&
+		((reference.EnvironmentSequence == 1) == zeroBytes(reference.PreviousEnvelopeDigest[:]))
 }
 
 func (retirement Retirement) Validate() error {

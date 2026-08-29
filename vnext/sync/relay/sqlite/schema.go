@@ -160,12 +160,21 @@ const relayPruneCertificatesTableSQL = `CREATE TABLE relay_prune_certificates (
     length(closure_certificate_id) = 32
     AND closure_certificate_id <> X'0000000000000000000000000000000000000000000000000000000000000000'
   ),
+  closure_previous_envelope_digest BLOB NOT NULL CHECK (
+    length(closure_previous_envelope_digest) = 32
+    AND (
+      (closure_environment_sequence = 1 AND closure_previous_envelope_digest = X'0000000000000000000000000000000000000000000000000000000000000000')
+      OR (closure_environment_sequence > 1 AND closure_previous_envelope_digest <> X'0000000000000000000000000000000000000000000000000000000000000000')
+    )
+  ),
+  closure_key_generation INTEGER NOT NULL CHECK (closure_key_generation BETWEEN 1 AND 4294967295),
+  closure_nonce BLOB NOT NULL CHECK (length(closure_nonce) = 24),
   certificate_id BLOB NOT NULL CHECK (
     length(certificate_id) = 32
     AND certificate_id <> X'0000000000000000000000000000000000000000000000000000000000000000'
   ),
   certificate_bytes BLOB NOT NULL CHECK (length(certificate_bytes) BETWEEN 1 AND 1048576),
-  target_count INTEGER NOT NULL CHECK (target_count BETWEEN 1 AND 4096),
+  target_count INTEGER NOT NULL CHECK (target_count BETWEEN 1 AND 1024),
   created_at_millis INTEGER NOT NULL CHECK (created_at_millis >= 0),
   PRIMARY KEY (channel_id, prune_id),
   UNIQUE (channel_id, prune_sequence),

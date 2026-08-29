@@ -20,7 +20,7 @@ const (
 	// MaxPruneReferenceBytes bounds one exact opaque arrival reference.
 	MaxPruneReferenceBytes = 512
 	// MaxPruneTargets bounds verification work for one physical-prune manifest.
-	MaxPruneTargets = 4_096
+	MaxPruneTargets = 1_024
 	// MaxPruneAcknowledgements bounds the active environment witness set.
 	MaxPruneAcknowledgements = MaxPageFrames
 )
@@ -167,19 +167,23 @@ func (retirement TerminalRetirement) Validate() error {
 // PruneReference is the exact opaque identity retained for one relay arrival.
 // It intentionally contains no decrypted continuity subject or fact kind.
 type PruneReference struct {
-	FactID              continuity.FactID
-	EnvironmentID       continuity.EnvironmentID
-	EnvironmentSequence int64
-	ArrivalSequence     int64
-	EnvelopeDigest      Digest
-	CertificateID       Digest
+	FactID                 continuity.FactID
+	EnvironmentID          continuity.EnvironmentID
+	EnvironmentSequence    int64
+	ArrivalSequence        int64
+	EnvelopeDigest         Digest
+	CertificateID          Digest
+	PreviousEnvelopeDigest Digest
+	KeyGeneration          uint32
+	Nonce                  Nonce
 }
 
 // Validate rejects malformed opaque arrival identity.
 func (reference PruneReference) Validate() error {
 	if reference.FactID.Validate() != nil || reference.EnvironmentID.Validate() != nil ||
-		reference.EnvironmentSequence < 1 || reference.ArrivalSequence < 1 ||
-		isZero(reference.EnvelopeDigest[:]) || isZero(reference.CertificateID[:]) {
+		reference.EnvironmentSequence < 1 || reference.ArrivalSequence < 1 || reference.KeyGeneration < 1 ||
+		isZero(reference.EnvelopeDigest[:]) || isZero(reference.CertificateID[:]) ||
+		(reference.EnvironmentSequence == 1) != isZero(reference.PreviousEnvelopeDigest[:]) {
 		return ErrInvalidPruneReference
 	}
 	return nil
