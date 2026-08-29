@@ -215,7 +215,15 @@ SELECT (
 		if conflictCount != 0 {
 			return relay.ErrImmutableConflict
 		}
-		if err := store.verifier.VerifyEnvironmentCertificate(ctx, channel.authority, request.Environment); err != nil {
+		if err := store.verifier.VerifyEnvironmentCertificate(ctx, relay.EnvironmentCertificateAuthority{
+			ChannelAuthority:     channel.authority,
+			EnvironmentID:        request.Environment.EnvironmentID,
+			CertificateID:        request.Environment.CertificateID,
+			CertificateBytes:     append([]byte(nil), request.Environment.CertificateBytes...),
+			Mode:                 request.Environment.Mode,
+			ExpiresAtMillis:      request.Environment.ExpiresAtMillis,
+			MembershipGeneration: request.Environment.MembershipGeneration,
+		}); err != nil {
 			return fmt.Errorf("%w: environment certificate", relay.ErrUnverified)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -303,12 +311,16 @@ func (store *Store) RetireEnvironment(ctx context.Context, request relay.RetireE
 		if err != nil {
 			return err
 		}
-		var environmentCertificateID []byte
+		var environmentCertificateID, environmentCertificateBytes []byte
+		var environmentMode string
+		var environmentExpiresAtMillis int64
+		var environmentMembershipGeneration uint32
 		var retiredAt sql.NullInt64
 		var retirementGeneration, finalEnvironmentSequence sql.NullInt64
 		var retirementRelayGeneration, retirementCertificateID, finalEnvelopeDigest, retirementID, retirementBytes []byte
 		if err := tx.QueryRowContext(ctx, `
-SELECT certificate_id, retired_at_millis, retirement_generation, retirement_relay_generation,
+SELECT certificate_id, certificate_bytes, mode, expires_at_millis,
+       membership_generation, retired_at_millis, retirement_generation, retirement_relay_generation,
        retirement_certificate_id, retirement_final_environment_sequence,
        retirement_final_envelope_digest, retirement_id, retirement_bytes
 FROM relay_environments
@@ -316,6 +328,10 @@ WHERE channel_id = ? AND environment_id = ?`,
 			request.Retirement.ChannelID[:], string(request.Retirement.EnvironmentID),
 		).Scan(
 			&environmentCertificateID,
+			&environmentCertificateBytes,
+			&environmentMode,
+			&environmentExpiresAtMillis,
+			&environmentMembershipGeneration,
 			&retiredAt,
 			&retirementGeneration,
 			&retirementRelayGeneration,
@@ -330,7 +346,7 @@ WHERE channel_id = ? AND environment_id = ?`,
 			return fmt.Errorf("read relay environment retirement: %w", err)
 		}
 		if retiredAt.Valid {
-			if retirementGeneration.Valid && uint32(retirementGeneration.Int64) == request.Retirement.MembershipGeneration &&
+			if storedRetirementGenerationMatches(retirementGeneration, request.Retirement.MembershipGeneration) &&
 				bytes.Equal(retirementRelayGeneration, request.Retirement.RelayGeneration[:]) &&
 				bytes.Equal(retirementCertificateID, request.Retirement.CertificateID[:]) &&
 				finalEnvironmentSequence.Valid && finalEnvironmentSequence.Int64 == request.Retirement.FinalEnvironmentSequence &&
@@ -368,7 +384,15 @@ WHERE channel_id = ? AND environment_id = ?`,
 		if producerSequence != request.Retirement.FinalEnvironmentSequence || producerDigest != request.Retirement.FinalEnvelopeDigest {
 			return relay.ErrImmutableConflict
 		}
-		if err := store.verifier.VerifyRetirement(ctx, channel.authority, request.Retirement); err != nil {
+		if err := store.verifier.VerifyRetirement(ctx, relay.EnvironmentAuthority{
+			ChannelAuthority:     channel.authority,
+			EnvironmentID:        request.Retirement.EnvironmentID,
+			CertificateID:        request.Retirement.CertificateID,
+			CertificateBytes:     append([]byte(nil), environmentCertificateBytes...),
+			Mode:                 relay.EnvironmentMode(environmentMode),
+			ExpiresAtMillis:      environmentExpiresAtMillis,
+			MembershipGeneration: environmentMembershipGeneration,
+		}, request.Retirement); err != nil {
 			return fmt.Errorf("%w: retirement", relay.ErrUnverified)
 		}
 		nowMillis := store.now().UTC().UnixMilli()
@@ -414,4 +438,8 @@ WHERE channel_id = ?`, request.Retirement.MembershipGeneration, request.Retireme
 		return relay.ChannelState{}, err
 	}
 	return state, nil
+}
+
+func storedRetirementGenerationMatches(stored sql.NullInt64, expected uint32) bool {
+	return stored.Valid && stored.Int64 >= 1 && stored.Int64 <= math.MaxUint32 && uint32(stored.Int64) == expected
 }

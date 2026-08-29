@@ -178,7 +178,7 @@ func readPruneAuthority(ctx context.Context, tx *sql.Tx, channel relay.ChannelAu
 	}
 	rows, err := tx.QueryContext(ctx, `
 SELECT e.environment_id, e.certificate_id, e.certificate_bytes, e.mode,
-       e.expires_at_millis, e.token_expires_at_millis, e.membership_generation,
+       e.expires_at_millis, e.membership_generation,
        COALESCE((
          SELECT MAX(a.environment_sequence)
          FROM relay_arrivals AS a
@@ -225,7 +225,6 @@ LIMIT ?`, certificate.ChannelID[:], relay.MaxPruneAuthorityEnvironments+1)
 			&certificateBytes,
 			&mode,
 			&environment.ExpiresAtMillis,
-			&environment.RelayTokenExpiresAtMillis,
 			&environment.MembershipGeneration,
 			&producerHead,
 			&producerDigest,

@@ -3,13 +3,19 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"database/sql"
 	"errors"
 	"math"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/levifig/loaf/vnext/continuity"
+	synccrypto "github.com/levifig/loaf/vnext/sync/crypto"
+	"github.com/levifig/loaf/vnext/sync/protocol"
 	"github.com/levifig/loaf/vnext/sync/relay"
+	productionverifier "github.com/levifig/loaf/vnext/sync/relay/verifier"
 )
 
 func TestRelayStoreContract(t *testing.T) {
@@ -879,7 +885,6 @@ func TestRelayVerifierRefusalCannotReachPersistence(t *testing.T) {
 		!bytes.Equal(gotEnvironment.CertificateBytes, registration.Environment.CertificateBytes) ||
 		gotEnvironment.Mode != registration.Environment.Mode ||
 		gotEnvironment.ExpiresAtMillis != registration.Environment.ExpiresAtMillis ||
-		gotEnvironment.RelayTokenExpiresAtMillis != registration.Environment.RelayTokenExpiresAtMillis ||
 		gotEnvironment.MembershipGeneration != registration.Environment.MembershipGeneration {
 		t.Fatalf("prune environment authority = %#v, want exact registered authority", gotEnvironment)
 	}
@@ -929,6 +934,264 @@ func TestRelayVerifierRefusalCannotReachPersistence(t *testing.T) {
 	}
 	if retiredAt != nil {
 		t.Fatalf("rejected retirement persisted retired_at = %v", retiredAt)
+	}
+}
+
+func TestProductionVerifierRefusalCannotReachPersistence(t *testing.T) {
+	t.Parallel()
+
+	// Seed the adapter with deliberately opaque test certificate bytes through
+	// the permissive test verifier, then install the production verifier before
+	// any arrival is attempted. A cryptographic refusal must still leave the
+	// transaction with no persisted candidate bytes.
+	store, _, environment := newTestStoreWithEnvironmentAndVerifier(t, relay.TrustedEnvironment, 0, allowTestVerifier{})
+	store.verifier = productionverifier.New()
+	candidate := testEnvelope(environment, "fact-production-verifier-reject", 1, relay.Digest{}, 0xc1)
+	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environment, Envelope: candidate}); !errors.Is(err, relay.ErrUnverified) {
+		t.Fatalf("Append(production verifier refusal) error = %v, want ErrUnverified", err)
+	}
+	assertTableCount(t, store, "relay_arrivals", 0)
+}
+
+func TestProductionVerifierAcceptsSignedRelayLifecycle(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(filepath.Join(t.TempDir(), "relay.sqlite"), productionverifier.New())
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { closeTestStore(t, store) })
+
+	var adminSeed synccrypto.AdminSeed
+	var environmentSeed synccrypto.EnvironmentSeed
+	for index := range adminSeed {
+		adminSeed[index] = 0x11 + byte(index)
+		environmentSeed[index] = 0x51 + byte(index)
+	}
+	adminPublic := synccrypto.AdminPublicKey(adminSeed)
+	owner := testOwnerAuthorization(store)
+	channel := testChannel(owner)
+	channel.AdminPublicKey = relay.PublicKey(adminPublic)
+	if _, err := store.CreateChannel(t.Context(), channel); err != nil {
+		t.Fatalf("CreateChannel() error = %v", err)
+	}
+
+	environmentID := continuity.EnvironmentID("environment-production-verifier")
+	certificate := protocol.EnvironmentCertificate{
+		Version:               protocol.CertificateVersionV1,
+		ProtocolVersion:       protocol.ProtocolVersionV1,
+		CipherSuite:           protocol.CipherSuiteXChaCha20Poly1305,
+		ProjectID:             continuity.ProjectID("project-production-verifier"),
+		ChannelID:             protocol.ChannelID(owner.ChannelID),
+		EnvironmentID:         environmentID,
+		EnvironmentPublicKey:  synccrypto.EnvironmentPublicKey(environmentSeed),
+		Mode:                  protocol.EnvironmentTrusted,
+		MembershipGeneration:  1,
+		AllowedKeyGenerations: []uint32{1},
+	}
+	certificate, err = synccrypto.SignEnvironmentCertificate(certificate, adminSeed)
+	if err != nil {
+		t.Fatalf("SignEnvironmentCertificate() error = %v", err)
+	}
+	certificateBytes, err := certificate.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal environment certificate: %v", err)
+	}
+	environmentSecret := testSecret(0x61)
+	environmentTokenHash, err := relay.HashTokenSecret(environmentSecret)
+	if err != nil {
+		t.Fatalf("HashTokenSecret() error = %v", err)
+	}
+	authorization := relay.EnvironmentAuthorization{
+		ChannelID:       owner.ChannelID,
+		RelayGeneration: owner.RelayGeneration,
+		EnvironmentID:   relay.EnvironmentID(environmentID),
+		CertificateID:   relay.Digest(protocol.CertificateID(certificate)),
+		TokenID:         testTokenID(0x62),
+		TokenSecret:     environmentSecret,
+	}
+	if _, err := store.RegisterEnvironment(t.Context(), relay.RegisterEnvironmentRequest{
+		Authorization: owner,
+		Environment: relay.Environment{
+			ChannelID:            owner.ChannelID,
+			EnvironmentID:        authorization.EnvironmentID,
+			Token:                relay.TokenRegistration{TokenID: authorization.TokenID, TokenHash: environmentTokenHash},
+			CertificateID:        authorization.CertificateID,
+			CertificateBytes:     certificateBytes,
+			Mode:                 relay.TrustedEnvironment,
+			MembershipGeneration: 1,
+		},
+	}); err != nil {
+		t.Fatalf("RegisterEnvironment() error = %v", err)
+	}
+
+	firstSealed := signedProductionEnvelope(t, certificate, environmentSeed, "fact-production-target", 1, protocol.Digest{}, 0x71)
+	first, err := store.Append(t.Context(), relay.AppendRequest{
+		Authorization: authorization,
+		Envelope:      productionRelayEnvelope(firstSealed),
+	})
+	if err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	secondSealed := signedProductionEnvelope(t, certificate, environmentSeed, "fact-production-closure", 2, protocol.EnvelopeDigest(firstSealed), 0x81)
+	second, err := store.Append(t.Context(), relay.AppendRequest{
+		Authorization: authorization,
+		Envelope:      productionRelayEnvelope(secondSealed),
+	})
+	if err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+
+	progress := protocol.ProgressAcknowledgement{
+		Version:                protocol.ControlVersionV1,
+		ProtocolVersion:        protocol.ProtocolVersionV1,
+		CipherSuite:            protocol.CipherSuiteXChaCha20Poly1305,
+		ChannelID:              certificate.ChannelID,
+		RelayGeneration:        protocol.RelayGeneration(owner.RelayGeneration),
+		EnvironmentID:          certificate.EnvironmentID,
+		CertificateID:          protocol.CertificateID(certificate),
+		MembershipGeneration:   1,
+		AppliedArrivalSequence: 2,
+		ProducerSequence:       2,
+		ProducerEnvelopeDigest: protocol.EnvelopeDigest(secondSealed),
+	}
+	progress, err = synccrypto.SignProgressAcknowledgement(progress, certificate, adminPublic, environmentSeed)
+	if err != nil {
+		t.Fatalf("SignProgressAcknowledgement() error = %v", err)
+	}
+	progressBytes, err := progress.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal progress acknowledgement: %v", err)
+	}
+	acknowledgement := relay.Acknowledgement{
+		ChannelID:              owner.ChannelID,
+		EnvironmentID:          authorization.EnvironmentID,
+		MembershipGeneration:   progress.MembershipGeneration,
+		AppliedArrivalSequence: progress.AppliedArrivalSequence,
+		ProducerSequence:       progress.ProducerSequence,
+		ProducerEnvelopeDigest: relay.Digest(progress.ProducerEnvelopeDigest),
+		CertificateID:          authorization.CertificateID,
+		AcknowledgementDigest:  relay.Digest(protocol.ProgressAcknowledgementDigest(progress)),
+		AcknowledgementBytes:   progressBytes,
+	}
+	if err := store.Acknowledge(t.Context(), relay.AcknowledgeRequest{
+		Authorization:   authorization,
+		Acknowledgement: acknowledgement,
+	}); err != nil {
+		t.Fatalf("Acknowledge() error = %v", err)
+	}
+
+	target := productionPruneReference(first.Arrival)
+	closure := productionPruneReference(second.Arrival)
+	manifest := protocol.PruneManifest{Targets: []protocol.PruneReference{target}}
+	pruneID := protocol.Digest(testDigest(0x91))
+	pruneVote := protocol.PruneAcknowledgement{
+		Version:                       protocol.ControlVersionV1,
+		ProtocolVersion:               protocol.ProtocolVersionV1,
+		CipherSuite:                   protocol.CipherSuiteXChaCha20Poly1305,
+		ChannelID:                     certificate.ChannelID,
+		RelayGeneration:               protocol.RelayGeneration(owner.RelayGeneration),
+		EnvironmentID:                 certificate.EnvironmentID,
+		CertificateID:                 protocol.CertificateID(certificate),
+		MembershipGeneration:          1,
+		ProgressAcknowledgementDigest: protocol.ProgressAcknowledgementDigest(progress),
+		AppliedArrivalSequence:        progress.AppliedArrivalSequence,
+		ProducerSequence:              progress.ProducerSequence,
+		ProducerEnvelopeDigest:        progress.ProducerEnvelopeDigest,
+		PruneID:                       pruneID,
+		BarrierArrivalSequence:        2,
+		ClosureReferenceDigest:        protocol.PruneReferenceDigest(closure),
+		ManifestCount:                 1,
+		ManifestDigest:                protocol.PruneManifestDigest(manifest),
+	}
+	pruneVote, err = synccrypto.SignPruneAcknowledgement(pruneVote, certificate, adminPublic, environmentSeed)
+	if err != nil {
+		t.Fatalf("SignPruneAcknowledgement() error = %v", err)
+	}
+	pruneCertificate := protocol.PruneCertificate{
+		Version:                    protocol.ControlVersionV1,
+		ProtocolVersion:            protocol.ProtocolVersionV1,
+		CipherSuite:                protocol.CipherSuiteXChaCha20Poly1305,
+		ChannelID:                  certificate.ChannelID,
+		RelayGeneration:            protocol.RelayGeneration(owner.RelayGeneration),
+		PruneID:                    pruneID,
+		MembershipGeneration:       1,
+		BarrierArrivalSequence:     2,
+		Closure:                    closure,
+		ClosureDigest:              protocol.PruneReferenceDigest(closure),
+		ManifestCount:              1,
+		ManifestDigest:             protocol.PruneManifestDigest(manifest),
+		Manifest:                   manifest,
+		ActiveAcknowledgementCount: 1,
+		Acknowledgements:           []protocol.PruneAcknowledgement{pruneVote},
+	}
+	pruneCertificate, err = synccrypto.SignPruneCertificate(pruneCertificate, []protocol.EnvironmentCertificate{certificate}, adminSeed)
+	if err != nil {
+		t.Fatalf("SignPruneCertificate() error = %v", err)
+	}
+	pruneBytes, err := pruneCertificate.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal prune certificate: %v", err)
+	}
+	tombstoned, err := store.Tombstone(t.Context(), relay.TombstoneRequest{
+		Authorization: owner,
+		Certificate: relay.PruneCertificate{
+			ChannelID:            owner.ChannelID,
+			PruneID:              relay.Digest(pruneCertificate.PruneID),
+			MembershipGeneration: pruneCertificate.MembershipGeneration,
+			Barrier:              pruneCertificate.BarrierArrivalSequence,
+			Closure:              relayPruneTarget(closure),
+			CertificateID:        relay.Digest(protocol.PruneCertificateID(pruneCertificate)),
+			CertificateBytes:     pruneBytes,
+			Targets:              []relay.PruneTarget{relayPruneTarget(target)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Tombstone() error = %v", err)
+	}
+	if tombstoned.Tombstoned != 1 || tombstoned.RelayHead != 2 {
+		t.Fatalf("Tombstone() = %#v, want one target at relay head 2", tombstoned)
+	}
+
+	retirement := protocol.TerminalRetirement{
+		Version:                  protocol.ControlVersionV1,
+		ProtocolVersion:          protocol.ProtocolVersionV1,
+		CipherSuite:              protocol.CipherSuiteXChaCha20Poly1305,
+		ChannelID:                certificate.ChannelID,
+		RelayGeneration:          protocol.RelayGeneration(owner.RelayGeneration),
+		EnvironmentID:            certificate.EnvironmentID,
+		CertificateID:            protocol.CertificateID(certificate),
+		MembershipGeneration:     2,
+		FinalEnvironmentSequence: 2,
+		FinalEnvelopeDigest:      protocol.EnvelopeDigest(secondSealed),
+	}
+	retirement, err = synccrypto.SignTerminalRetirement(retirement, certificate, adminSeed)
+	if err != nil {
+		t.Fatalf("SignTerminalRetirement() error = %v", err)
+	}
+	retirementBytes, err := retirement.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal terminal retirement: %v", err)
+	}
+	retired, err := store.RetireEnvironment(t.Context(), relay.RetireEnvironmentRequest{
+		Authorization: owner,
+		Retirement: relay.Retirement{
+			ChannelID:                owner.ChannelID,
+			RelayGeneration:          owner.RelayGeneration,
+			EnvironmentID:            authorization.EnvironmentID,
+			CertificateID:            authorization.CertificateID,
+			MembershipGeneration:     retirement.MembershipGeneration,
+			FinalEnvironmentSequence: retirement.FinalEnvironmentSequence,
+			FinalEnvelopeDigest:      relay.Digest(retirement.FinalEnvelopeDigest),
+			RetirementID:             relay.Digest(protocol.TerminalRetirementID(retirement)),
+			RetirementBytes:          retirementBytes,
+		},
+	})
+	if err != nil {
+		t.Fatalf("RetireEnvironment() error = %v", err)
+	}
+	if retired.MembershipGeneration != 2 || retired.Head != 2 {
+		t.Fatalf("RetireEnvironment() = %#v, want membership/head 2", retired)
 	}
 }
 
@@ -1322,6 +1585,31 @@ func TestRelaySequenceIncrementRefusesInt64Exhaustion(t *testing.T) {
 	}
 }
 
+func TestStoredRetirementGenerationComparisonRejectsIntegerNarrowing(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		stored   sql.NullInt64
+		expected uint32
+		want     bool
+	}{
+		{name: "exact", stored: sql.NullInt64{Int64: 2, Valid: true}, expected: 2, want: true},
+		{name: "null", stored: sql.NullInt64{}, expected: 2},
+		{name: "zero", stored: sql.NullInt64{Valid: true}, expected: 0},
+		{name: "negative", stored: sql.NullInt64{Int64: -1, Valid: true}, expected: math.MaxUint32},
+		{name: "above uint32", stored: sql.NullInt64{Int64: int64(math.MaxUint32) + 1, Valid: true}, expected: 0},
+		{name: "wrapped match", stored: sql.NullInt64{Int64: int64(math.MaxUint32) + 3, Valid: true}, expected: 2},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			if got := storedRetirementGenerationMatches(test.stored, test.expected); got != test.want {
+				t.Fatalf("storedRetirementGenerationMatches(%#v, %d) = %t, want %t", test.stored, test.expected, got, test.want)
+			}
+		})
+	}
+}
+
 func newTestStoreWithEnvironment(t *testing.T, mode relay.EnvironmentMode, expiresAtMillis int64) (*Store, relay.OwnerAuthorization, relay.EnvironmentAuthorization) {
 	t.Helper()
 	return newTestStoreWithEnvironmentAndVerifier(t, mode, expiresAtMillis, allowTestVerifier{})
@@ -1424,6 +1712,76 @@ func testEnvelope(authorization relay.EnvironmentAuthorization, factID relay.Fac
 		Ciphertext:             bytes.Repeat([]byte{seed}, relay.MinimumCiphertextBytes),
 		Signature:              testSignature(seed),
 		EnvelopeDigest:         testDigest(seed),
+	}
+}
+
+func signedProductionEnvelope(t *testing.T, certificate protocol.EnvironmentCertificate, environmentSeed synccrypto.EnvironmentSeed, factID continuity.FactID, sequence int64, previous protocol.Digest, nonceSeed byte) protocol.SealedFact {
+	t.Helper()
+	header := protocol.FactHeader{
+		ProtocolVersion:        protocol.ProtocolVersionV1,
+		CipherSuite:            protocol.CipherSuiteXChaCha20Poly1305,
+		ChannelID:              certificate.ChannelID,
+		FactID:                 factID,
+		EnvironmentID:          certificate.EnvironmentID,
+		EnvironmentSequence:    sequence,
+		KeyGeneration:          1,
+		PreviousEnvelopeDigest: previous,
+		CertificateID:          protocol.CertificateID(certificate),
+		Nonce:                  protocol.Nonce(testNonce(nonceSeed)),
+	}
+	ciphertext := bytes.Repeat([]byte{nonceSeed}, relay.MinimumCiphertextBytes)
+	transcript, err := protocol.FactSignatureTranscript(header, ciphertext)
+	if err != nil {
+		t.Fatalf("FactSignatureTranscript() error = %v", err)
+	}
+	var signature protocol.Signature
+	copy(signature[:], ed25519.Sign(ed25519.NewKeyFromSeed(environmentSeed[:]), transcript))
+	return protocol.SealedFact{Header: header, Ciphertext: ciphertext, Signature: signature}
+}
+
+func productionRelayEnvelope(value protocol.SealedFact) relay.Envelope {
+	return relay.Envelope{
+		ProtocolVersion:        value.Header.ProtocolVersion,
+		CipherSuite:            value.Header.CipherSuite,
+		ChannelID:              relay.ChannelID(value.Header.ChannelID),
+		FactID:                 relay.FactID(value.Header.FactID),
+		EnvironmentID:          relay.EnvironmentID(value.Header.EnvironmentID),
+		EnvironmentSequence:    value.Header.EnvironmentSequence,
+		KeyGeneration:          value.Header.KeyGeneration,
+		PreviousEnvelopeDigest: relay.Digest(value.Header.PreviousEnvelopeDigest),
+		CertificateID:          relay.Digest(value.Header.CertificateID),
+		Nonce:                  relay.Nonce(value.Header.Nonce),
+		Ciphertext:             append([]byte(nil), value.Ciphertext...),
+		Signature:              relay.Signature(value.Signature),
+		EnvelopeDigest:         relay.Digest(protocol.EnvelopeDigest(value)),
+	}
+}
+
+func productionPruneReference(arrival relay.Arrival) protocol.PruneReference {
+	return protocol.PruneReference{
+		FactID:                 continuity.FactID(arrival.FactID),
+		EnvironmentID:          continuity.EnvironmentID(arrival.EnvironmentID),
+		EnvironmentSequence:    arrival.EnvironmentSequence,
+		ArrivalSequence:        arrival.ArrivalSequence,
+		EnvelopeDigest:         protocol.Digest(arrival.EnvelopeDigest),
+		CertificateID:          protocol.Digest(arrival.CertificateID),
+		PreviousEnvelopeDigest: protocol.Digest(arrival.PreviousEnvelopeDigest),
+		KeyGeneration:          arrival.KeyGeneration,
+		Nonce:                  protocol.Nonce(arrival.Nonce),
+	}
+}
+
+func relayPruneTarget(reference protocol.PruneReference) relay.PruneTarget {
+	return relay.PruneTarget{
+		FactID:                 relay.FactID(reference.FactID),
+		EnvironmentID:          relay.EnvironmentID(reference.EnvironmentID),
+		EnvironmentSequence:    reference.EnvironmentSequence,
+		ArrivalSequence:        reference.ArrivalSequence,
+		EnvelopeDigest:         relay.Digest(reference.EnvelopeDigest),
+		CertificateID:          relay.Digest(reference.CertificateID),
+		PreviousEnvelopeDigest: relay.Digest(reference.PreviousEnvelopeDigest),
+		KeyGeneration:          reference.KeyGeneration,
+		Nonce:                  relay.Nonce(reference.Nonce),
 	}
 }
 
@@ -1548,7 +1906,7 @@ func closeTestStore(t *testing.T, store *Store) {
 
 type allowTestVerifier struct{}
 
-func (allowTestVerifier) VerifyEnvironmentCertificate(_ context.Context, _ relay.ChannelAuthority, _ relay.Environment) error {
+func (allowTestVerifier) VerifyEnvironmentCertificate(_ context.Context, _ relay.EnvironmentCertificateAuthority) error {
 	return nil
 }
 
@@ -1560,7 +1918,7 @@ func (allowTestVerifier) VerifyAcknowledgement(_ context.Context, _ relay.Enviro
 	return nil
 }
 
-func (allowTestVerifier) VerifyRetirement(_ context.Context, _ relay.ChannelAuthority, _ relay.Retirement) error {
+func (allowTestVerifier) VerifyRetirement(_ context.Context, _ relay.EnvironmentAuthority, _ relay.Retirement) error {
 	return nil
 }
 
@@ -1583,7 +1941,7 @@ type gatedTestVerifier struct {
 	rejectPrune           bool
 }
 
-func (verifier *gatedTestVerifier) VerifyEnvironmentCertificate(_ context.Context, _ relay.ChannelAuthority, _ relay.Environment) error {
+func (verifier *gatedTestVerifier) VerifyEnvironmentCertificate(_ context.Context, _ relay.EnvironmentCertificateAuthority) error {
 	verifier.certificateCalls++
 	if verifier.rejectCertificate {
 		return errors.New("rejected test certificate")
@@ -1607,7 +1965,7 @@ func (verifier *gatedTestVerifier) VerifyAcknowledgement(_ context.Context, _ re
 	return nil
 }
 
-func (verifier *gatedTestVerifier) VerifyRetirement(_ context.Context, _ relay.ChannelAuthority, _ relay.Retirement) error {
+func (verifier *gatedTestVerifier) VerifyRetirement(_ context.Context, _ relay.EnvironmentAuthority, _ relay.Retirement) error {
 	verifier.retirementCalls++
 	if verifier.rejectRetirement {
 		return errors.New("rejected test retirement")
