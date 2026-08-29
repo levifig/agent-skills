@@ -325,6 +325,12 @@ const (
 	continuitySQLitePackage      = "vnext/continuity/sqlite"
 	continuitySQLiteDriverFile   = "vnext/continuity/sqlite/driver.go"
 	continuitySQLiteDriverImport = "github.com/ncruces/go-sqlite3/driver"
+	relaySQLitePackage           = "vnext/sync/relay/sqlite"
+	relaySQLiteDriverFile        = "vnext/sync/relay/sqlite/driver.go"
+	syncXChaChaFile              = "vnext/sync/crypto/xchacha.go"
+	syncXChaChaImport            = "golang.org/x/crypto/chacha20poly1305"
+	xCryptoModuleRoot            = "golang.org/x/crypto"
+	xCryptoModulePrefix          = "golang.org/x/crypto/"
 	windowsAttributesFile        = "vnext/continuity/sqlite/filesystem_attributes_windows.go"
 	ncrucesModuleRoot            = "github.com/ncruces"
 	ncrucesModulePrefix          = "github.com/ncruces/"
@@ -332,7 +338,7 @@ const (
 
 func inspectImport(metadata moduleMetadata, relativePath, importPath, importName string) (boundaryViolation, bool) {
 	if importPath == "database/sql" {
-		if isContinuitySQLitePackage(relativePath) {
+		if isAdmittedSQLitePackage(relativePath) {
 			return boundaryViolation{}, false
 		}
 		return boundaryViolation{
@@ -342,6 +348,9 @@ func inspectImport(metadata moduleMetadata, relativePath, importPath, importName
 		}, true
 	}
 	if isAdmittedSQLiteDriverImport(relativePath, importPath, importName) {
+		return boundaryViolation{}, false
+	}
+	if isAdmittedXChaChaImport(relativePath, importPath, importName) {
 		return boundaryViolation{}, false
 	}
 	if importPath == "syscall" && relativePath == windowsAttributesFile {
@@ -358,7 +367,14 @@ func inspectImport(metadata moduleMetadata, relativePath, importPath, importName
 		return boundaryViolation{
 			Path:   relativePath,
 			Rule:   thirdPartyImportRule,
-			Detail: fmt.Sprintf("%s is not the exact blank sqlite driver import admitted in %s", importPath, continuitySQLiteDriverFile),
+			Detail: fmt.Sprintf("%s is not an exact blank sqlite driver import admitted in %s or %s", importPath, continuitySQLiteDriverFile, relaySQLiteDriverFile),
+		}, true
+	}
+	if isXCryptoImport(importPath) {
+		return boundaryViolation{
+			Path:   relativePath,
+			Rule:   thirdPartyImportRule,
+			Detail: fmt.Sprintf("%s is not the exact unaliased XChaCha20-Poly1305 import admitted in %s", importPath, syncXChaChaFile),
 		}, true
 	}
 	if reason, forbidden := forbiddenBootstrapImportReason(importPath); forbidden {
@@ -391,12 +407,18 @@ func importName(spec *ast.ImportSpec) string {
 	return spec.Name.Name
 }
 
-func isContinuitySQLitePackage(relativePath string) bool {
-	return pathpkg.Dir(relativePath) == continuitySQLitePackage
+func isAdmittedSQLitePackage(relativePath string) bool {
+	packagePath := pathpkg.Dir(relativePath)
+	return packagePath == continuitySQLitePackage || packagePath == relaySQLitePackage
 }
 
 func isAdmittedSQLiteDriverImport(relativePath, importPath, importName string) bool {
-	return relativePath == continuitySQLiteDriverFile && importPath == continuitySQLiteDriverImport && importName == "_"
+	return (relativePath == continuitySQLiteDriverFile || relativePath == relaySQLiteDriverFile) &&
+		importPath == continuitySQLiteDriverImport && importName == "_"
+}
+
+func isAdmittedXChaChaImport(relativePath, importPath, importName string) bool {
+	return relativePath == syncXChaChaFile && importPath == syncXChaChaImport && importName == ""
 }
 
 func isAdmittedWindowsFileAttributesImport(relativePath, importPath, importName string) bool {
@@ -405,6 +427,10 @@ func isAdmittedWindowsFileAttributesImport(relativePath, importPath, importName 
 
 func isNcrucesImport(importPath string) bool {
 	return importPath == ncrucesModuleRoot || strings.HasPrefix(importPath, ncrucesModulePrefix)
+}
+
+func isXCryptoImport(importPath string) bool {
+	return importPath == xCryptoModuleRoot || strings.HasPrefix(importPath, xCryptoModulePrefix)
 }
 
 func forbiddenBootstrapImportReason(importPath string) (string, bool) {
