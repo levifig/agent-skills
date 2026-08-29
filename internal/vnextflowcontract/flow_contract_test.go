@@ -90,6 +90,41 @@ func TestFlowExecutionContractKeepsMainAgentPrimary(t *testing.T) {
 	}
 }
 
+func TestFlowContractRejectsBoundedForbiddenSurfaceRegressions(t *testing.T) {
+	t.Parallel()
+
+	fixtures := []struct {
+		name   string
+		path   string
+		phrase string
+	}{
+		{name: "sqlite authority", path: "skills/loaf-reference/SKILL.md", phrase: "SQLite-backed work authority"},
+		{name: "local shadow authority", path: flowManifestPath, phrase: "local shadow is canonical"},
+		{name: "local cache authority", path: "skills/loaf-reference/SKILL.md", phrase: "local work cache is authoritative"},
+		{name: "provider transport", path: flowManifestPath, phrase: "direct provider HTTP"},
+		{name: "provider client", path: "skills/loaf-reference/SKILL.md", phrase: "construct a Linear client"},
+		{name: "provider token", path: flowManifestPath, phrase: "store the provider API token"},
+		{name: "connector installation", path: "skills/loaf-reference/SKILL.md", phrase: "install the tracker connector"},
+		{name: "connector authentication", path: flowManifestPath, phrase: "authenticate the tracker connector"},
+		{name: "tracker synchronization", path: "skills/loaf-reference/SKILL.md", phrase: "synchronize local work with the tracker"},
+		{name: "tracker mirror", path: flowManifestPath, phrase: "mirror native tracker state"},
+	}
+
+	for _, fixtureCase := range fixtures {
+		fixtureCase := fixtureCase
+		t.Run(fixtureCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			body := fixtureCase.phrase
+			if strings.HasSuffix(fixtureCase.path, ".json") {
+				body = fmt.Sprintf(`{"note": %q}`, fixtureCase.phrase)
+			}
+			fixture := fstest.MapFS{fixtureCase.path: &fstest.MapFile{Data: []byte(body)}}
+			assertContractFinding(t, validateForbiddenSurfaces(fixture), "flow.forbidden-surface", strings.ToLower(fixtureCase.phrase))
+		})
+	}
+}
+
 func validFlowFixture() fstest.MapFS {
 	return fstest.MapFS{
 		flowManifestPath: &fstest.MapFile{Data: []byte(validFlowManifest)},

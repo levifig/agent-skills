@@ -108,12 +108,14 @@ type frontMatter struct {
 }
 
 func validateFlowContract(content fs.FS) []finding {
+	findings := validateClosedContentInventory(content)
 	manifest := flowManifest{}
 	if err := decodeStrictJSON(content, flowManifestPath, &manifest); err != nil {
-		return []finding{{Rule: "flow.manifest", Path: flowManifestPath, Detail: err.Error()}}
+		findings = append(findings, finding{Rule: "flow.manifest", Path: flowManifestPath, Detail: err.Error()})
+		sortFindings(findings)
+		return findings
 	}
 
-	var findings []finding
 	findings = append(findings, validateManifestIdentity(manifest)...)
 	findings = append(findings, validateSkillDeclarations(content, manifest.Skills)...)
 	findings = append(findings, validateCeremonyDeclarations(manifest)...)
@@ -511,6 +513,16 @@ func validateForbiddenSurfaces(content fs.FS) []finding {
 		"linear_api_key",
 		"linearclientfromenv",
 		".agents/loaf.json",
+		"sqlite-backed work authority",
+		"local shadow is canonical",
+		"local work cache is authoritative",
+		"direct provider http",
+		"construct a linear client",
+		"store the provider api token",
+		"install the tracker connector",
+		"authenticate the tracker connector",
+		"synchronize local work with the tracker",
+		"mirror native tracker state",
 	}
 	var findings []finding
 	_ = fs.WalkDir(content, ".", func(filePath string, entry fs.DirEntry, walkErr error) error {
@@ -576,6 +588,9 @@ func decodeStrictJSON(content fs.FS, filePath string, target any) error {
 	if err != nil {
 		return err
 	}
+	if err := rejectDuplicateJSONKeys(body); err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
@@ -587,6 +602,68 @@ func decodeStrictJSON(content fs.FS, filePath string, target any) error {
 			return fmt.Errorf("multiple JSON values")
 		}
 		return fmt.Errorf("trailing JSON: %w", err)
+	}
+	return nil
+}
+
+func rejectDuplicateJSONKeys(body []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	return scanJSONValue(decoder, "$")
+}
+
+func scanJSONValue(decoder *json.Decoder, location string) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, isDelimiter := token.(json.Delim)
+	if !isDelimiter {
+		return nil
+	}
+
+	switch delimiter {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("object key at %s is not a string", location)
+			}
+			if _, exists := seen[key]; exists {
+				return fmt.Errorf("duplicate JSON object key %q at %s", key, location)
+			}
+			seen[key] = struct{}{}
+			if err := scanJSONValue(decoder, location+"."+key); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if closing != json.Delim('}') {
+			return fmt.Errorf("object at %s has invalid closing delimiter", location)
+		}
+	case '[':
+		for index := 0; decoder.More(); index++ {
+			if err := scanJSONValue(decoder, fmt.Sprintf("%s[%d]", location, index)); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if closing != json.Delim(']') {
+			return fmt.Errorf("array at %s has invalid closing delimiter", location)
+		}
+	default:
+		return fmt.Errorf("unexpected JSON delimiter %q at %s", delimiter, location)
 	}
 	return nil
 }
