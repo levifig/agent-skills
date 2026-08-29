@@ -1,4 +1,6 @@
-package kernel
+// Package vnextboundary enforces the vNext bootstrap source boundary from the
+// stable root module, outside the source tree it checks.
+package vnextboundary
 
 import (
 	"bufio"
@@ -20,20 +22,13 @@ const (
 	legacyImportRule        = "legacy-module-import"
 	thirdPartyImportRule    = "third-party-import"
 	nestedModuleRule        = "nested-module"
+	nativeBuildInputRule    = "forbidden-native-build-input"
 	forbiddenImportRule     = "forbidden-bootstrap-import"
 	forbiddenDirectiveRule  = "forbidden-compiler-directive"
 	forbiddenCapabilityRule = "forbidden-bootstrap-capability"
 	sourceParseRule         = "unparseable-source"
 	sourceSymlinkRule       = "source-symlink"
 )
-
-var forbiddenBootstrapImports = map[string]string{
-	"C":            "cgo can cross the Go runtime boundary",
-	"database/sql": "database access is outside the bootstrap kernel",
-	"os/exec":      "subprocess execution can invoke the legacy runtime",
-	"plugin":       "runtime plugins can load code outside the checked source closure",
-	"syscall":      "raw system calls bypass the bootstrap capability boundary",
-}
 
 type moduleMetadata struct {
 	Root            string
@@ -68,10 +63,7 @@ func discoverModuleMetadata(start string) (moduleMetadata, error) {
 
 	for {
 		goModPath := filepath.Join(directory, "go.mod")
-		if info, statErr := os.Stat(goModPath); statErr == nil {
-			if !info.Mode().IsRegular() {
-				return moduleMetadata{}, fmt.Errorf("module metadata is not a regular file: %s", goModPath)
-			}
+		if _, statErr := os.Lstat(goModPath); statErr == nil {
 			return loadModuleMetadata(directory)
 		} else if !os.IsNotExist(statErr) {
 			return moduleMetadata{}, fmt.Errorf("inspect module metadata: %w", statErr)
@@ -91,6 +83,16 @@ func loadModuleMetadata(root string) (moduleMetadata, error) {
 		return moduleMetadata{}, fmt.Errorf("resolve module root: %w", err)
 	}
 	goModPath := filepath.Join(absoluteRoot, "go.mod")
+	info, err := os.Lstat(goModPath)
+	if err != nil {
+		return moduleMetadata{}, fmt.Errorf("inspect module metadata: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return moduleMetadata{}, fmt.Errorf("module metadata is a symlink: %s", goModPath)
+	}
+	if !info.Mode().IsRegular() {
+		return moduleMetadata{}, fmt.Errorf("module metadata is not a regular file: %s", goModPath)
+	}
 	contents, err := os.ReadFile(goModPath)
 	if err != nil {
 		return moduleMetadata{}, fmt.Errorf("read module metadata: %w", err)
@@ -182,6 +184,14 @@ func inspectVNextBoundary(metadata moduleMetadata) ([]boundaryViolation, error) 
 			})
 			return nil
 		}
+		if isForbiddenNativeBuildInput(entry.Name()) {
+			violations = append(violations, boundaryViolation{
+				Path:   relativePath,
+				Rule:   nativeBuildInputRule,
+				Detail: "Go-recognized native and object build inputs are outside the bootstrap source policy",
+			})
+			return nil
+		}
 		if filepath.Ext(entry.Name()) != ".go" {
 			return nil
 		}
@@ -201,6 +211,18 @@ func inspectVNextBoundary(metadata moduleMetadata) ([]boundaryViolation, error) 
 		return violations[left].Detail < violations[right].Detail
 	})
 	return violations, nil
+}
+
+func isForbiddenNativeBuildInput(name string) bool {
+	switch filepath.Ext(name) {
+	case ".c", ".cc", ".cpp", ".cxx", ".m",
+		".h", ".hh", ".hpp", ".hxx",
+		".f", ".F", ".for", ".f90",
+		".s", ".S", ".sx", ".swig", ".swigcxx", ".syso":
+		return true
+	default:
+		return false
+	}
 }
 
 func inspectGoSource(metadata moduleMetadata, sourcePath, relativePath string) []boundaryViolation {
@@ -288,7 +310,7 @@ func inspectGoSource(metadata moduleMetadata, sourcePath, relativePath string) [
 }
 
 func inspectImport(metadata moduleMetadata, relativePath, importPath string) (boundaryViolation, bool) {
-	if reason, forbidden := forbiddenBootstrapImports[importPath]; forbidden {
+	if reason, forbidden := forbiddenBootstrapImportReason(importPath); forbidden {
 		return boundaryViolation{Path: relativePath, Rule: forbiddenImportRule, Detail: fmt.Sprintf("%s: %s", importPath, reason)}, true
 	}
 	if importPath == metadata.Path || strings.HasPrefix(importPath, metadata.Path+"/") {
@@ -309,6 +331,23 @@ func inspectImport(metadata moduleMetadata, relativePath, importPath string) (bo
 		Rule:   thirdPartyImportRule,
 		Detail: fmt.Sprintf("%s is not in the standard library or the vNext module subtree", importPath),
 	}, true
+}
+
+func forbiddenBootstrapImportReason(importPath string) (string, bool) {
+	switch importPath {
+	case "C":
+		return "cgo can cross the Go runtime boundary", true
+	case "database/sql":
+		return "database access is outside the bootstrap kernel", true
+	case "os/exec":
+		return "subprocess execution can invoke the legacy runtime", true
+	case "plugin":
+		return "runtime plugins can load code outside the checked source closure", true
+	case "syscall":
+		return "raw system calls bypass the bootstrap capability boundary", true
+	default:
+		return "", false
+	}
 }
 
 func isStandardLibraryImport(importPath string) bool {
