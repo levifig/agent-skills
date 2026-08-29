@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/levifig/loaf/vnext/continuity"
@@ -26,8 +27,11 @@ const (
 
 // Store owns one private continuity database connection.
 type Store struct {
+	mu            sync.RWMutex
 	db            *sql.DB
 	environmentID continuity.EnvironmentID
+	wallMillis    func() int64
+	closed        bool
 }
 
 // Open opens or creates the vNext continuity database below stateRoot.
@@ -82,15 +86,28 @@ func Open(stateRoot string, environmentID continuity.EnvironmentID) (*Store, err
 	if err := verifySQLiteFiles(databasePath); err != nil {
 		return closeOnError(err)
 	}
-	return &Store{db: db, environmentID: environmentID}, nil
+	return &Store{
+		db:            db,
+		environmentID: environmentID,
+		wallMillis:    func() int64 { return time.Now().UnixMilli() },
+	}, nil
 }
 
 // Close closes the continuity database connection.
 func (store *Store) Close() error {
-	if store == nil || store.db == nil {
+	if store == nil {
 		return nil
 	}
-	return store.db.Close()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.closed || store.db == nil {
+		return nil
+	}
+	store.closed = true
+	if err := store.db.Close(); err != nil {
+		return storeUnavailableProblemV1()
+	}
+	return nil
 }
 
 func validateEnvironmentID(environmentID continuity.EnvironmentID) error {
@@ -308,13 +325,18 @@ func secureSQLiteSidecars(databasePath string) error {
 			return fmt.Errorf("continuity SQLite sidecar %s must be a real file", filepath.Base(path))
 		}
 		secured, err := securePrivateFilePlatform(path, info)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("secure continuity SQLite sidecar %s: %w", filepath.Base(path), err)
 		}
 		if secured.Mode()&os.ModeSymlink != 0 || !secured.Mode().IsRegular() || !os.SameFile(info, secured) {
 			return fmt.Errorf("continuity SQLite sidecar %s changed while securing permissions", filepath.Base(path))
 		}
-		if err := validatePrivateFilePlatform(path, secured); err != nil {
+		if err := validatePrivateFilePlatform(path, secured); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
 			return err
 		}
 	}
