@@ -44,6 +44,7 @@ type flowManifest struct {
 	TrackerProxy    *bool              `json:"tracker_proxy"`
 	TrackerSync     *bool              `json:"tracker_sync"`
 	Skills          []skillDeclaration `json:"skills"`
+	Ceremonies      []ceremonyContract `json:"ceremonies"`
 	Templates       []templateContract `json:"templates"`
 	Agents          []agentDeclaration `json:"agents"`
 }
@@ -67,6 +68,15 @@ type templateContract struct {
 	RequiredFields []string `json:"required_fields"`
 }
 
+type ceremonyContract struct {
+	Name              string   `json:"name"`
+	Skill             string   `json:"skill"`
+	Input             string   `json:"input"`
+	Output            string   `json:"output"`
+	Template          string   `json:"template"`
+	TrackerOperations []string `json:"tracker_operations"`
+}
+
 type agentDeclaration struct {
 	Name         string `json:"name"`
 	Path         string `json:"path"`
@@ -87,6 +97,7 @@ func validateFlowContract(content fs.FS) []finding {
 	var findings []finding
 	findings = append(findings, validateManifestIdentity(manifest)...)
 	findings = append(findings, validateSkillDeclarations(content, manifest.Skills)...)
+	findings = append(findings, validateCeremonyDeclarations(manifest)...)
 	findings = append(findings, validateTemplateContracts(content, manifest.Templates)...)
 	findings = append(findings, validateAgentDeclarations(content, manifest.Agents)...)
 	findings = append(findings, validateMarkdownLinks(content)...)
@@ -132,6 +143,9 @@ func validateManifestIdentity(manifest flowManifest) []finding {
 	}
 	if manifest.Templates == nil {
 		findings = append(findings, finding{"flow.inventory", flowManifestPath, "templates must be an explicit array"})
+	}
+	if manifest.Ceremonies == nil {
+		findings = append(findings, finding{"flow.inventory", flowManifestPath, "ceremonies must be an explicit array"})
 	}
 	if manifest.Agents == nil {
 		findings = append(findings, finding{"flow.inventory", flowManifestPath, "agents must be an explicit array"})
