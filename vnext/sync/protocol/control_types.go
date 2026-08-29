@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/levifig/loaf/vnext/continuity"
+	"github.com/levifig/loaf/vnext/internal/continuitywire"
 )
 
 const (
@@ -18,7 +19,7 @@ const (
 	// MaxTerminalRetirementBytes bounds one administrator-signed terminal fence.
 	MaxTerminalRetirementBytes = 4_096
 	// MaxPruneReferenceBytes bounds one exact opaque arrival reference.
-	MaxPruneReferenceBytes = 512
+	MaxPruneReferenceBytes = continuitywire.MaxPruneReferenceBytes
 	// MaxPruneTargets bounds verification work for one physical-prune manifest.
 	MaxPruneTargets = 1_024
 	// MaxPruneAcknowledgements bounds the active environment witness set.
@@ -182,13 +183,38 @@ type PruneReference struct {
 
 // Validate rejects malformed opaque arrival identity.
 func (reference PruneReference) Validate() error {
-	if reference.FactID.Validate() != nil || reference.EnvironmentID.Validate() != nil ||
-		reference.EnvironmentSequence < 1 || reference.ArrivalSequence < 1 || reference.KeyGeneration < 1 ||
-		isZero(reference.EnvelopeDigest[:]) || isZero(reference.CertificateID[:]) ||
-		(reference.EnvironmentSequence == 1) != isZero(reference.PreviousEnvelopeDigest[:]) {
+	if err := pruneReferenceWireV1(reference).Validate(); err != nil {
 		return ErrInvalidPruneReference
 	}
 	return nil
+}
+
+func pruneReferenceWireV1(reference PruneReference) continuitywire.PruneReference {
+	return continuitywire.PruneReference{
+		FactID:                 reference.FactID,
+		EnvironmentID:          reference.EnvironmentID,
+		EnvironmentSequence:    reference.EnvironmentSequence,
+		ArrivalSequence:        reference.ArrivalSequence,
+		EnvelopeDigest:         reference.EnvelopeDigest,
+		CertificateID:          reference.CertificateID,
+		PreviousEnvelopeDigest: reference.PreviousEnvelopeDigest,
+		KeyGeneration:          reference.KeyGeneration,
+		Nonce:                  reference.Nonce,
+	}
+}
+
+func pruneReferenceFromWireV1(reference continuitywire.PruneReference) PruneReference {
+	return PruneReference{
+		FactID:                 reference.FactID,
+		EnvironmentID:          reference.EnvironmentID,
+		EnvironmentSequence:    reference.EnvironmentSequence,
+		ArrivalSequence:        reference.ArrivalSequence,
+		EnvelopeDigest:         reference.EnvelopeDigest,
+		CertificateID:          reference.CertificateID,
+		PreviousEnvelopeDigest: reference.PreviousEnvelopeDigest,
+		KeyGeneration:          reference.KeyGeneration,
+		Nonce:                  reference.Nonce,
+	}
 }
 
 // PruneManifest is a strict arrival-ordered set of exact prune targets.
