@@ -79,6 +79,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"filesystem_attributes_windows.go",
 		"filesystem_unix.go",
 		"filesystem_windows.go",
+		"prune.go",
 		"read.go",
 		"schema.go",
 		"snapshot_fold_v1.go",
@@ -108,6 +109,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store",
 		"Store.ActivateStagedSync",
 		"Store.ApplySyncBatch",
+		"Store.ApplyVerifiedPrune",
 		"Store.ArchiveIdea",
 		"Store.AttachExternalReference",
 		"Store.CaptureSpark",
@@ -211,6 +213,23 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"UnsealedLocalFact",
 		"UnsealedLocalFact.Fact",
 		"UnsealedLocalFact.PreviousEnvelopeDigest",
+		"VerifiedPrunePlan",
+		"VerifiedPrunePlan.BarrierArrivalSequence",
+		"VerifiedPrunePlan.ChannelID",
+		"VerifiedPrunePlan.Closure",
+		"VerifiedPrunePlan.MembershipGeneration",
+		"VerifiedPrunePlan.PruneCertificateID",
+		"VerifiedPrunePlan.Targets",
+		"VerifiedPruneReference",
+		"VerifiedPruneReference.ArrivalSequence",
+		"VerifiedPruneReference.CertificateID",
+		"VerifiedPruneReference.EnvelopeDigest",
+		"VerifiedPruneReference.EnvironmentID",
+		"VerifiedPruneReference.EnvironmentSequence",
+		"VerifiedPruneReference.FactID",
+		"VerifiedPruneReference.KeyGeneration",
+		"VerifiedPruneReference.Nonce",
+		"VerifiedPruneReference.PreviousEnvelopeDigest",
 		"VerifiedSyncFrame",
 		"VerifiedSyncFrame.ArrivalSequence",
 		"VerifiedSyncFrame.CertificateID",
@@ -271,12 +290,20 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 		"filesystem_attributes_windows.go": {"fmt", "os", "syscall"},
 		"filesystem_unix.go":               {"errors", "fmt", "os", "path/filepath", "strings"},
 		"filesystem_windows.go":            {"errors", "fmt", "os", "path/filepath", "strings"},
-		"read.go":                          {"context", "database/sql", "github.com/levifig/loaf/vnext/continuity"},
-		"schema.go":                        {"crypto/sha256", "database/sql", "encoding/hex", "fmt", "strings"},
-		"snapshot_fold_v1.go":              {"context", "github.com/levifig/loaf/vnext/continuity", "strings"},
-		"snapshot_records_v1.go":           {"github.com/levifig/loaf/vnext/continuity", "sort"},
-		"snapshot_references_v1.go":        {"github.com/levifig/loaf/vnext/continuity", "sort", "strings"},
-		"snapshot_scratchpad_v1.go":        {"github.com/levifig/loaf/vnext/continuity", "sort", "strings"},
+		"prune.go": {
+			"bytes",
+			"context",
+			"database/sql",
+			"errors",
+			"fmt",
+			"github.com/levifig/loaf/vnext/continuity",
+		},
+		"read.go":                   {"context", "database/sql", "github.com/levifig/loaf/vnext/continuity"},
+		"schema.go":                 {"crypto/sha256", "database/sql", "encoding/hex", "fmt", "strings"},
+		"snapshot_fold_v1.go":       {"context", "github.com/levifig/loaf/vnext/continuity", "strings"},
+		"snapshot_records_v1.go":    {"github.com/levifig/loaf/vnext/continuity", "sort"},
+		"snapshot_references_v1.go": {"github.com/levifig/loaf/vnext/continuity", "sort", "strings"},
+		"snapshot_scratchpad_v1.go": {"github.com/levifig/loaf/vnext/continuity", "sort", "strings"},
 		"store.go": {
 			"context",
 			"database/sql",
@@ -354,10 +381,13 @@ func TestContinuitySQLiteContractRejectsRawAndExternalAuthoritySurfaces(t *testi
 			}
 		}
 		upper := strings.Join(strings.Fields(strings.ToUpper(string(contents))), " ")
-		for _, forbidden := range []string{"UPDATE CONTINUITY_FACTS", "DELETE FROM CONTINUITY_FACTS", "DROP TABLE CONTINUITY_FACTS"} {
+		for _, forbidden := range []string{"UPDATE CONTINUITY_FACTS", "DROP TABLE CONTINUITY_FACTS"} {
 			if strings.Contains(upper, forbidden) {
 				t.Errorf("%s contains forbidden canonical-fact mutation %q", entry.Name(), forbidden)
 			}
+		}
+		if entry.Name() != "prune.go" && strings.Contains(upper, "DELETE FROM CONTINUITY_FACTS") {
+			t.Errorf("%s contains forbidden canonical-fact mutation %q", entry.Name(), "DELETE FROM CONTINUITY_FACTS")
 		}
 	}
 }
@@ -504,6 +534,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 	wantMethods := map[string]string{
 		"ActivateStagedSync":             "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncChannelID) (sqlite.SyncProgress, error)",
 		"ApplySyncBatch":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, []sqlite.VerifiedSyncFrame, int64, int64) (sqlite.SyncProgress, error)",
+		"ApplyVerifiedPrune":             "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.VerifiedPrunePlan) error",
 		"ArchiveIdea":                    "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaArchivePayload) (continuity.AppendReceipt, error)",
 		"AttachExternalReference":        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceAttachmentPayload) (continuity.AppendReceipt, error)",
 		"CaptureSpark":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkCapturedPayload) (continuity.AppendReceipt, error)",
