@@ -28,20 +28,21 @@ type SyncChannelID [32]byte
 type SyncErrorCode string
 
 const (
-	SyncErrorInvalid        SyncErrorCode = "invalid"
-	SyncErrorNotFound       SyncErrorCode = "not_found"
-	SyncErrorCursor         SyncErrorCode = "cursor_conflict"
-	SyncErrorArrivalGap     SyncErrorCode = "arrival_gap"
-	SyncErrorConflict       SyncErrorCode = "immutable_conflict"
-	SyncErrorEnvironmentGap SyncErrorCode = "environment_gap"
-	SyncErrorEnvelopeChain  SyncErrorCode = "envelope_chain"
-	SyncErrorCertificate    SyncErrorCode = "environment_certificate"
-	SyncErrorNonceReuse     SyncErrorCode = "nonce_reuse"
-	SyncErrorHLC            SyncErrorCode = "non_increasing_hlc"
-	SyncErrorCandidate      SyncErrorCode = "invalid_candidate_union"
-	SyncErrorNotAttached    SyncErrorCode = "not_attached"
-	SyncErrorActivation     SyncErrorCode = "activation_incomplete"
-	SyncErrorStore          SyncErrorCode = "store_unavailable"
+	SyncErrorInvalid                 SyncErrorCode = "invalid"
+	SyncErrorNotFound                SyncErrorCode = "not_found"
+	SyncErrorCursor                  SyncErrorCode = "cursor_conflict"
+	SyncErrorArrivalGap              SyncErrorCode = "arrival_gap"
+	SyncErrorConflict                SyncErrorCode = "immutable_conflict"
+	SyncErrorEnvironmentGap          SyncErrorCode = "environment_gap"
+	SyncErrorEnvelopeChain           SyncErrorCode = "envelope_chain"
+	SyncErrorCertificate             SyncErrorCode = "environment_certificate"
+	SyncErrorNonceReuse              SyncErrorCode = "nonce_reuse"
+	SyncErrorHLC                     SyncErrorCode = "non_increasing_hlc"
+	SyncErrorCandidate               SyncErrorCode = "invalid_candidate_union"
+	SyncErrorNotAttached             SyncErrorCode = "not_attached"
+	SyncErrorActivation              SyncErrorCode = "activation_incomplete"
+	SyncErrorTerminalHistoryRequired SyncErrorCode = "terminal_history_required"
+	SyncErrorStore                   SyncErrorCode = "store_unavailable"
 )
 
 // SyncError reports a content-free, machine-stable sync persistence failure.
@@ -989,6 +990,10 @@ func (store *Store) ApplySyncBatch(ctx context.Context, projectID continuity.Pro
 	if !found {
 		return SyncProgress{}, syncProblem(SyncErrorNotFound, "project_id", "has no staged sync state")
 	}
+	authority, err := readSyncAuthorityV1(ctx, tx, projectID)
+	if err != nil {
+		return SyncProgress{}, err
+	}
 	if len(prepared) == 0 {
 		if err := tx.Commit(); err != nil {
 			return SyncProgress{}, syncTransactionProblem(ctx)
@@ -1020,6 +1025,16 @@ func (store *Store) ApplySyncBatch(ctx context.Context, projectID continuity.Pro
 	}
 	envelopeInventory, err := loadEnvelopeInventoryV1(ctx, tx, projectID)
 	if err != nil {
+		return SyncProgress{}, err
+	}
+	isFirstSeenEnvelope := make([]bool, len(prepared))
+	for index, frame := range prepared {
+		sequenceKey := environmentSequenceKeyV1(frame.fact.environmentID, frame.fact.environmentSequence)
+		retainedEnvelope, hasRetainedEnvelope := envelopeInventory.bySequence[sequenceKey]
+		isFirstSeenEnvelope[index] = !hasRetainedEnvelope ||
+			!sealedMetadataEqualV1(retainedEnvelope.metadata, frame.sealedEnvelopeMetadataV1)
+	}
+	if err := validateOrdinarySyncFrameAuthorityV1(authority, prepared, isFirstSeenEnvelope, trustedNowMillis); err != nil {
 		return SyncProgress{}, err
 	}
 	if err := rejectConsumedReceiptsV1(ctx, tx, projectID, prepared); err != nil {
@@ -1139,7 +1154,6 @@ WHERE fact_id = ?`, string(fact.factID)).Scan(&tombstoneProjectID)
 		existing = append(existing, fact)
 		isNew[index] = true
 	}
-
 	sort.Slice(existing, func(left, right int) bool {
 		return storedFactLessV1(existing[left], existing[right])
 	})
