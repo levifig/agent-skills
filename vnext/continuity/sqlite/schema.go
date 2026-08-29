@@ -158,9 +158,17 @@ const syncProjectsTableSQL = `CREATE TABLE continuity_sync_projects (
     length(project_id) BETWEEN 1 AND 128
     AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
   ),
-  channel_id TEXT NOT NULL CHECK (
-    length(channel_id) BETWEEN 1 AND 128
-    AND channel_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  channel_id BLOB NOT NULL CHECK (
+    length(channel_id) = 32 AND channel_id <> zeroblob(32)
+  ),
+  relay_generation BLOB NOT NULL CHECK (
+    length(relay_generation) = 32 AND relay_generation <> zeroblob(32)
+  ),
+  admin_public_key BLOB NOT NULL CHECK (
+    length(admin_public_key) = 32 AND admin_public_key <> zeroblob(32)
+  ),
+  membership_generation INTEGER NOT NULL CHECK (
+    membership_generation BETWEEN 1 AND 4294967295
   ),
   activation_state TEXT NOT NULL CHECK (
     activation_state IN ('staging', 'attached')
@@ -333,6 +341,82 @@ const syncTombstonesTableSQL = `CREATE TABLE continuity_sync_tombstones (
   FOREIGN KEY (project_id) REFERENCES continuity_sync_projects(project_id)
 ) STRICT, WITHOUT ROWID`
 
+const syncEnvironmentCertificatesTableSQL = `CREATE TABLE continuity_sync_environment_certificates (
+  project_id TEXT NOT NULL,
+  environment_id TEXT NOT NULL CHECK (
+    length(environment_id) BETWEEN 1 AND 128
+    AND environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  certificate_id BLOB NOT NULL CHECK (
+    length(certificate_id) = 32 AND certificate_id <> zeroblob(32)
+  ),
+  certificate_bytes BLOB NOT NULL CHECK (
+    length(certificate_bytes) BETWEEN 1 AND 8192
+  ),
+  mode TEXT NOT NULL CHECK (mode IN ('trusted', 'ephemeral')),
+  expires_at_millis INTEGER NOT NULL CHECK (expires_at_millis >= 0),
+  join_membership_generation INTEGER NOT NULL CHECK (
+    join_membership_generation BETWEEN 1 AND 4294967295
+  ),
+  retirement_relay_generation BLOB CHECK (
+    retirement_relay_generation IS NULL
+    OR (length(retirement_relay_generation) = 32 AND retirement_relay_generation <> zeroblob(32))
+  ),
+  retirement_membership_generation INTEGER CHECK (
+    retirement_membership_generation IS NULL
+    OR retirement_membership_generation BETWEEN 1 AND 4294967295
+  ),
+  retirement_final_environment_sequence INTEGER CHECK (
+    retirement_final_environment_sequence IS NULL
+    OR retirement_final_environment_sequence >= 0
+  ),
+  retirement_final_envelope_digest BLOB CHECK (
+    retirement_final_envelope_digest IS NULL
+    OR length(retirement_final_envelope_digest) = 32
+  ),
+  retirement_id BLOB CHECK (
+    retirement_id IS NULL
+    OR (length(retirement_id) = 32 AND retirement_id <> zeroblob(32))
+  ),
+  retirement_bytes BLOB CHECK (
+    retirement_bytes IS NULL
+    OR length(retirement_bytes) BETWEEN 1 AND 4096
+  ),
+  CHECK (
+    (mode = 'trusted' AND expires_at_millis = 0)
+    OR (mode = 'ephemeral' AND expires_at_millis > 0)
+  ),
+  CHECK (
+    (retirement_membership_generation IS NULL
+      AND retirement_relay_generation IS NULL
+      AND retirement_final_environment_sequence IS NULL
+      AND retirement_final_envelope_digest IS NULL
+      AND retirement_id IS NULL
+      AND retirement_bytes IS NULL)
+    OR
+    (retirement_membership_generation IS NOT NULL
+      AND retirement_relay_generation IS NOT NULL
+      AND retirement_final_environment_sequence IS NOT NULL
+      AND retirement_final_envelope_digest IS NOT NULL
+      AND retirement_id IS NOT NULL
+      AND retirement_bytes IS NOT NULL)
+  ),
+  CHECK (
+    retirement_membership_generation IS NULL
+    OR retirement_membership_generation >= join_membership_generation
+  ),
+  CHECK (
+    retirement_final_environment_sequence IS NULL
+    OR (retirement_final_environment_sequence = 0
+      AND retirement_final_envelope_digest = zeroblob(32))
+    OR (retirement_final_environment_sequence > 0
+      AND retirement_final_envelope_digest <> zeroblob(32))
+  ),
+  PRIMARY KEY (project_id, environment_id),
+  UNIQUE (project_id, certificate_id),
+  FOREIGN KEY (project_id) REFERENCES continuity_sync_projects(project_id)
+) STRICT, WITHOUT ROWID`
+
 const schemaV1DDL = schemaTableV1SQL + ";\n" +
 	factsTableSQL + ";\n" +
 	projectIdentityIndexSQL + ";\n" +
@@ -345,7 +429,8 @@ const syncSchemaDDL = syncProjectsTableSQL + ";\n" +
 	syncReceiptsTableSQL + ";\n" +
 	syncEnvironmentHeadsTableSQL + ";\n" +
 	syncOutboxTableSQL + ";\n" +
-	syncTombstonesTableSQL + ";\n"
+	syncTombstonesTableSQL + ";\n" +
+	syncEnvironmentCertificatesTableSQL + ";\n"
 
 const schemaDDL = schemaTableSQL + ";\n" +
 	factsTableSQL + ";\n" +
@@ -369,6 +454,7 @@ func expectedSchemaObjects() []schemaObject {
 		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", sql: projectIdentityIndexSQL},
 		{kind: "table", name: "continuity_facts", table: "continuity_facts", sql: factsTableSQL},
 		{kind: "table", name: "continuity_schema", table: "continuity_schema", sql: schemaTableSQL},
+		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", sql: syncEnvironmentCertificatesTableSQL},
 		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", sql: syncEnvironmentHeadsTableSQL},
 		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", sql: syncInboxTableSQL},
 		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", sql: syncOutboxTableSQL},
