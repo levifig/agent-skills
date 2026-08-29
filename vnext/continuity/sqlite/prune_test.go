@@ -221,10 +221,10 @@ func TestApplyVerifiedPruneRejectsPlanAndStateConflicts(t *testing.T) {
 			f.exec(t, `UPDATE continuity_sync_projects SET relay_head = relay_head + 1 WHERE project_id = ?`, string(f.projectID))
 		}},
 		{name: "inbox not empty", edit: func(f *pruneFixtureV1) {
-			f.exec(t, `INSERT INTO continuity_sync_inbox(project_id, arrival_sequence, envelope_digest, sealed_envelope, state) VALUES(?, 99, ?, X'01', 'staged')`, string(f.projectID), pruneDigestBytesV1("inbox"))
+			f.exec(t, `INSERT INTO continuity_sync_inbox(project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state) VALUES(?, 99, ?, 'sealed', X'01', 'staged')`, string(f.projectID), pruneDigestBytesV1("inbox"))
 		}},
 		{name: "quarantined inbox not empty", edit: func(f *pruneFixtureV1) {
-			f.exec(t, `INSERT INTO continuity_sync_inbox(project_id, arrival_sequence, envelope_digest, sealed_envelope, state) VALUES(?, 99, ?, X'01', 'quarantined')`, string(f.projectID), pruneDigestBytesV1("quarantined-inbox"))
+			f.exec(t, `INSERT INTO continuity_sync_inbox(project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state) VALUES(?, 99, ?, 'sealed', X'01', 'quarantined')`, string(f.projectID), pruneDigestBytesV1("quarantined-inbox"))
 		}},
 		{name: "outbox not empty", edit: func(f *pruneFixtureV1) {
 			f.insertOutboxFor(t, f.opening)

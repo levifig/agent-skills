@@ -807,8 +807,8 @@ SELECT EXISTS (
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO continuity_sync_inbox(
-  project_id, arrival_sequence, envelope_digest, sealed_envelope, state
-) VALUES(?, ?, ?, ?, 'staged')`,
+  project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
+) VALUES(?, ?, ?, 'sealed', ?, 'staged')`,
 			string(projectID),
 			frame.ArrivalSequence,
 			frame.EnvelopeDigest[:],
@@ -874,7 +874,7 @@ func (store *Store) PendingSyncFrames(ctx context.Context, projectID continuity.
 		return nil, syncProblem(SyncErrorNotFound, "project_id", "has no staged sync state")
 	}
 	rows, err := tx.QueryContext(ctx, `
-SELECT arrival_sequence, envelope_digest, sealed_envelope, state
+SELECT arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
 FROM continuity_sync_inbox
 WHERE project_id = ? AND arrival_sequence > ?
 ORDER BY arrival_sequence
@@ -887,10 +887,14 @@ LIMIT ?`, string(projectID), progress.AppliedCursor, limit)
 	for rows.Next() {
 		var frame OpaqueSyncFrame
 		var digest []byte
-		var state string
-		if err := rows.Scan(&frame.ArrivalSequence, &digest, &frame.SealedEnvelope, &state); err != nil {
+		var frameKind, state string
+		if err := rows.Scan(&frame.ArrivalSequence, &digest, &frameKind, &frame.SealedEnvelope, &state); err != nil {
 			rows.Close()
 			return nil, syncTransactionProblem(ctx)
+		}
+		if frameKind != "sealed" {
+			rows.Close()
+			return nil, syncProblem(SyncErrorTerminalHistoryRequired, "frame_kind", "requires tagged terminal-history handling")
 		}
 		if frame.ArrivalSequence != expected || len(digest) != len(frame.EnvelopeDigest) ||
 			(state != "staged" && state != "quarantined") {
@@ -1287,7 +1291,7 @@ WHERE project_id = ? AND fact_id = ? AND envelope_digest = ?`,
 		}
 		result, err := tx.ExecContext(ctx, `
 DELETE FROM continuity_sync_inbox
-WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival)
+WHERE project_id = ? AND arrival_sequence = ? AND frame_kind = 'sealed'`, string(projectID), frame.arrival)
 		if err != nil {
 			return SyncProgress{}, syncTransactionProblem(ctx)
 		}
@@ -1299,7 +1303,7 @@ WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival
 		result, err := tx.ExecContext(ctx, `
 UPDATE continuity_sync_inbox
 SET state = 'quarantined'
-WHERE project_id = ? AND arrival_sequence = ?`,
+WHERE project_id = ? AND arrival_sequence = ? AND frame_kind = 'sealed'`,
 			string(projectID),
 			prepared[futureIndex].arrival,
 		)
@@ -1436,15 +1440,18 @@ func validateStagedBindingsV1(ctx context.Context, tx *sql.Tx, projectID continu
 			return syncProblem(SyncErrorArrivalGap, "arrival_sequence", "verified batch is not the staged applied prefix")
 		}
 		var digest []byte
-		var state string
+		var frameKind, state string
 		if err := tx.QueryRowContext(ctx, `
-SELECT envelope_digest, state
+SELECT envelope_digest, frame_kind, state
 FROM continuity_sync_inbox
-WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival).Scan(&digest, &state); err != nil {
+WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival).Scan(&digest, &frameKind, &state); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return syncProblem(SyncErrorArrivalGap, "arrival_sequence", "has no staged envelope")
 			}
 			return syncTransactionProblem(ctx)
+		}
+		if frameKind != "sealed" {
+			return syncProblem(SyncErrorTerminalHistoryRequired, "frame_kind", "requires tagged terminal-history handling")
 		}
 		if len(digest) != len(frame.digest) || !bytes.Equal(digest, frame.digest[:]) ||
 			(state != "staged" && state != "quarantined") {
@@ -1496,17 +1503,21 @@ WHERE project_id = ? AND arrival_sequence = ?`,
 			continue
 		}
 		var digest, sealed []byte
+		var frameKind string
 		if err := tx.QueryRowContext(ctx, `
-SELECT envelope_digest, sealed_envelope
+SELECT envelope_digest, frame_kind, frame_bytes
 FROM continuity_sync_inbox
 WHERE project_id = ? AND arrival_sequence = ?`,
 			string(projectID),
 			frame.ArrivalSequence,
-		).Scan(&digest, &sealed); err != nil {
+		).Scan(&digest, &frameKind, &sealed); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return syncProblem(SyncErrorStore, "", "downloaded arrival has no staged envelope")
 			}
 			return syncTransactionProblem(ctx)
+		}
+		if frameKind != "sealed" {
+			return syncProblem(SyncErrorConflict, "frame_kind", "stage retry differs from retained frame kind")
 		}
 		if len(digest) != len(frame.EnvelopeDigest) ||
 			!bytes.Equal(digest, frame.EnvelopeDigest[:]) ||
