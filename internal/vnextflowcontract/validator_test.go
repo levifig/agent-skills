@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -20,10 +21,11 @@ const (
 )
 
 var (
-	fieldMarkerPattern  = regexp.MustCompile(`<!-- loaf:field ([a-z][a-z0-9_]*) -->`)
-	placeholderPattern  = regexp.MustCompile(`\{\{([a-z][a-z0-9_]*)\}\}`)
-	markdownLinkPattern = regexp.MustCompile(`\[[^]]+\]\(([^)]+)\)`)
-	skillNamePattern    = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+	fieldMarkerPattern   = regexp.MustCompile(`<!-- loaf:field ([a-z][a-z0-9_]*) -->`)
+	placeholderPattern   = regexp.MustCompile(`\{\{([a-z][a-z0-9_]*)\}\}`)
+	templateTokenPattern = regexp.MustCompile(`<!-- loaf:field ([a-z][a-z0-9_]*) -->|\{\{([a-z][a-z0-9_]*)\}\}`)
+	markdownLinkPattern  = regexp.MustCompile(`\[[^]]+\]\(([^)]+)\)`)
+	skillNamePattern     = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 )
 
 type finding struct {
@@ -85,6 +87,11 @@ type templateContract struct {
 	ID             string   `json:"id"`
 	Path           string   `json:"path"`
 	RequiredFields []string `json:"required_fields"`
+}
+
+type templateFieldToken struct {
+	Kind  string
+	Field string
 }
 
 type ceremonyContract struct {
@@ -363,12 +370,12 @@ func validateTemplateContracts(content fs.FS, contracts []templateContract) []fi
 		if actual.ID != expected.ID || actual.Path != expected.Path || !equalStrings(actual.RequiredFields, expected.RequiredFields) {
 			findings = append(findings, finding{"template.contract", actual.Path, fmt.Sprintf("contract = %+v, want %+v", actual, expected)})
 		}
-		body, err := fs.ReadFile(content, actual.Path)
+		body, err := fs.ReadFile(content, expected.Path)
 		if err != nil {
-			findings = append(findings, finding{"template.missing", actual.Path, err.Error()})
+			findings = append(findings, finding{"template.missing", expected.Path, err.Error()})
 			continue
 		}
-		findings = append(findings, validateTemplateFields(actual, string(body))...)
+		findings = append(findings, validateTemplateFields(expected, string(body))...)
 	}
 	declaredPaths := make(map[string]struct{}, len(contracts))
 	for _, contract := range contracts {
@@ -397,7 +404,40 @@ func validateTemplateFields(contract templateContract, body string) []finding {
 	var findings []finding
 	findings = append(findings, compareFieldInventory("template.marker", contract.Path, markers, contract.RequiredFields)...)
 	findings = append(findings, compareFieldInventory("template.placeholder", contract.Path, placeholders, contract.RequiredFields)...)
+	findings = append(findings, validateTemplateFieldStructure(contract, body)...)
 	return findings
+}
+
+func validateTemplateFieldStructure(contract templateContract, body string) []finding {
+	want := make([]templateFieldToken, 0, len(contract.RequiredFields)*2)
+	for _, field := range contract.RequiredFields {
+		want = append(want,
+			templateFieldToken{Kind: "marker", Field: field},
+			templateFieldToken{Kind: "placeholder", Field: field},
+		)
+	}
+	actual := captureTemplateFieldTokens(body)
+	if reflect.DeepEqual(actual, want) {
+		return nil
+	}
+	return []finding{{
+		"template.structure",
+		contract.Path,
+		fmt.Sprintf("marker-to-placeholder sequence = %v, want %v in exact external field order", actual, want),
+	}}
+}
+
+func captureTemplateFieldTokens(body string) []templateFieldToken {
+	matches := templateTokenPattern.FindAllStringSubmatch(body, -1)
+	tokens := make([]templateFieldToken, 0, len(matches))
+	for _, match := range matches {
+		if match[1] != "" {
+			tokens = append(tokens, templateFieldToken{Kind: "marker", Field: match[1]})
+			continue
+		}
+		tokens = append(tokens, templateFieldToken{Kind: "placeholder", Field: match[2]})
+	}
+	return tokens
 }
 
 func compareFieldInventory(rule, filePath string, actual, expected []string) []finding {
