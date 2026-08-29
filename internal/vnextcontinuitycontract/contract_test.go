@@ -18,17 +18,21 @@ const continuityRoot = "../../vnext/continuity"
 func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 	t.Parallel()
 
-	wantProduction := []string{"semantics.go"}
+	wantProduction := []string{"facts.go", "semantics.go"}
 	wantExports := []string{
 		"Catalog",
 		"ContextAttachedOnly", "ContextExcluded", "ContextFocusActive", "ContextFocusAndProjectWrap", "ContextFocusDecision", "ContextFocusFinding", "ContextFocusThenProjectJournal", "ContextInclusion", "ContextLatestCheckpoint", "ContextLatestFocusHandoff", "ContextOutput", "ContextProject",
+		"DefinitionFor", "EnvironmentID",
+		"FactCatalog", "FactCheckpointRecorded", "FactDecisionOpened", "FactDecisionResolved", "FactDecisionSuperseded", "FactDefinition", "FactExplorationStarted", "FactExternalReferenceAttached", "FactExternalReferenceDetached", "FactExternalReferenceRegistered", "FactFindingCorrected", "FactFindingRecorded", "FactFindingRetracted", "FactHandoffRecorded", "FactID", "FactIdeaArchived", "FactIdeaCreated", "FactIdeaPromotedToExternalReference", "FactIdeaResolved", "FactIdeaRevised", "FactJournalCorrectionRecorded", "FactJournalRecorded", "FactKind", "FactProjectLabelRevised", "FactProjectRegistered", "FactScratchpadClaimRecorded", "FactScratchpadClaimReleased", "FactScratchpadClosed", "FactScratchpadMessageRecorded", "FactScratchpadOpened", "FactScratchpadParticipantIntroduced", "FactSparkCaptured", "FactSparkDismissed", "FactSparkPromotedToIdea", "FactVerificationEvidenceRecorded", "FactWrapRecorded",
 		"Mutation", "MutationAdvisoryFacts", "MutationAppendOnly", "MutationAppendWithAttachmentChanges", "MutationAppendWithCorrectionRetraction", "MutationAppendWithCorrections", "MutationAppendWithDisposition", "MutationAppendWithResolutionSupersession", "MutationAppendWithRevisionDispositionPromotion", "MutationMintOnce", "MutationMintOnceWithLabelRevisions", "MutationReadTimeFold",
 		"Permanence", "PermanenceDerived", "PermanenceLedger", "PermanenceNotebook", "PermanenceScratchpad",
 		"Projection", "ProjectionActiveSpark", "ProjectionContextDigest", "ProjectionCoordinationState", "ProjectionCurrentDecision", "ProjectionCurrentFinding", "ProjectionCurrentIdea", "ProjectionCurrentIdentity", "ProjectionEffectiveTimeline", "ProjectionEvidenceLedger", "ProjectionExplorationIdentity", "ProjectionLatestCheckpoint", "ProjectionLatestHandoff", "ProjectionLatestWrap", "ProjectionReferenceAttachments",
+		"ProjectID",
 		"RecordCheckpoint", "RecordDecision", "RecordDerivedContext", "RecordExploration", "RecordExternalReference", "RecordFinding", "RecordHandoff", "RecordIdea", "RecordJournalEntry", "RecordKind", "RecordProjectIdentity", "RecordScratchpad", "RecordSemantics", "RecordSpark", "RecordVerificationEvidence", "RecordWrap",
 		"ReferenceBehavior", "ReferencesEphemeralOpaqueIDs", "ReferencesEvidenceLeaf", "ReferencesIncludeAttached", "ReferencesMayAttachOpaque", "ReferencesOpaqueLeaf",
 		"Retention", "RetentionForever", "RetentionRecomputed", "RetentionUntilSyncSafePoint",
 		"SemanticsFor",
+		"SubjectID",
 	}
 	sort.Strings(wantExports)
 
