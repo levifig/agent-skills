@@ -24,6 +24,9 @@ var (
 	ErrInvalidSigningKey = errors.New("sync crypto: invalid signing key")
 	// ErrInvalidCertificateSignature reports a failed project-admin signature.
 	ErrInvalidCertificateSignature = errors.New("sync crypto: invalid environment certificate signature")
+	// ErrAuthorityKeyReuse reports reuse of one Ed25519 identity for both the
+	// project administrator and an attached environment.
+	ErrAuthorityKeyReuse = errors.New("sync crypto: admin and environment signing keys must be distinct")
 	// ErrInvalidEnvironmentSignature reports a failed environment signature.
 	ErrInvalidEnvironmentSignature = errors.New("sync crypto: invalid sealed fact signature")
 	// ErrCertificateBinding reports a mismatch between a certificate and fact.
