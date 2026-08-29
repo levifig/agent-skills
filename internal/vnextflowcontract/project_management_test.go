@@ -1,9 +1,11 @@
 package vnextflowcontract
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -76,22 +78,37 @@ type providerCapabilities struct {
 }
 
 type providerOperationMapping struct {
-	ID              string   `json:"id"`
-	NativeSemantic  string   `json:"native_semantic"`
-	Availability    string   `json:"availability"`
-	MaximumFidelity string   `json:"maximum_fidelity"`
-	Requires        []string `json:"requires"`
+	ID              string                        `json:"id"`
+	NativeSemantic  string                        `json:"native_semantic"`
+	Availability    string                        `json:"availability"`
+	MaximumFidelity string                        `json:"maximum_fidelity"`
+	Requires        providerOperationRequirements `json:"requires"`
+}
+
+type providerOperationRequirements struct {
+	Before  []string `json:"before"`
+	Execute []string `json:"execute"`
+	After   []string `json:"after"`
 }
 
 type projectManagerProfileContract struct {
-	ID                    string   `json:"id"`
-	TrackerContract       string   `json:"tracker_contract"`
-	Execution             string   `json:"execution"`
-	Equivalence           string   `json:"equivalence"`
-	ProviderSelection     string   `json:"provider_selection"`
-	AllowedCapabilities   []string `json:"allowed_capabilities"`
-	ForbiddenCapabilities []string `json:"forbidden_capabilities"`
-	Fallback              string   `json:"fallback"`
+	ID             string                       `json:"id"`
+	Execution      string                       `json:"execution"`
+	BehaviorSource projectManagerBehaviorSource `json:"behavior_source"`
+	Authority      projectManagerAuthority      `json:"authority"`
+	Fallback       string                       `json:"fallback"`
+}
+
+type projectManagerBehaviorSource struct {
+	ContractID    string `json:"contract_id"`
+	ContractPath  string `json:"contract_path"`
+	SkillPath     string `json:"skill_path"`
+	ProviderRoute string `json:"provider_route"`
+}
+
+type projectManagerAuthority struct {
+	Connector             string `json:"connector"`
+	NonConnectorAuthority string `json:"non_connector_authority"`
 }
 
 func TestTrackerSkillProjectManagementContract(t *testing.T) {
@@ -110,7 +127,7 @@ func TestTrackerSkillContractRejectsProviderOverclaim(t *testing.T) {
 	fixture[linearCapabilitiesPath] = capabilities
 
 	findings := validateProjectManagementContract(fixture)
-	assertContractFinding(t, findings, "provider.capability", "availability")
+	assertContractFinding(t, findings, "provider.mapping", "exact Linear mapping")
 }
 
 func TestTrackerSkillContractRejectsExpandedProjectManagerAuthority(t *testing.T) {
@@ -118,11 +135,112 @@ func TestTrackerSkillContractRejectsExpandedProjectManagerAuthority(t *testing.T
 
 	fixture := validProjectManagementFixture()
 	profile := fixture[projectManagerContractPath]
-	profile.Data = []byte(strings.Replace(string(profile.Data), `["harness-connector"]`, `["harness-connector", "shell"]`, 1))
+	profile.Data = []byte(strings.Replace(string(profile.Data), `"non_connector_authority": "none"`, `"non_connector_authority": "shell"`, 1))
 	fixture[projectManagerContractPath] = profile
 
 	findings := validateProjectManagementContract(fixture)
-	assertContractFinding(t, findings, "profile.authority", "allowed_capabilities")
+	assertContractFinding(t, findings, "profile.authority", "non-connector")
+}
+
+func TestTrackerSkillLinearMappingRejectsExactContractDrift(t *testing.T) {
+	t.Parallel()
+
+	mutations := []struct {
+		name   string
+		mutate func(*providerOperationMapping)
+	}{
+		{name: "native semantic", mutate: func(mapping *providerOperationMapping) { mapping.NativeSemantic += ".broader" }},
+		{name: "availability", mutate: func(mapping *providerOperationMapping) { mapping.Availability = "universal" }},
+		{name: "maximum fidelity", mutate: func(mapping *providerOperationMapping) { mapping.MaximumFidelity = "advisory" }},
+		{name: "before requirement", mutate: func(mapping *providerOperationMapping) {
+			mapping.Requires.Before = append(mapping.Requires.Before, "issue.unproven")
+		}},
+		{name: "execute requirement", mutate: func(mapping *providerOperationMapping) {
+			mapping.Requires.Execute = append(mapping.Requires.Execute, "issue.unproven")
+		}},
+		{name: "after requirement", mutate: func(mapping *providerOperationMapping) {
+			mapping.Requires.After = append(mapping.Requires.After, "issue.unproven")
+		}},
+	}
+
+	for operationIndex := range canonicalProviderOperations() {
+		for _, mutation := range mutations {
+			operationIndex := operationIndex
+			mutation := mutation
+			t.Run(fmt.Sprintf("%02d/%s", operationIndex, mutation.name), func(t *testing.T) {
+				t.Parallel()
+
+				contract := projectManagementContract{Operations: canonicalOperations()}
+				provider := providerCapabilities{
+					Schema:                     "loaf-provider-capabilities/v1",
+					Provider:                   "linear",
+					Contract:                   trackerContract,
+					Connection:                 "harness-native",
+					RuntimeCapabilityDiscovery: "required",
+					Operations:                 canonicalProviderOperations(),
+				}
+				mutation.mutate(&provider.Operations[operationIndex])
+				assertContractFinding(t, validateProviderCapabilities(contract, provider), "provider.mapping", "exact Linear mapping")
+			})
+		}
+	}
+}
+
+func TestTrackerSkillProjectManagerUsesSharedBehaviorSource(t *testing.T) {
+	t.Parallel()
+
+	mutations := []struct {
+		name        string
+		oldValue    string
+		newValue    string
+		wantRule    string
+		wantDetails string
+	}{
+		{name: "different contract", oldValue: `"contract_path": "skills/project-management/contract.json"`, newValue: `"contract_path": "agents/independent.json"`, wantRule: "profile.behavior", wantDetails: "behavior_source"},
+		{name: "provider bypass", oldValue: `"provider_route": "selected-provider-skill"`, newValue: `"provider_route": "direct-connector"`, wantRule: "profile.behavior", wantDetails: "behavior_source"},
+		{name: "broader authority", oldValue: `"non_connector_authority": "none"`, newValue: `"non_connector_authority": "implementation"`, wantRule: "profile.authority", wantDetails: "non-connector"},
+	}
+
+	for _, mutation := range mutations {
+		mutation := mutation
+		t.Run(mutation.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := validProjectManagementFixture()
+			profile := fixture[projectManagerContractPath]
+			profile.Data = []byte(strings.Replace(string(profile.Data), mutation.oldValue, mutation.newValue, 1))
+			fixture[projectManagerContractPath] = profile
+			assertContractFinding(t, validateProjectManagementContract(fixture), mutation.wantRule, mutation.wantDetails)
+		})
+	}
+}
+
+func TestTrackerSkillSharedMutationSafetyCannotDrift(t *testing.T) {
+	t.Parallel()
+
+	mutations := []struct {
+		name     string
+		oldValue string
+		newValue string
+	}{
+		{name: "read before write", oldValue: `"read_before_write": "required"`, newValue: `"read_before_write": "optional"`},
+		{name: "authoritative readback", oldValue: `"authoritative_readback": "required"`, newValue: `"authoritative_readback": "optional"`},
+		{name: "blind create retry", oldValue: `"ambiguous_create_retry": "forbidden"`, newValue: `"ambiguous_create_retry": "allowed"`},
+		{name: "blind comment retry", oldValue: `"ambiguous_comment_retry": "forbidden"`, newValue: `"ambiguous_comment_retry": "allowed"`},
+	}
+
+	for _, mutation := range mutations {
+		mutation := mutation
+		t.Run(mutation.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := validProjectManagementFixture()
+			contract := fixture[projectManagementContractPath]
+			contract.Data = []byte(strings.Replace(string(contract.Data), mutation.oldValue, mutation.newValue, 1))
+			fixture[projectManagementContractPath] = contract
+			assertContractFinding(t, validateProjectManagementContract(fixture), "tracker.mutation", "mutation_policy")
+		})
+	}
 }
 
 func validateProjectManagementContract(content fs.FS) []finding {
@@ -240,25 +358,16 @@ func validateProviderCapabilities(contract projectManagementContract, provider p
 	if provider.Connection != "harness-native" || provider.RuntimeCapabilityDiscovery != "required" {
 		findings = append(findings, finding{"provider.connection", linearCapabilitiesPath, "connection must remain harness-native with runtime capability discovery"})
 	}
-	if len(provider.Operations) != len(contract.Operations) {
-		findings = append(findings, finding{"provider.operations", linearCapabilitiesPath, fmt.Sprintf("operations has %d entries, want %d", len(provider.Operations), len(contract.Operations))})
-	}
-	fidelities := make(map[string]struct{}, len(contract.Fidelities))
-	for _, fidelity := range contract.Fidelities {
-		fidelities[fidelity] = struct{}{}
+	wantMappings := canonicalProviderOperations()
+	if len(provider.Operations) != len(wantMappings) || len(provider.Operations) != len(contract.Operations) {
+		findings = append(findings, finding{"provider.operations", linearCapabilitiesPath, fmt.Sprintf("operations has %d entries, want %d", len(provider.Operations), len(wantMappings))})
 	}
 	for index, mapping := range provider.Operations {
 		if index >= len(contract.Operations) || mapping.ID != contract.Operations[index].ID {
 			findings = append(findings, finding{"provider.operations", linearCapabilitiesPath, fmt.Sprintf("operation %d does not match the common contract order", index)})
 		}
-		if mapping.NativeSemantic == "" || len(mapping.Requires) == 0 {
-			findings = append(findings, finding{"provider.mapping", linearCapabilitiesPath, fmt.Sprintf("operation %q needs a native semantic and capability requirements", mapping.ID)})
-		}
-		if mapping.Availability != "runtime" {
-			findings = append(findings, finding{"provider.capability", linearCapabilitiesPath, fmt.Sprintf("operation %q availability = %q, want runtime", mapping.ID, mapping.Availability)})
-		}
-		if _, exists := fidelities[mapping.MaximumFidelity]; !exists || mapping.MaximumFidelity == "unsupported" {
-			findings = append(findings, finding{"provider.fidelity", linearCapabilitiesPath, fmt.Sprintf("operation %q has invalid maximum_fidelity %q", mapping.ID, mapping.MaximumFidelity)})
+		if index >= len(wantMappings) || !reflect.DeepEqual(mapping, wantMappings[index]) {
+			findings = append(findings, finding{"provider.mapping", linearCapabilitiesPath, fmt.Sprintf("operation %q must match the exact Linear mapping and phased capability requirements", mapping.ID)})
 		}
 	}
 	return findings
@@ -266,40 +375,29 @@ func validateProviderCapabilities(contract projectManagementContract, provider p
 
 func validateProjectManagerProfile(profile projectManagerProfileContract) []finding {
 	want := projectManagerProfileContract{
-		ID:                  "project-manager/v1",
-		TrackerContract:     trackerContract,
-		Execution:           "optional",
-		Equivalence:         "same-contract",
-		ProviderSelection:   "selected-provider-skill",
-		AllowedCapabilities: []string{"harness-connector"},
-		ForbiddenCapabilities: []string{
-			"shell",
-			"filesystem-write",
-			"git",
-			"loaf-cli",
-			"loaf-state",
-			"credentials",
-			"configuration",
-			"installation",
-			"authentication",
-			"implementation",
-			"research",
-			"shaping",
-			"prioritization",
-			"orchestration",
-			"spawn",
+		ID:        "project-manager/v1",
+		Execution: "optional",
+		BehaviorSource: projectManagerBehaviorSource{
+			ContractID:    trackerContract,
+			ContractPath:  projectManagementContractPath,
+			SkillPath:     "skills/project-management/SKILL.md",
+			ProviderRoute: "selected-provider-skill",
+		},
+		Authority: projectManagerAuthority{
+			Connector:             "selected-provider-skill-only",
+			NonConnectorAuthority: "none",
 		},
 		Fallback: "main-agent-same-contract",
 	}
 	var findings []finding
-	if profile.ID != want.ID || profile.TrackerContract != want.TrackerContract || profile.Execution != want.Execution || profile.Equivalence != want.Equivalence || profile.ProviderSelection != want.ProviderSelection || profile.Fallback != want.Fallback {
+	if profile.ID != want.ID || profile.Execution != want.Execution || profile.Fallback != want.Fallback {
 		findings = append(findings, finding{"profile.contract", projectManagerContractPath, fmt.Sprintf("profile identity or execution differs from %+v", want)})
 	}
-	if !equalStrings(profile.AllowedCapabilities, want.AllowedCapabilities) {
-		findings = append(findings, finding{"profile.authority", projectManagerContractPath, fmt.Sprintf("allowed_capabilities = %v, want %v", profile.AllowedCapabilities, want.AllowedCapabilities)})
+	if profile.BehaviorSource != want.BehaviorSource {
+		findings = append(findings, finding{"profile.behavior", projectManagerContractPath, fmt.Sprintf("behavior_source = %+v, want the shared source %+v", profile.BehaviorSource, want.BehaviorSource)})
 	}
-	if !equalStrings(profile.ForbiddenCapabilities, want.ForbiddenCapabilities) {
-		findings = append(findings, finding{"profile.authority", projectManagerContractPath, "forbidden_capabilities must preserve the least-authority boundary"})
+	if profile.Authority != want.Authority {
+		findings = append(findings, finding{"profile.authority", projectManagerContractPath, "authority must remain selected-provider-skill-only with no non-connector authority"})
 	}
 	return findings
 }
@@ -335,6 +433,25 @@ func equalOperations(left, right []trackerOperation) bool {
 	return true
 }
 
+func canonicalProviderOperations() []providerOperationMapping {
+	return []providerOperationMapping{
+		{ID: "connection.discover", NativeSemantic: "harness.exposed-linear-connection", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{}, Execute: []string{"connection.list"}, After: []string{}}},
+		{ID: "capability.discover", NativeSemantic: "harness.linear-capability-description", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"connection.select"}, Execute: []string{"connection.describe"}, After: []string{}}},
+		{ID: "work.read", NativeSemantic: "linear.issue", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.read"}, After: []string{}}},
+		{ID: "work.create", NativeSemantic: "linear.issue", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.search", "issue.read"}, Execute: []string{"issue.create"}, After: []string{"issue.read"}}},
+		{ID: "work.update", NativeSemantic: "linear.issue-fields", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read"}, Execute: []string{"issue.update"}, After: []string{"issue.read"}}},
+		{ID: "definition.write", NativeSemantic: "linear.issue-description", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read"}, Execute: []string{"issue.description.write"}, After: []string{"issue.read"}}},
+		{ID: "hierarchy.read", NativeSemantic: "linear.issue-parent-and-children", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.parent.read", "issue.children.read"}, After: []string{}}},
+		{ID: "hierarchy.change", NativeSemantic: "linear.issue-parent-and-children", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.parent.read", "issue.children.read"}, Execute: []string{"issue.parent.write"}, After: []string{"issue.parent.read", "issue.children.read"}}},
+		{ID: "dependency.read", NativeSemantic: "linear.issue-relations", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.relation.read"}, After: []string{}}},
+		{ID: "dependency.change", NativeSemantic: "linear.issue-relations", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.relation.read"}, Execute: []string{"issue.relation.write"}, After: []string{"issue.relation.read"}}},
+		{ID: "status.read", NativeSemantic: "linear.issue-state", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.state.read", "workflow.state.list"}, After: []string{}}},
+		{ID: "status.transition", NativeSemantic: "linear.issue-state", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.state.read", "workflow.state.list"}, Execute: []string{"issue.state.write"}, After: []string{"issue.state.read"}}},
+		{ID: "comment.list", NativeSemantic: "linear.issue-comments", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read"}, Execute: []string{"issue.comment.read"}, After: []string{}}},
+		{ID: "comment.append", NativeSemantic: "linear.issue-comment", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read", "issue.comment.read"}, Execute: []string{"issue.comment.write"}, After: []string{"issue.read", "issue.comment.read"}}},
+	}
+}
+
 func validProjectManagementFixture() fstest.MapFS {
 	return fstest.MapFS{
 		projectManagementContractPath: &fstest.MapFile{Data: []byte(validProjectManagementContract)},
@@ -366,12 +483,20 @@ func contractOperationsJSON() string {
 }
 
 func providerOperationsJSON() string {
-	operations := canonicalOperations()
+	operations := canonicalProviderOperations()
 	lines := make([]string, 0, len(operations))
 	for _, operation := range operations {
-		lines = append(lines, fmt.Sprintf(`    {"id": %q, "native_semantic": %q, "availability": "runtime", "maximum_fidelity": "exact", "requires": ["capability"]}`,
+		before, _ := json.Marshal(operation.Requires.Before)
+		execute, _ := json.Marshal(operation.Requires.Execute)
+		after, _ := json.Marshal(operation.Requires.After)
+		lines = append(lines, fmt.Sprintf(`    {"id": %q, "native_semantic": %q, "availability": %q, "maximum_fidelity": %q, "requires": {"before": %s, "execute": %s, "after": %s}}`,
 			operation.ID,
-			"linear."+strings.ReplaceAll(operation.ID, ".", "-"),
+			operation.NativeSemantic,
+			operation.Availability,
+			operation.MaximumFidelity,
+			before,
+			execute,
+			after,
 		))
 	}
 	return strings.Join(lines, ",\n")
@@ -415,11 +540,16 @@ const validLinearCapabilitiesFormat = `{
 
 const validProjectManagerContract = `{
   "id": "project-manager/v1",
-  "tracker_contract": "project-management/v1",
   "execution": "optional",
-  "equivalence": "same-contract",
-  "provider_selection": "selected-provider-skill",
-  "allowed_capabilities": ["harness-connector"],
-  "forbidden_capabilities": ["shell", "filesystem-write", "git", "loaf-cli", "loaf-state", "credentials", "configuration", "installation", "authentication", "implementation", "research", "shaping", "prioritization", "orchestration", "spawn"],
+  "behavior_source": {
+    "contract_id": "project-management/v1",
+    "contract_path": "skills/project-management/contract.json",
+    "skill_path": "skills/project-management/SKILL.md",
+    "provider_route": "selected-provider-skill"
+  },
+  "authority": {
+    "connector": "selected-provider-skill-only",
+    "non_connector_authority": "none"
+  },
   "fallback": "main-agent-same-contract"
 }`

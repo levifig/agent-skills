@@ -28,21 +28,23 @@ Apply [`project-management/v1`](../project-management/contract.json) through a L
 ## Verification
 
 - The selected connection was observed in the current harness and its Linear workspace/team scope was read.
-- Every requested operation maps to a visible runtime capability from `capabilities.json`.
+- Every requested operation maps to all visible runtime capabilities named by the `before`, `execute`, and `after` phases in `capabilities.json`.
 - A mutation is `confirmed` only when the final native read shows the intended state.
 - Missing relation, hierarchy, status, or comment capabilities are reported rather than represented in another field.
 - No connection configuration, credential material, provider transport, or local work copy was created.
 
 ## Quick Reference
 
-| Common semantic | Linear semantic | Required runtime capability |
-|-----------------|-----------------|-----------------------------|
-| Work | Issue | Issue read/create/update |
-| Definition | Issue description | Description write |
-| Hierarchy | Parent and children | Parent read/write |
-| Dependency | Issue relations | Relation read/write |
-| Status | Issue workflow state | State read/write |
-| Comment | Issue comments | Comment read/write |
+| Common semantic | Linear semantic | Required runtime capability phases |
+|-----------------|-----------------|------------------------------------|
+| Work | Issue | Search/read before create, mutate, then issue readback |
+| Definition | Issue description | Issue read, description write, then issue readback |
+| Hierarchy | Parent and children | Parent and child reads around parent mutation |
+| Dependency | Issue relations | Relation read around relation mutation |
+| Status | Issue workflow state | Current state and workflow choices around transition |
+| Comment | Issue comments | Current issue/comments before append and both reads after |
+
+Capability identifiers in the mapping describe Linear semantics, not universal harness tool names. The selected connection must expose equivalent capabilities at runtime.
 
 ## Topics
 

@@ -1,28 +1,15 @@
 {
   "id": "project-manager/v1",
-  "tracker_contract": "project-management/v1",
   "execution": "optional",
-  "equivalence": "same-contract",
-  "provider_selection": "selected-provider-skill",
-  "allowed_capabilities": [
-    "harness-connector"
-  ],
-  "forbidden_capabilities": [
-    "shell",
-    "filesystem-write",
-    "git",
-    "loaf-cli",
-    "loaf-state",
-    "credentials",
-    "configuration",
-    "installation",
-    "authentication",
-    "implementation",
-    "research",
-    "shaping",
-    "prioritization",
-    "orchestration",
-    "spawn"
-  ],
+  "behavior_source": {
+    "contract_id": "project-management/v1",
+    "contract_path": "skills/project-management/contract.json",
+    "skill_path": "skills/project-management/SKILL.md",
+    "provider_route": "selected-provider-skill"
+  },
+  "authority": {
+    "connector": "selected-provider-skill-only",
+    "non_connector_authority": "none"
+  },
   "fallback": "main-agent-same-contract"
 }
