@@ -72,6 +72,9 @@ func (store *Store) appendFactV1(ctx context.Context, projectID continuity.Proje
 	}
 	defer tx.Rollback()
 
+	if err := rejectPrunedFactIDV1(ctx, tx, factID); err != nil {
+		return continuity.AppendReceipt{}, err
+	}
 	existing, found, err := readFactByIDV1(ctx, tx, factID)
 	if err != nil {
 		return continuity.AppendReceipt{}, err
@@ -121,6 +124,21 @@ func (store *Store) appendFactV1(ctx context.Context, projectID continuity.Proje
 		EnvironmentSequence: sequence,
 		Clock:               clock,
 	}, nil
+}
+
+func rejectPrunedFactIDV1(ctx context.Context, tx *sql.Tx, factID continuity.FactID) error {
+	var tombstoneProjectID continuity.ProjectID
+	err := tx.QueryRowContext(ctx, `
+SELECT project_id
+FROM continuity_sync_tombstones
+WHERE fact_id = ?`, string(factID)).Scan(&tombstoneProjectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return transactionOperationProblemV1(ctx)
+	}
+	return &continuity.Problem{Code: continuity.ProblemFactConflict, Field: "fact_id", Detail: "is retained as a prune tombstone"}
 }
 
 func validateAppendIntentV1(intent appendIntentV1) error {
