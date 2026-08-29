@@ -97,6 +97,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"OpaqueSyncFrame",
 		"OpaqueSyncFrame.ArrivalSequence",
 		"OpaqueSyncFrame.EnvelopeDigest",
+		"OpaqueSyncFrame.PrunedArrival",
 		"OpaqueSyncFrame.Quarantined",
 		"OpaqueSyncFrame.SealedEnvelope",
 		"Open",

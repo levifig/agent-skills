@@ -106,38 +106,152 @@ func TestContinuityStoreStagesContiguousOpaquePageAtomically(t *testing.T) {
 	assertSyncErrorCode(t, err, SyncErrorConflict)
 }
 
-func TestContinuityStoreSealedOnlyReadsRejectPrunedInboxFrame(t *testing.T) {
+func TestContinuityStoreStagesAndRepagesTaggedOpaqueFrames(t *testing.T) {
 	t.Parallel()
 
-	store := openSyncStore(t, "reject-pruned-inbox")
-	projectID := continuity.ProjectID("project-reject-pruned-inbox")
+	store := openSyncStore(t, "tagged-opaque-inbox")
+	projectID := continuity.ProjectID("project-tagged-opaque-inbox")
 	channelID := testSyncChannelID("channel-a")
 	installTestSyncAuthority(t, store, projectID, channelID)
-	sealed := []byte("sealed-retry-bytes")
-	digest := sha256.Sum256(sealed)
-	if _, err := store.db.Exec(`
-INSERT INTO continuity_sync_inbox(
-  project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
-) VALUES(?, 1, ?, 'pruned', X'01', 'staged')`, string(projectID), digest[:]); err != nil {
-		t.Fatalf("seed pruned inbox frame: %v", err)
+	frames := []OpaqueSyncFrame{
+		testOpaqueFrame(1, "sealed-before-prune"),
+		testOpaquePrunedFrame(2, "pruned-arrival"),
 	}
-	if _, err := store.db.Exec(`
-UPDATE continuity_sync_projects
-SET downloaded_cursor = 1, relay_head = 1
-WHERE project_id = ?`, string(projectID)); err != nil {
-		t.Fatalf("advance seeded pruned cursor: %v", err)
+	if _, err := store.StageSyncPage(context.Background(), projectID, channelID, 0, 2, frames); err != nil {
+		t.Fatalf("StageSyncPage(tagged) error = %v", err)
 	}
 
-	_, err := store.PendingSyncFrames(context.Background(), projectID, 1)
-	assertSyncErrorCode(t, err, SyncErrorTerminalHistoryRequired)
-	_, err = store.PendingSyncFramesAfter(context.Background(), projectID, 0, 1)
-	assertSyncErrorCode(t, err, SyncErrorTerminalHistoryRequired)
-	_, err = store.StageSyncPage(context.Background(), projectID, channelID, 0, 1, []OpaqueSyncFrame{{
-		ArrivalSequence: 1,
-		EnvelopeDigest:  digest,
-		SealedEnvelope:  sealed,
-	}})
+	for _, read := range []struct {
+		name string
+		load func() ([]OpaqueSyncFrame, error)
+	}{
+		{name: "pending", load: func() ([]OpaqueSyncFrame, error) {
+			return store.PendingSyncFrames(context.Background(), projectID, 2)
+		}},
+		{name: "after", load: func() ([]OpaqueSyncFrame, error) {
+			return store.PendingSyncFramesAfter(context.Background(), projectID, 0, 2)
+		}},
+	} {
+		got, err := read.load()
+		if err != nil {
+			t.Fatalf("%s tagged read error = %v", read.name, err)
+		}
+		if len(got) != len(frames) || !opaqueSyncFrameEqual(got[0], frames[0]) || !opaqueSyncFrameEqual(got[1], frames[1]) {
+			t.Fatalf("%s tagged read = %#v, want %#v", read.name, got, frames)
+		}
+		got[1].PrunedArrival[0] ^= 0xff
+	}
+	reloaded, err := store.PendingSyncFramesAfter(context.Background(), projectID, 1, 1)
+	if err != nil {
+		t.Fatalf("reload pruned frame: %v", err)
+	}
+	if len(reloaded) != 1 || !opaqueSyncFrameEqual(reloaded[0], frames[1]) {
+		t.Fatal("tagged read returned an alias into retained pruned bytes")
+	}
+
+	if _, err := store.StageSyncPage(context.Background(), projectID, channelID, 0, 2, frames); err != nil {
+		t.Fatalf("StageSyncPage(exact tagged retry) error = %v", err)
+	}
+	conflicting := append([]OpaqueSyncFrame(nil), frames...)
+	conflicting[1].PrunedArrival = []byte("different-pruned-arrival")
+	_, err = store.StageSyncPage(context.Background(), projectID, channelID, 0, 2, conflicting)
 	assertSyncErrorCode(t, err, SyncErrorConflict)
+	kindConflict := append([]OpaqueSyncFrame(nil), frames...)
+	kindConflict[1].PrunedArrival = nil
+	kindConflict[1].SealedEnvelope = []byte("original-envelope-pruned-arrival")
+	_, err = store.StageSyncPage(context.Background(), projectID, channelID, 0, 2, kindConflict)
+	assertSyncErrorCode(t, err, SyncErrorConflict)
+}
+
+func TestContinuityStoreRejectsInvalidOpaqueFrameUnionWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		frame OpaqueSyncFrame
+	}{
+		{name: "neither representation", frame: OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: sha256.Sum256([]byte("original"))}},
+		{name: "both representations", frame: OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: sha256.Sum256([]byte("sealed")), SealedEnvelope: []byte("sealed"), PrunedArrival: []byte("pruned")}},
+		{name: "empty sealed representation", frame: OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: sha256.Sum256(nil), SealedEnvelope: []byte{}}},
+		{name: "empty pruned representation", frame: OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: sha256.Sum256([]byte("original")), PrunedArrival: []byte{}}},
+		{name: "oversized pruned representation", frame: OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: sha256.Sum256([]byte("original")), PrunedArrival: make([]byte, maximumPrunedArrivalBytes+1)}},
+		{name: "zero original envelope digest", frame: OpaqueSyncFrame{ArrivalSequence: 1, PrunedArrival: []byte("pruned")}},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			store := openSyncStore(t, "invalid-opaque-union-"+syncSlug(test.name))
+			projectID := continuity.ProjectID("project-invalid-opaque-union-" + syncSlug(test.name))
+			channelID := testSyncChannelID("channel-a")
+			installTestSyncAuthority(t, store, projectID, channelID)
+
+			_, err := store.StageSyncPage(context.Background(), projectID, channelID, 0, 1, []OpaqueSyncFrame{test.frame})
+			assertSyncErrorCode(t, err, SyncErrorInvalid)
+			progress, progressErr := store.CurrentSyncProgress(context.Background(), projectID)
+			if progressErr != nil {
+				t.Fatalf("CurrentSyncProgress() error = %v", progressErr)
+			}
+			if progress.DownloadedCursor != 0 || progress.AppliedCursor != 0 || progress.RelayHead != 0 {
+				t.Fatalf("progress after invalid union = %#v, want zero cursors", progress)
+			}
+			var inboxRows int
+			if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_inbox WHERE project_id = ?`, string(projectID)).Scan(&inboxRows); err != nil {
+				t.Fatalf("count inbox rows: %v", err)
+			}
+			if inboxRows != 0 {
+				t.Fatalf("inbox rows after invalid union = %d, want 0", inboxRows)
+			}
+		})
+	}
+}
+
+func TestContinuityStoreAcceptsMaximumPrunedArrivalBytes(t *testing.T) {
+	t.Parallel()
+
+	store := openSyncStore(t, "maximum-pruned-arrival")
+	projectID := continuity.ProjectID("project-maximum-pruned-arrival")
+	channelID := testSyncChannelID("channel-a")
+	installTestSyncAuthority(t, store, projectID, channelID)
+	frame := testOpaquePrunedFrame(1, "maximum")
+	frame.PrunedArrival = make([]byte, maximumPrunedArrivalBytes)
+	for index := range frame.PrunedArrival {
+		frame.PrunedArrival[index] = byte(index)
+	}
+	if _, err := store.StageSyncPage(context.Background(), projectID, channelID, 0, 1, []OpaqueSyncFrame{frame}); err != nil {
+		t.Fatalf("StageSyncPage(maximum pruned arrival) error = %v", err)
+	}
+	got, err := store.PendingSyncFrames(context.Background(), projectID, 1)
+	if err != nil {
+		t.Fatalf("PendingSyncFrames(maximum pruned arrival) error = %v", err)
+	}
+	if len(got) != 1 || !opaqueSyncFrameEqual(got[0], frame) {
+		t.Fatalf("maximum pruned arrival round trip = %#v, want exact frame", got)
+	}
+}
+
+func TestContinuityStoreOrdinaryApplyStillGatesPrunedArrival(t *testing.T) {
+	t.Parallel()
+
+	store := openSyncStore(t, "ordinary-apply-pruned-gate")
+	projectID := continuity.ProjectID("project-ordinary-apply-pruned-gate")
+	channelID := testSyncChannelID("channel-a")
+	installTestSyncAuthority(t, store, projectID, channelID)
+	opaque := testOpaquePrunedFrame(1, "ordinary-gate")
+	if _, err := store.StageSyncPage(context.Background(), projectID, channelID, 0, 1, []OpaqueSyncFrame{opaque}); err != nil {
+		t.Fatalf("StageSyncPage(pruned) error = %v", err)
+	}
+	fact := syncProjectFact(t, projectID, "fact-project", "environment-a", 1, 100)
+	_, err := store.ApplySyncBatch(context.Background(), projectID, []VerifiedSyncFrame{{
+		ArrivalSequence: 1,
+		EnvelopeDigest:  opaque.EnvelopeDigest,
+		CertificateID:   testSyncCertificateID("environment-a"),
+		KeyGeneration:   1,
+		Nonce:           testNonce("ordinary-apply-pruned-gate"),
+		Fact:            fact,
+	}}, 1_000, 100)
+	assertContentFreeSyncCodeV1(t, err, SyncErrorTerminalHistoryRequired)
+	assertAppliedCursor(t, store, projectID, 0)
 }
 
 func TestContinuityStoreRejectsDuplicateEnvelopeDigestAcrossStagedPages(t *testing.T) {
@@ -504,6 +618,11 @@ func TestContinuityStoreStageRetryRecoversAfterAppliedResponseLoss(t *testing.T)
 	if replayed.DownloadedCursor != 1 || replayed.AppliedCursor != 1 {
 		t.Fatalf("applied retry progress = %#v, want both cursors at 1", replayed)
 	}
+	relabeled := append([]OpaqueSyncFrame(nil), staged...)
+	relabeled[0].SealedEnvelope = nil
+	relabeled[0].PrunedArrival = []byte("unbound-pruned-wrapper")
+	_, err = store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 1, relabeled)
+	assertSyncErrorCode(t, err, SyncErrorConflict)
 }
 
 func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.T) {
@@ -874,10 +993,19 @@ func testOpaqueFrame(arrival int64, value string) OpaqueSyncFrame {
 	return OpaqueSyncFrame{ArrivalSequence: arrival, EnvelopeDigest: sha256.Sum256(sealed), SealedEnvelope: sealed}
 }
 
+func testOpaquePrunedFrame(arrival int64, value string) OpaqueSyncFrame {
+	return OpaqueSyncFrame{
+		ArrivalSequence: arrival,
+		EnvelopeDigest:  sha256.Sum256([]byte("original-envelope-" + value)),
+		PrunedArrival:   []byte("pruned-" + value),
+	}
+}
+
 func opaqueSyncFrameEqual(left, right OpaqueSyncFrame) bool {
 	return left.ArrivalSequence == right.ArrivalSequence &&
 		left.EnvelopeDigest == right.EnvelopeDigest &&
 		string(left.SealedEnvelope) == string(right.SealedEnvelope) &&
+		string(left.PrunedArrival) == string(right.PrunedArrival) &&
 		left.Quarantined == right.Quarantined
 }
 

@@ -83,26 +83,20 @@ LIMIT ?`, string(projectID), afterArrivalSequence, downloadedCursor, limit)
 	}
 	frames := make([]OpaqueSyncFrame, 0, limit)
 	for rows.Next() {
-		var frame OpaqueSyncFrame
+		var arrivalSequence int64
 		var digest []byte
+		var frameBytes []byte
 		var frameKind, state string
-		if err := rows.Scan(&frame.ArrivalSequence, &digest, &frameKind, &frame.SealedEnvelope, &state); err != nil {
+		if err := rows.Scan(&arrivalSequence, &digest, &frameKind, &frameBytes, &state); err != nil {
 			rows.Close()
 			return nil, syncTransactionProblem(ctx)
 		}
 		expectedArrivalSequence := afterArrivalSequence + int64(len(frames)) + 1
-		if frameKind != "sealed" {
-			rows.Close()
-			return nil, syncProblem(SyncErrorTerminalHistoryRequired, "frame_kind", "requires tagged terminal-history handling")
-		}
-		if frame.ArrivalSequence != expectedArrivalSequence || len(digest) != len(frame.EnvelopeDigest) ||
-			(state != "staged" && state != "quarantined") {
+		frame, err := opaqueSyncFrameFromColumnsV1(arrivalSequence, digest, frameKind, frameBytes, state)
+		if err != nil || frame.ArrivalSequence != expectedArrivalSequence {
 			rows.Close()
 			return nil, syncProblem(SyncErrorStore, "", "staged inbox is inconsistent")
 		}
-		copy(frame.EnvelopeDigest[:], digest)
-		frame.SealedEnvelope = append([]byte(nil), frame.SealedEnvelope...)
-		frame.Quarantined = state == "quarantined"
 		frames = append(frames, frame)
 	}
 	if err := rows.Err(); err != nil {
