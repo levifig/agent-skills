@@ -1,6 +1,52 @@
 # Loaf Architecture
 
-## Current Architecture (v2.0)
+_Last updated: 2026-08-29_
+
+## vNext Kernel (Pre-Cutover)
+
+vNext is an unshipped, isolated Go production boundary. It shares the repository and Go module so it can be tested during construction, but it does not share runtime packages, command dispatch, state access, or generated artifacts with the shipped line.
+
+```
+vnext/
+├── cmd/loaf/                 # Unshipped entry point; not the canonical installed binary
+└── internal/
+    ├── command/              # Bootstrap command dispatch
+    └── kernel/               # Schema identity and ownership contract
+```
+
+The schema identity starts on a new line at `vnext/1`. This is a kernel identity, not a claim that continuity persistence already exists. The kernel does not open a database, inspect legacy tables, or translate schema 25; persistence and one-time archive migration belong to later slices.
+
+### Ownership Matrix
+
+Every responsibility has one canonical authority:
+
+| Authority | Canonical responsibilities |
+|-----------|----------------------------|
+| Loaf | Flow ceremonies, skills, templates, profiles, project identity, private continuity, derived context, and private sync |
+| Tracker | Work identity and definition, definition of done, workflow state, hierarchy, assignment, and collaboration |
+| Git | Code and deliberately promoted artifacts |
+| Harness | Execution, model selection, tool boundaries, service connections, and service credentials |
+
+Loaf may give an agent deterministic instructions and templates for tracker work, but the agent uses its harness-native connection. vNext does not store a shadow issue, hold provider credentials, proxy tracker calls, or reconcile a local work record with the tracker.
+
+### Bootstrap Command Ceremonies
+
+| Command | Purpose |
+|---------|---------|
+| `loaf version` | Report the `loaf`, `vnext`, and `vnext/1` kernel identity without consulting legacy state. |
+| `loaf ownership` | Print the ownership matrix in stable authority order. |
+
+No state, tracker, sync, migration, build, or install commands exist in the vNext boundary yet. A command family is introduced only by the slice that owns its behavior and proof.
+
+### Hard Legacy Dependency Boundary
+
+Production packages below `vnext/` may depend on the Go standard library, other `vnext/` packages, and later dependencies that receive explicit review. They cannot import the module root, `cmd/loaf`, or anything under the legacy `internal/` tree. The bootstrap dependency graph additionally cannot reach `database/sql` or `os/exec`, which prevents the kernel from querying the old store or invoking the old CLI as a hidden backend.
+
+`go test ./vnext/... -count=1 -run 'Kernel|DependencyBoundary'` inspects the complete Go dependency graph, including test dependencies, and enforces this boundary. The current implementation remains useful as behavioral specification, failure corpus, and source for a versioned one-time export, but no production code is copied across the boundary.
+
+Everything below this section documents the current shipped legacy line. It remains operational until the reviewed cutover, but its ownership model, package graph, schema, and command breadth are not vNext precedent.
+
+## Legacy Runtime Architecture (Current Shipped v2.0 Line)
 
 ```
 cmd/loaf/                       # Go CLI entry point
@@ -452,3 +498,9 @@ Source-template assertions cannot prove that escaping remains valid after genera
 ### Visible-Degraded Fallback with Stderr WARN
 
 When strict invariant enforcement would break existing callers but silent fallback risks incorrect behavior, emit a stderr warning that names the missing signal and any silencing flag. The action may proceed for compatibility, but the degraded path must remain visible and regression-testable. The journal no longer uses a branch-fallback session router; entries attach project, branch, and harness context without resolving a mutable session entity.
+
+---
+
+## Changelog
+
+- 2026-08-29 - Add the isolated vNext kernel, ownership matrix, bootstrap command surface, independent schema identity, and mechanical legacy dependency boundary.
