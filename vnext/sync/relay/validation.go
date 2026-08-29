@@ -138,8 +138,11 @@ func (acknowledgement Acknowledgement) Validate() error {
 		zeroBytes(acknowledgement.AcknowledgementDigest[:]) {
 		return fmt.Errorf("%w: acknowledgement", ErrInvalidArgument)
 	}
-	if len(acknowledgement.AcknowledgementBytes) == 0 || len(acknowledgement.AcknowledgementBytes) > MaxControlObjectBytes {
+	if len(acknowledgement.AcknowledgementBytes) == 0 || len(acknowledgement.AcknowledgementBytes) > MaxAcknowledgementBytes {
 		return fmt.Errorf("%w: acknowledgement length", ErrInvalidArgument)
+	}
+	if (acknowledgement.ProducerSequence == 0) != zeroBytes(acknowledgement.ProducerEnvelopeDigest[:]) {
+		return fmt.Errorf("%w: acknowledgement producer envelope", ErrInvalidArgument)
 	}
 	return nil
 }
@@ -177,7 +180,7 @@ func (retirement Retirement) Validate() error {
 	if zeroBytes(retirement.ChannelID[:]) || zeroBytes(retirement.RelayGeneration[:]) ||
 		!validOpaqueID(string(retirement.EnvironmentID)) || zeroBytes(retirement.CertificateID[:]) ||
 		retirement.MembershipGeneration == 0 || retirement.FinalEnvironmentSequence < 0 ||
-		zeroBytes(retirement.RetirementID[:]) || len(retirement.RetirementBytes) == 0 || len(retirement.RetirementBytes) > MaxControlObjectBytes {
+		zeroBytes(retirement.RetirementID[:]) || len(retirement.RetirementBytes) == 0 || len(retirement.RetirementBytes) > MaxRetirementBytes {
 		return fmt.Errorf("%w: retirement", ErrInvalidArgument)
 	}
 	if (retirement.FinalEnvironmentSequence == 0) != zeroBytes(retirement.FinalEnvelopeDigest[:]) {

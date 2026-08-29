@@ -77,6 +77,66 @@ func TestRelayEnvelopeValidationAcceptsZeroNonceAsCanonicalProtocolValue(t *test
 	}
 }
 
+func TestRelayAcknowledgementValidationBindsProducerSequenceToEnvelopeDigest(t *testing.T) {
+	t.Parallel()
+
+	envelope := testValidEnvelope()
+	acknowledgement := Acknowledgement{
+		ChannelID:              envelope.ChannelID,
+		EnvironmentID:          envelope.EnvironmentID,
+		MembershipGeneration:   1,
+		AppliedArrivalSequence: 0,
+		ProducerSequence:       0,
+		CertificateID:          envelope.CertificateID,
+		AcknowledgementDigest:  envelope.EnvelopeDigest,
+		AcknowledgementBytes:   []byte("opaque-signed-acknowledgement"),
+	}
+	if err := acknowledgement.Validate(); err != nil {
+		t.Fatalf("Validate(zero producer frontier) error = %v", err)
+	}
+
+	acknowledgement.ProducerSequence = 1
+	if err := acknowledgement.Validate(); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Validate(nonzero producer with zero digest) error = %v, want ErrInvalidArgument", err)
+	}
+	acknowledgement.ProducerEnvelopeDigest = envelope.EnvelopeDigest
+	if err := acknowledgement.Validate(); err != nil {
+		t.Fatalf("Validate(nonzero producer frontier) error = %v", err)
+	}
+	acknowledgement.ProducerSequence = 0
+	if err := acknowledgement.Validate(); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Validate(zero producer with nonzero digest) error = %v, want ErrInvalidArgument", err)
+	}
+
+	acknowledgement.ProducerEnvelopeDigest = Digest{}
+	acknowledgement.AcknowledgementBytes = make([]byte, MaxAcknowledgementBytes+1)
+	if err := acknowledgement.Validate(); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Validate(oversized acknowledgement) error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestRelayRetirementValidationEnforcesCanonicalControlBound(t *testing.T) {
+	t.Parallel()
+
+	envelope := testValidEnvelope()
+	retirement := Retirement{
+		ChannelID:            envelope.ChannelID,
+		RelayGeneration:      RelayGeneration(envelope.EnvelopeDigest),
+		EnvironmentID:        envelope.EnvironmentID,
+		CertificateID:        envelope.CertificateID,
+		MembershipGeneration: 2,
+		RetirementID:         envelope.EnvelopeDigest,
+		RetirementBytes:      []byte("opaque-signed-terminal-retirement"),
+	}
+	if err := retirement.Validate(); err != nil {
+		t.Fatalf("Validate(valid retirement) error = %v", err)
+	}
+	retirement.RetirementBytes = make([]byte, MaxRetirementBytes+1)
+	if err := retirement.Validate(); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Validate(oversized retirement) error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func testValidEnvelope() Envelope {
 	var channel ChannelID
 	var certificate, envelopeDigest Digest

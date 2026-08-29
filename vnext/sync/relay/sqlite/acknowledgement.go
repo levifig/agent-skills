@@ -39,10 +39,10 @@ func (store *Store) Acknowledge(ctx context.Context, request relay.AcknowledgeRe
 
 		var existingMembership uint32
 		var existingApplied, existingProducer int64
-		var existingCertificateID, existingDigest, existingBytes []byte
+		var existingProducerDigest, existingCertificateID, existingDigest, existingBytes []byte
 		var persistedConflict, persistedRollback bool
 		err = tx.QueryRowContext(ctx, `
-SELECT membership_generation, applied_arrival_sequence, producer_sequence,
+SELECT membership_generation, applied_arrival_sequence, producer_sequence, producer_envelope_digest,
        certificate_id, acknowledgement_digest, acknowledgement_bytes
 FROM relay_acknowledgements
 WHERE channel_id = ? AND environment_id = ?`,
@@ -51,6 +51,7 @@ WHERE channel_id = ? AND environment_id = ?`,
 			&existingMembership,
 			&existingApplied,
 			&existingProducer,
+			&existingProducerDigest,
 			&existingCertificateID,
 			&existingDigest,
 			&existingBytes,
@@ -61,7 +62,8 @@ WHERE channel_id = ? AND environment_id = ?`,
 				existingApplied == acknowledgement.AppliedArrivalSequence &&
 				existingProducer == acknowledgement.ProducerSequence
 			if samePosition {
-				if bytes.Equal(existingCertificateID, acknowledgement.CertificateID[:]) &&
+				if bytes.Equal(existingProducerDigest, acknowledgement.ProducerEnvelopeDigest[:]) &&
+					bytes.Equal(existingCertificateID, acknowledgement.CertificateID[:]) &&
 					bytes.Equal(existingDigest, acknowledgement.AcknowledgementDigest[:]) &&
 					bytes.Equal(existingBytes, acknowledgement.AcknowledgementBytes) {
 					return nil
@@ -97,7 +99,7 @@ WHERE channel_id = ? AND environment_id = ?`,
 		if acknowledgement.AppliedArrivalSequence > head {
 			return relay.ErrSourceGap
 		}
-		producer, err := producerHead(ctx, tx, acknowledgement.ChannelID, acknowledgement.EnvironmentID)
+		producer, producerDigest, err := producerFence(ctx, tx, acknowledgement.ChannelID, acknowledgement.EnvironmentID)
 		if err != nil {
 			return err
 		}
@@ -106,6 +108,9 @@ WHERE channel_id = ? AND environment_id = ?`,
 		}
 		if acknowledgement.ProducerSequence > producer {
 			return relay.ErrSourceGap
+		}
+		if acknowledgement.ProducerEnvelopeDigest != producerDigest {
+			return relay.ErrImmutableConflict
 		}
 		if err := store.verifier.VerifyAcknowledgement(ctx, environment.authority, acknowledgement); err != nil {
 			return fmt.Errorf("%w: acknowledgement", relay.ErrUnverified)
@@ -118,15 +123,17 @@ INSERT INTO relay_acknowledgements(
   membership_generation,
   applied_arrival_sequence,
   producer_sequence,
+  producer_envelope_digest,
   certificate_id,
   acknowledgement_digest,
   acknowledgement_bytes,
   acknowledged_at_millis
-) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(channel_id, environment_id) DO UPDATE SET
   membership_generation = excluded.membership_generation,
   applied_arrival_sequence = excluded.applied_arrival_sequence,
   producer_sequence = excluded.producer_sequence,
+  producer_envelope_digest = excluded.producer_envelope_digest,
   certificate_id = excluded.certificate_id,
   acknowledgement_digest = excluded.acknowledgement_digest,
   acknowledgement_bytes = excluded.acknowledgement_bytes,
@@ -136,6 +143,7 @@ ON CONFLICT(channel_id, environment_id) DO UPDATE SET
 			acknowledgement.MembershipGeneration,
 			acknowledgement.AppliedArrivalSequence,
 			acknowledgement.ProducerSequence,
+			acknowledgement.ProducerEnvelopeDigest[:],
 			acknowledgement.CertificateID[:],
 			acknowledgement.AcknowledgementDigest[:],
 			acknowledgement.AcknowledgementBytes,

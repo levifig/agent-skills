@@ -112,7 +112,7 @@ const relayEnvironmentsTableSQL = `CREATE TABLE relay_environments (
     length(retirement_id) = 32
     AND retirement_id <> X'0000000000000000000000000000000000000000000000000000000000000000'
   ),
-  retirement_bytes BLOB CHECK (length(retirement_bytes) BETWEEN 1 AND 1048576),
+  retirement_bytes BLOB CHECK (length(retirement_bytes) BETWEEN 1 AND 4096),
   created_at_millis INTEGER NOT NULL CHECK (created_at_millis >= 0),
   PRIMARY KEY (channel_id, environment_id),
   UNIQUE (channel_id, certificate_id),
@@ -224,6 +224,13 @@ const relayAcknowledgementsTableSQL = `CREATE TABLE relay_acknowledgements (
   ),
   applied_arrival_sequence INTEGER NOT NULL CHECK (applied_arrival_sequence >= 0),
   producer_sequence INTEGER NOT NULL CHECK (producer_sequence >= 0),
+  producer_envelope_digest BLOB NOT NULL CHECK (
+    length(producer_envelope_digest) = 32
+    AND (
+      (producer_sequence = 0 AND producer_envelope_digest = X'0000000000000000000000000000000000000000000000000000000000000000')
+      OR (producer_sequence > 0 AND producer_envelope_digest <> X'0000000000000000000000000000000000000000000000000000000000000000')
+    )
+  ),
   certificate_id BLOB NOT NULL CHECK (
     length(certificate_id) = 32
     AND certificate_id <> X'0000000000000000000000000000000000000000000000000000000000000000'
@@ -232,7 +239,7 @@ const relayAcknowledgementsTableSQL = `CREATE TABLE relay_acknowledgements (
     length(acknowledgement_digest) = 32
     AND acknowledgement_digest <> X'0000000000000000000000000000000000000000000000000000000000000000'
   ),
-  acknowledgement_bytes BLOB NOT NULL CHECK (length(acknowledgement_bytes) BETWEEN 1 AND 1048576),
+  acknowledgement_bytes BLOB NOT NULL CHECK (length(acknowledgement_bytes) BETWEEN 1 AND 4096),
   acknowledged_at_millis INTEGER NOT NULL CHECK (acknowledged_at_millis >= 0),
   PRIMARY KEY (channel_id, environment_id),
   FOREIGN KEY (channel_id, environment_id, certificate_id)
@@ -345,6 +352,8 @@ WHEN NEW.channel_id <> OLD.channel_id
   OR NEW.membership_generation < OLD.membership_generation
   OR NEW.applied_arrival_sequence < OLD.applied_arrival_sequence
   OR NEW.producer_sequence < OLD.producer_sequence
+  OR (NEW.producer_sequence = OLD.producer_sequence
+    AND NEW.producer_envelope_digest <> OLD.producer_envelope_digest)
 BEGIN
   SELECT RAISE(ABORT, 'relay acknowledgement rollback refused');
 END`

@@ -54,13 +54,14 @@ func (store *Store) Tombstone(ctx context.Context, request relay.TombstoneReques
 		if certificate.Barrier > head {
 			return relay.ErrSourceGap
 		}
-		if err := requirePruneAcknowledgements(ctx, tx, certificate); err != nil {
+		pruneAuthority, err := readPruneAuthority(ctx, tx, channel.authority, certificate)
+		if err != nil {
 			return err
 		}
 		if err := verifyPruneTargets(ctx, tx, certificate); err != nil {
 			return err
 		}
-		if err := store.verifier.VerifyPruneCertificate(ctx, channel.authority, certificate); err != nil {
+		if err := store.verifier.VerifyPruneCertificate(ctx, pruneAuthority, certificate); err != nil {
 			return fmt.Errorf("%w: prune certificate", relay.ErrUnverified)
 		}
 		currentPruneHead, err := pruneHead(ctx, tx, certificate.ChannelID)
@@ -139,57 +140,119 @@ WHERE channel_id = ?
 	return result, nil
 }
 
-func requirePruneAcknowledgements(ctx context.Context, tx *sql.Tx, certificate relay.PruneCertificate) error {
+func readPruneAuthority(ctx context.Context, tx *sql.Tx, channel relay.ChannelAuthority, certificate relay.PruneCertificate) (relay.PruneAuthority, error) {
+	authority := relay.PruneAuthority{
+		Channel:          channel,
+		Environments:     make([]relay.EnvironmentAuthority, 0),
+		Acknowledgements: make([]relay.Acknowledgement, 0),
+	}
 	rows, err := tx.QueryContext(ctx, `
-SELECT e.environment_id,
+SELECT e.environment_id, e.certificate_id, e.certificate_bytes, e.mode,
+       e.expires_at_millis, e.token_expires_at_millis, e.membership_generation,
        COALESCE((
          SELECT MAX(a.environment_sequence)
          FROM relay_arrivals AS a
          WHERE a.channel_id = e.channel_id AND a.environment_id = e.environment_id
        ), 0),
+       COALESCE((
+         SELECT a.envelope_digest
+         FROM relay_arrivals AS a
+         WHERE a.channel_id = e.channel_id AND a.environment_id = e.environment_id
+         ORDER BY a.environment_sequence DESC
+         LIMIT 1
+       ), zeroblob(32)),
        k.membership_generation,
        k.applied_arrival_sequence,
-       k.producer_sequence
+       k.producer_sequence,
+       k.producer_envelope_digest,
+       k.certificate_id,
+       k.acknowledgement_digest,
+       k.acknowledgement_bytes
 FROM relay_environments AS e
 LEFT JOIN relay_acknowledgements AS k
   ON k.channel_id = e.channel_id AND k.environment_id = e.environment_id
 WHERE e.channel_id = ? AND e.retired_at_millis IS NULL
-ORDER BY e.environment_id`, certificate.ChannelID[:])
+ORDER BY e.environment_id
+LIMIT ?`, certificate.ChannelID[:], relay.MaxPruneAuthorityEnvironments+1)
 	if err != nil {
-		return fmt.Errorf("query relay prune acknowledgements: %w", err)
+		return relay.PruneAuthority{}, fmt.Errorf("query relay prune authority: %w", err)
 	}
 	for rows.Next() {
-		var environmentID string
+		if len(authority.Environments) == relay.MaxPruneAuthorityEnvironments {
+			return relay.PruneAuthority{}, closeRowsWithError(rows, fmt.Errorf("%w: prune authority environment bound", relay.ErrInvalidArgument), "relay prune authority")
+		}
+		var environment relay.EnvironmentAuthority
+		var acknowledgement relay.Acknowledgement
+		var environmentID, mode string
 		var producerHead int64
+		var environmentCertificateID, certificateBytes, producerDigest []byte
 		var membership sql.NullInt64
 		var applied, producer sql.NullInt64
-		if err := rows.Scan(&environmentID, &producerHead, &membership, &applied, &producer); err != nil {
-			closeErr := rows.Close()
-			if closeErr != nil {
-				return errors.Join(fmt.Errorf("scan relay prune acknowledgement: %w", err), fmt.Errorf("close relay prune acknowledgements: %w", closeErr))
-			}
-			return fmt.Errorf("scan relay prune acknowledgement: %w", err)
+		var acknowledgementProducerDigest, acknowledgementCertificateID, acknowledgementDigest, acknowledgementBytes []byte
+		if err := rows.Scan(
+			&environmentID,
+			&environmentCertificateID,
+			&certificateBytes,
+			&mode,
+			&environment.ExpiresAtMillis,
+			&environment.RelayTokenExpiresAtMillis,
+			&environment.MembershipGeneration,
+			&producerHead,
+			&producerDigest,
+			&membership,
+			&applied,
+			&producer,
+			&acknowledgementProducerDigest,
+			&acknowledgementCertificateID,
+			&acknowledgementDigest,
+			&acknowledgementBytes,
+		); err != nil {
+			return relay.PruneAuthority{}, closeRowsWithError(rows, fmt.Errorf("scan relay prune authority: %w", err), "relay prune authority")
 		}
 		if !membership.Valid || !applied.Valid || !producer.Valid ||
 			membership.Int64 != int64(certificate.MembershipGeneration) ||
 			applied.Int64 < certificate.Barrier || producer.Int64 != producerHead {
-			if closeErr := rows.Close(); closeErr != nil {
-				return errors.Join(relay.ErrAcknowledgementRequired, fmt.Errorf("close relay prune acknowledgements: %w", closeErr))
-			}
-			return relay.ErrAcknowledgementRequired
+			return relay.PruneAuthority{}, closeRowsWithError(rows, relay.ErrAcknowledgementRequired, "relay prune authority")
 		}
+		environment.ChannelAuthority = channel
+		environment.EnvironmentID = relay.EnvironmentID(environmentID)
+		environment.CertificateBytes = append([]byte(nil), certificateBytes...)
+		environment.Mode = relay.EnvironmentMode(mode)
+		if !scanFixed(environment.CertificateID[:], environmentCertificateID) {
+			return relay.PruneAuthority{}, closeRowsWithError(rows, fmt.Errorf("relay prune authority contains an invalid environment certificate id"), "relay prune authority")
+		}
+		acknowledgement = relay.Acknowledgement{
+			ChannelID:              certificate.ChannelID,
+			EnvironmentID:          environment.EnvironmentID,
+			MembershipGeneration:   uint32(membership.Int64),
+			AppliedArrivalSequence: applied.Int64,
+			ProducerSequence:       producer.Int64,
+			AcknowledgementBytes:   append([]byte(nil), acknowledgementBytes...),
+		}
+		var actualProducerDigest relay.Digest
+		if !scanFixed(actualProducerDigest[:], producerDigest) ||
+			!scanFixed(acknowledgement.ProducerEnvelopeDigest[:], acknowledgementProducerDigest) ||
+			!scanFixed(acknowledgement.CertificateID[:], acknowledgementCertificateID) ||
+			!scanFixed(acknowledgement.AcknowledgementDigest[:], acknowledgementDigest) {
+			return relay.PruneAuthority{}, closeRowsWithError(rows, fmt.Errorf("relay prune authority contains invalid fixed-width acknowledgement metadata"), "relay prune authority")
+		}
+		if acknowledgement.CertificateID != environment.CertificateID ||
+			acknowledgement.ProducerEnvelopeDigest != actualProducerDigest {
+			return relay.PruneAuthority{}, closeRowsWithError(rows, relay.ErrAcknowledgementRequired, "relay prune authority")
+		}
+		if err := acknowledgement.Validate(); err != nil {
+			return relay.PruneAuthority{}, closeRowsWithError(rows, fmt.Errorf("relay prune authority contains an invalid acknowledgement: %w", err), "relay prune authority")
+		}
+		authority.Environments = append(authority.Environments, environment)
+		authority.Acknowledgements = append(authority.Acknowledgements, acknowledgement)
 	}
 	if err := rows.Err(); err != nil {
-		closeErr := rows.Close()
-		if closeErr != nil {
-			return errors.Join(fmt.Errorf("iterate relay prune acknowledgements: %w", err), fmt.Errorf("close relay prune acknowledgements: %w", closeErr))
-		}
-		return fmt.Errorf("iterate relay prune acknowledgements: %w", err)
+		return relay.PruneAuthority{}, closeRowsWithError(rows, fmt.Errorf("iterate relay prune authority: %w", err), "relay prune authority")
 	}
 	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close relay prune acknowledgements: %w", err)
+		return relay.PruneAuthority{}, fmt.Errorf("close relay prune authority: %w", err)
 	}
-	return nil
+	return authority, nil
 }
 
 func verifyPruneTargets(ctx context.Context, tx *sql.Tx, certificate relay.PruneCertificate) error {
