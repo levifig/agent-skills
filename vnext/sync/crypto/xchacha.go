@@ -9,3 +9,7 @@ import (
 func newXChaCha(key GenerationKey) (cipher.AEAD, error) {
 	return chacha20poly1305.NewX(key.material[:])
 }
+
+func newPruneBootstrapXChaCha(key pruneBootstrapAEADKey) (cipher.AEAD, error) {
+	return chacha20poly1305.NewX(key.material[:])
+}
