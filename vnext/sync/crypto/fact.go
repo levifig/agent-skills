@@ -131,15 +131,8 @@ func OpenFact(
 	if key.projectID != certificate.ProjectID || key.cipherSuite != sealed.Header.CipherSuite {
 		return continuitywire.Fact{}, ErrGenerationBinding
 	}
-	if err := verifyEnvelopeBindings(sealed.Header, certificate); err != nil {
+	if err := verifySealedFactSignatureWithVerifiedCertificate(sealed, certificate); err != nil {
 		return continuitywire.Fact{}, err
-	}
-	transcript, err := protocol.FactSignatureTranscript(sealed.Header, sealed.Ciphertext)
-	if err != nil {
-		return continuitywire.Fact{}, err
-	}
-	if !ed25519.Verify(ed25519.PublicKey(certificate.EnvironmentPublicKey[:]), transcript, sealed.Signature[:]) {
-		return continuitywire.Fact{}, ErrInvalidEnvironmentSignature
 	}
 	aead, err := newXChaCha(key)
 	if err != nil {
@@ -164,6 +157,43 @@ func OpenFact(
 		return continuitywire.Fact{}, ErrPlaintextBinding
 	}
 	return fact, nil
+}
+
+// VerifySealedFactSignature verifies the opaque envelope structure, its
+// administrator-certified environment identity, exact certificate bindings,
+// and environment signature. It intentionally does not require generation-key
+// material, apply certificate expiry, decrypt ciphertext, or inspect the
+// continuity plaintext, so an opaque relay can authenticate an envelope
+// without learning its contents.
+func VerifySealedFactSignature(
+	sealed protocol.SealedFact,
+	certificate protocol.EnvironmentCertificate,
+	adminPublic protocol.PublicKey,
+) error {
+	if err := sealed.Validate(); err != nil {
+		return err
+	}
+	if err := VerifyEnvironmentCertificate(certificate, adminPublic); err != nil {
+		return err
+	}
+	return verifySealedFactSignatureWithVerifiedCertificate(sealed, certificate)
+}
+
+func verifySealedFactSignatureWithVerifiedCertificate(
+	sealed protocol.SealedFact,
+	certificate protocol.EnvironmentCertificate,
+) error {
+	if err := verifyEnvelopeBindings(sealed.Header, certificate); err != nil {
+		return err
+	}
+	transcript, err := protocol.FactSignatureTranscript(sealed.Header, sealed.Ciphertext)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(ed25519.PublicKey(certificate.EnvironmentPublicKey[:]), transcript, sealed.Signature[:]) {
+		return ErrInvalidEnvironmentSignature
+	}
+	return nil
 }
 
 // OpenFactForAdmission applies certificate expiry at a trusted Unix-millisecond
