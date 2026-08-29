@@ -1,6 +1,14 @@
 package kernel
 
-import "testing"
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestKernelIdentityStartsIndependentSchemaLine(t *testing.T) {
 	t.Parallel()
@@ -95,5 +103,29 @@ func TestKernelOwnershipMatrixReturnsIndependentValues(t *testing.T) {
 	}
 	if second[0].Responsibilities[0] != "flow-ceremonies" {
 		t.Errorf("OwnershipMatrix()[0].Responsibilities[0] = %q after caller mutation, want flow-ceremonies", second[0].Responsibilities[0])
+	}
+}
+
+func TestKernelContractHasNoPackageLevelMutableState(t *testing.T) {
+	t.Parallel()
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read kernel package: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), entry.Name(), nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", entry.Name(), err)
+		}
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if ok && general.Tok == token.VAR {
+				t.Errorf("%s contains package-level mutable state", entry.Name())
+			}
+		}
 	}
 }

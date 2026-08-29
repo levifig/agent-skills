@@ -31,7 +31,7 @@ The vNext schema line starts independently at `vnext/1`. Its bootstrap command s
 
 **The CLI is the protocol layer for Loaf-owned mechanics.** Skills describe judgment and workflow, the CLI performs deterministic continuity, identity, filesystem, and diagnostic operations, and hooks enforce or inject narrowly scoped behavior. Tracker operations use the harness's configured native connection; Loaf does not put a provider adapter between the agent and the tracker.
 
-**Continuity belongs to the project journal, not a session lifecycle.** The journal remains the private timeline and resumption spine; vNext's operator-owned substrate also preserves wraps, sparks, ideas, decisions, explorations, findings, handoffs, scratchpad coordination, and derived context. Tracker work remains outside it. Context is derived at read time, and a wrap is an optional synthesis checkpoint rather than a transition.
+**Continuity belongs to the project journal, not a session lifecycle.** The journal remains the private timeline and resumption spine; vNext's operator-owned substrate also preserves wraps, sparks, ideas, decisions, explorations, findings, handoffs, scratchpad coordination, and derived context. Tracker work remains outside it. Scratchpad coordination is private, effort-scoped, and ephemeral: it never owns work, definition of done, workflow, hierarchy, assignment, or team collaboration state. Context is derived at read time, and a wrap is an optional synthesis checkpoint rather than a transition.
 
 **Managed installation requires ownership evidence.** Loaf should change installed content only when it can identify what it owns and verify the expected digest. Capability claims must be tied to exact client versions and installed runtime evidence rather than inferred from build output.
 
@@ -128,4 +128,4 @@ The implication for both personas: Loaf's value is the *framework* -- mechanical
 
 ## Changelog
 
-- 2026-08-29 - Make the isolated tracker-native vNext reset the destination strategy and reclassify the shipped line as evidence and migration input.
+- 2026-08-29 - Make the isolated tracker-native vNext reset the destination strategy, define private scratchpad scope, and reclassify the shipped line as evidence and migration input.

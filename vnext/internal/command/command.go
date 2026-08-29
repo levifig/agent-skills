@@ -17,8 +17,15 @@ type Runner struct {
 	stderr io.Writer
 }
 
-// New constructs a vNext command runner.
+// New constructs a vNext command runner. A nil stream explicitly discards the
+// corresponding output.
 func New(stdout, stderr io.Writer) Runner {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
 	return Runner{stdout: stdout, stderr: stderr}
 }
 
@@ -61,7 +68,8 @@ func (runner Runner) unknown(args []string) int {
 }
 
 func write(destination io.Writer, value string) int {
-	if _, err := io.WriteString(destination, value); err != nil {
+	written, err := io.WriteString(destination, value)
+	if err != nil || written != len(value) {
 		return 1
 	}
 	return 0

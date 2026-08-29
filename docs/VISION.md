@@ -26,6 +26,8 @@ Loaf's durable memory — journal, wraps, sparks, ideas, decisions, explorations
 
 Work survives context loss, compaction, tool restarts, and cross-conversation handoffs because the substrate is external to any single harness session. Private memory retains the connective narrative and opaque references needed to resume; the tracker remains canonical for the shared work itself. Context at conversation start is a derived digest — never a lifecycle transition.
 
+Scratchpad coordination is private, effort-scoped, and ephemeral. It can coordinate the operator's agents during an effort, but it is never canonical tracker work, definition of done, workflow, hierarchy, assignment, or team collaboration state.
+
 Sharing with other humans happens only through explicit **promote surfaces** (PR bodies, committed files, external trackers). The substrate itself is private.
 
 ## What Success Looks Like
@@ -34,7 +36,7 @@ A developer installs Loaf and immediately gets:
 
 - **Consistent agent behavior across tools** -- same skills, same conventions, different runtimes
 - **Bounded work that prevents scope creep** -- tracker-native work items define the intended outcome, boundaries, and proof before implementation
-- **Project journal history that enables handoff** -- pick up where you left off, or hand off to a colleague
+- **Private continuity that enables resumption** -- the same operator can resume across agents, sessions, harnesses, and environments; colleagues receive work only through explicit tracker or Git promotion
 - **Hooks that enforce quality without friction** -- secrets scanning, commit conventions, push guards
 - **Domain expertise that loads automatically** -- the right engineering standards for the current task
 - **Same project, any session, any harness, any host** — a cloud agent picks up the same private continuity and open-work references as the operator's laptop after attach
@@ -73,4 +75,4 @@ Each responsibility has one canonical owner. Crossing an authority boundary mean
 
 ## Changelog
 
-- 2026-08-29 - Define the tracker-native vNext ownership, schema, command, and legacy dependency boundary.
+- 2026-08-29 - Define the tracker-native vNext ownership and hard boundary, including private resumption, scratchpad scope, schema identity, and command surface.
