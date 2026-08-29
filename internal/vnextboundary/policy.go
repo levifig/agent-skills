@@ -251,7 +251,7 @@ func inspectGoSource(metadata moduleMetadata, sourcePath, relativePath string) [
 			})
 			continue
 		}
-		if violation, rejected := inspectImport(metadata, relativePath, importPath); rejected {
+		if violation, rejected := inspectImport(metadata, relativePath, importPath, importName(importSpec)); rejected {
 			violations = append(violations, violation)
 		}
 		if importPath != "os" {
@@ -309,7 +309,35 @@ func inspectGoSource(metadata moduleMetadata, sourcePath, relativePath string) [
 	return violations
 }
 
-func inspectImport(metadata moduleMetadata, relativePath, importPath string) (boundaryViolation, bool) {
+const (
+	continuitySQLitePackage      = "vnext/continuity/sqlite"
+	continuitySQLiteDriverFile   = "vnext/continuity/sqlite/driver.go"
+	continuitySQLiteDriverImport = "github.com/ncruces/go-sqlite3/driver"
+	ncrucesModuleRoot            = "github.com/ncruces"
+	ncrucesModulePrefix          = "github.com/ncruces/"
+)
+
+func inspectImport(metadata moduleMetadata, relativePath, importPath, importName string) (boundaryViolation, bool) {
+	if importPath == "database/sql" {
+		if isContinuitySQLitePackage(relativePath) {
+			return boundaryViolation{}, false
+		}
+		return boundaryViolation{
+			Path:   relativePath,
+			Rule:   forbiddenImportRule,
+			Detail: fmt.Sprintf("%s: database access is outside the bootstrap kernel", importPath),
+		}, true
+	}
+	if isAdmittedSQLiteDriverImport(relativePath, importPath, importName) {
+		return boundaryViolation{}, false
+	}
+	if isNcrucesImport(importPath) {
+		return boundaryViolation{
+			Path:   relativePath,
+			Rule:   thirdPartyImportRule,
+			Detail: fmt.Sprintf("%s is not the exact blank sqlite driver import admitted in %s", importPath, continuitySQLiteDriverFile),
+		}, true
+	}
 	if reason, forbidden := forbiddenBootstrapImportReason(importPath); forbidden {
 		return boundaryViolation{Path: relativePath, Rule: forbiddenImportRule, Detail: fmt.Sprintf("%s: %s", importPath, reason)}, true
 	}
@@ -333,12 +361,29 @@ func inspectImport(metadata moduleMetadata, relativePath, importPath string) (bo
 	}, true
 }
 
+func importName(spec *ast.ImportSpec) string {
+	if spec.Name == nil {
+		return ""
+	}
+	return spec.Name.Name
+}
+
+func isContinuitySQLitePackage(relativePath string) bool {
+	return pathpkg.Dir(relativePath) == continuitySQLitePackage
+}
+
+func isAdmittedSQLiteDriverImport(relativePath, importPath, importName string) bool {
+	return relativePath == continuitySQLiteDriverFile && importPath == continuitySQLiteDriverImport && importName == "_"
+}
+
+func isNcrucesImport(importPath string) bool {
+	return importPath == ncrucesModuleRoot || strings.HasPrefix(importPath, ncrucesModulePrefix)
+}
+
 func forbiddenBootstrapImportReason(importPath string) (string, bool) {
 	switch importPath {
 	case "C":
 		return "cgo can cross the Go runtime boundary", true
-	case "database/sql":
-		return "database access is outside the bootstrap kernel", true
 	case "os/exec":
 		return "subprocess execution can invoke the legacy runtime", true
 	case "plugin":
