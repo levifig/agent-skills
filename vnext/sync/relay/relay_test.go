@@ -137,6 +137,63 @@ func TestRelayRetirementValidationEnforcesCanonicalControlBound(t *testing.T) {
 	}
 }
 
+func TestRelayPruneCertificateValidationRequiresDisjointClosureReference(t *testing.T) {
+	t.Parallel()
+
+	envelope := testValidEnvelope()
+	target := PruneTarget{
+		FactID:              envelope.FactID,
+		EnvironmentID:       envelope.EnvironmentID,
+		EnvironmentSequence: 1,
+		ArrivalSequence:     1,
+		EnvelopeDigest:      envelope.EnvelopeDigest,
+		CertificateID:       envelope.CertificateID,
+	}
+	closure := target
+	closure.FactID = "fact-close"
+	closure.EnvironmentSequence = 2
+	closure.ArrivalSequence = 2
+	closure.EnvelopeDigest[0] ^= 0xff
+	certificate := PruneCertificate{
+		ChannelID:            envelope.ChannelID,
+		PruneID:              closure.EnvelopeDigest,
+		MembershipGeneration: 1,
+		Barrier:              2,
+		Closure:              closure,
+		CertificateID:        envelope.EnvelopeDigest,
+		CertificateBytes:     []byte("opaque-signed-prune-certificate"),
+		Targets:              []PruneTarget{target},
+	}
+	if err := certificate.Validate(); err != nil {
+		t.Fatalf("Validate(valid prune certificate) error = %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*PruneCertificate)
+	}{
+		{name: "zero closure", mutate: func(value *PruneCertificate) { value.Closure = PruneTarget{} }},
+		{name: "closure above barrier", mutate: func(value *PruneCertificate) { value.Closure.ArrivalSequence = 3 }},
+		{name: "closure target arrival", mutate: func(value *PruneCertificate) { value.Closure.ArrivalSequence = 1 }},
+		{name: "closure target fact", mutate: func(value *PruneCertificate) { value.Closure.FactID = value.Targets[0].FactID }},
+		{name: "closure target source", mutate: func(value *PruneCertificate) {
+			value.Closure.EnvironmentID = value.Targets[0].EnvironmentID
+			value.Closure.EnvironmentSequence = value.Targets[0].EnvironmentSequence
+		}},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			candidate := certificate
+			test.mutate(&candidate)
+			if err := candidate.Validate(); !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("Validate() error = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+}
+
 func testValidEnvelope() Envelope {
 	var channel ChannelID
 	var certificate, envelopeDigest Digest

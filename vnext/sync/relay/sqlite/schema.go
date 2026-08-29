@@ -139,6 +139,27 @@ const relayPruneCertificatesTableSQL = `CREATE TABLE relay_prune_certificates (
     membership_generation BETWEEN 1 AND 4294967295
   ),
   barrier_arrival_sequence INTEGER NOT NULL CHECK (barrier_arrival_sequence > 0),
+  closure_fact_id TEXT NOT NULL CHECK (
+    length(closure_fact_id) BETWEEN 1 AND 128
+    AND closure_fact_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  closure_environment_id TEXT NOT NULL CHECK (
+    length(closure_environment_id) BETWEEN 1 AND 128
+    AND closure_environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  closure_environment_sequence INTEGER NOT NULL CHECK (closure_environment_sequence > 0),
+  closure_arrival_sequence INTEGER NOT NULL CHECK (
+    closure_arrival_sequence > 0
+    AND closure_arrival_sequence <= barrier_arrival_sequence
+  ),
+  closure_envelope_digest BLOB NOT NULL CHECK (
+    length(closure_envelope_digest) = 32
+    AND closure_envelope_digest <> X'0000000000000000000000000000000000000000000000000000000000000000'
+  ),
+  closure_certificate_id BLOB NOT NULL CHECK (
+    length(closure_certificate_id) = 32
+    AND closure_certificate_id <> X'0000000000000000000000000000000000000000000000000000000000000000'
+  ),
   certificate_id BLOB NOT NULL CHECK (
     length(certificate_id) = 32
     AND certificate_id <> X'0000000000000000000000000000000000000000000000000000000000000000'
@@ -149,7 +170,9 @@ const relayPruneCertificatesTableSQL = `CREATE TABLE relay_prune_certificates (
   PRIMARY KEY (channel_id, prune_id),
   UNIQUE (channel_id, prune_sequence),
   UNIQUE (channel_id, certificate_id),
-  FOREIGN KEY (channel_id) REFERENCES relay_channels(channel_id) ON DELETE RESTRICT
+  FOREIGN KEY (channel_id) REFERENCES relay_channels(channel_id) ON DELETE RESTRICT,
+  FOREIGN KEY (channel_id, closure_arrival_sequence)
+    REFERENCES relay_arrivals(channel_id, arrival_sequence) ON DELETE RESTRICT
 ) STRICT, WITHOUT ROWID`
 
 const relayArrivalsTableSQL = `CREATE TABLE relay_arrivals (
@@ -335,6 +358,12 @@ WHEN OLD.ciphertext IS NULL
   OR NEW.prune_id IS NULL
   OR OLD.pruned_at_millis IS NOT NULL
   OR NEW.pruned_at_millis IS NULL
+  OR EXISTS (
+    SELECT 1
+    FROM relay_prune_certificates
+    WHERE channel_id = OLD.channel_id
+      AND closure_arrival_sequence = OLD.arrival_sequence
+  )
 BEGIN
   SELECT RAISE(ABORT, 'relay arrival tombstone transition is invalid');
 END`
