@@ -18,7 +18,16 @@ const continuityRoot = "../../vnext/continuity"
 func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 	t.Parallel()
 
-	wantProduction := []string{"facts.go", "semantics.go"}
+	wantProduction := []string{
+		"facts.go",
+		"semantics.go",
+		"sqlite/driver.go",
+		"sqlite/filesystem_attributes_windows.go",
+		"sqlite/filesystem_unix.go",
+		"sqlite/filesystem_windows.go",
+		"sqlite/schema.go",
+		"sqlite/store.go",
+	}
 	wantExports := []string{
 		"Catalog",
 		"ContextAttachedOnly", "ContextExcluded", "ContextFocusActive", "ContextFocusAndProjectWrap", "ContextFocusDecision", "ContextFocusFinding", "ContextFocusThenProjectJournal", "ContextInclusion", "ContextLatestCheckpoint", "ContextLatestFocusHandoff", "ContextOutput", "ContextProject",

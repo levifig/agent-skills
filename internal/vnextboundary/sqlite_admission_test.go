@@ -34,6 +34,67 @@ func open() *sql.DB { return nil }
 	assertNoBoundaryViolations(t, inspectFixtureBoundary(t, root))
 }
 
+func TestDependencyBoundaryAllowsWindowsFileAttributesInExactPlatformFile(t *testing.T) {
+	t.Parallel()
+
+	root := writeBoundaryFixture(t, "alternate.example/loaf", map[string]string{
+		"vnext/continuity/sqlite/filesystem_attributes_windows.go": `package sqlite
+
+import "syscall"
+
+func reparse(data *syscall.Win32FileAttributeData) bool {
+	return data.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+`,
+	})
+	assertNoBoundaryViolations(t, inspectFixtureBoundary(t, root))
+}
+
+func TestDependencyBoundaryRejectsWindowsSyscallOutsideExactPlatformFile(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{
+		"vnext/continuity/sqlite/filesystem_windows.go",
+		"vnext/continuity/sqlite/filesystem_attributes.go",
+		"vnext/continuity/sqlite/nested/filesystem_attributes_windows.go",
+		"vnext/internal/kernel/filesystem_attributes_windows.go",
+	} {
+		path := path
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			root := writeBoundaryFixture(t, "alternate.example/loaf", map[string]string{
+				path: "package sample\n\nimport \"syscall\"\n",
+			})
+			assertBoundaryViolation(t, inspectFixtureBoundary(t, root), forbiddenImportRule)
+		})
+	}
+}
+
+func TestDependencyBoundaryRejectsWindowsSyscallAliasesAndCapabilities(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "named import", body: "package sqlite\n\nimport windows \"syscall\"\n"},
+		{name: "dot import", body: "package sqlite\n\nimport . \"syscall\"\n"},
+		{name: "dynamic library", body: "package sqlite\n\nimport \"syscall\"\n\nfunc load() { syscall.NewLazyDLL(\"advapi32.dll\") }\n"},
+		{name: "raw syscall", body: "package sqlite\n\nimport \"syscall\"\n\nfunc call() { syscall.SyscallN() }\n"},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			root := writeBoundaryFixture(t, "alternate.example/loaf", map[string]string{
+				"vnext/continuity/sqlite/filesystem_attributes_windows.go": test.body,
+			})
+			assertBoundaryViolation(t, inspectFixtureBoundary(t, root), forbiddenCapabilityRule)
+		})
+	}
+}
+
 func TestDependencyBoundaryRejectsDatabaseSQLOutsideContinuitySQLitePackage(t *testing.T) {
 	t.Parallel()
 

@@ -28,7 +28,7 @@ vNext continuity persistence is SQLite now.
 2. **Projections are pure read-time folds for LOAF-96.** Current views, including derived conversation context, are functions of the fact log. This slice does not materialize projection tables that can drift from facts.
 3. **Total order is HLC wall/logical, then environment ID, then fact ID.** Physical wall time may live inside a typed payload for display; it does not participate in fold order.
 4. **The API is closed and typed.** Continuity exposes named domain types and a closed semantics catalog. It does not grow tracker, provider, credential, status, title, body, assignment, hierarchy, or dependency surfaces.
-5. **SQLite admission is exact.** `database/sql` is allowed only in package `vnext/continuity/sqlite`. A blank import of `github.com/ncruces/go-sqlite3/driver` is allowed only in file `vnext/continuity/sqlite/driver.go`. Path or prefix spoofing, non-blank driver imports, and every other ncruces or third-party import remain forbidden.
+5. **SQLite admission is exact.** `database/sql` is allowed only in package `vnext/continuity/sqlite`. A blank import of `github.com/ncruces/go-sqlite3/driver` is allowed only in file `vnext/continuity/sqlite/driver.go`. The Windows-only filesystem adapter may import `syscall` solely for `Win32FileAttributeData` and `FILE_ATTRIBUTE_REPARSE_POINT`. Path or prefix spoofing, aliased or dot imports, non-blank driver imports, extra `syscall` selectors, and every other ncruces or third-party import remain forbidden.
 6. **Physical scratchpad prune is deferred to LOAF-97 sync safe-points.** Scratchpad facts are ephemeral in the catalog and retained on disk until that slice.
 
 This is a vNext decision. ADR-014 chose Go and left the legacy SQLite driver to SPEC-040. ADR-029 is the shipped grow-only envelope for the current runtime. Neither authorizes vNext packages, schema identity, or the continuity API.
@@ -47,11 +47,21 @@ The kernel still does not open a database. The SQLite adapter and write chokepoi
 
 - vNext takes a SQLite dependency at the exact adapter file, so the bootstrap tree is no longer uniformly stdlib-only.
 - Deferring physical scratchpad prune means ephemeral facts occupy disk until LOAF-97.
+- Filesystem checks are path-based. They do not defend against a hostile same-UID process racing path components between checks, or against a privileged process that can bypass filesystem policy.
 
 ### Neutral
 
 - Schema identity remains `vnext/1`; choosing an engine is not a schema bump.
 - Legacy ADR-014/029 remain in force for the shipped line until cutover.
+
+### Filesystem Trust Boundary
+
+The store targets one trusted operator account, not mutually hostile processes sharing an account.
+
+- On POSIX, the state root must not be group- or world-writable, the private directory is mode `0700`, and database plus SQLite sidecar files are mode `0600`. Existing symlink components below the root-controlled top-level path component are rejected. A root-controlled top-level alias such as macOS `/var` to `/private/var` is trusted.
+- On Windows, the state root must resolve beneath the local `LocalAppData` cache root. UNC paths and existing reparse-point components are rejected. The adapter trusts the operating system's inherited ACLs and does not independently prove the resulting DACL.
+- Pre- and post-open identity checks reduce accidental path substitution but are not handle-based, no-follow traversal. Defending against same-UID time-of-check/time-of-use attacks would require a different filesystem authority model.
+- Windows packages must cross-compile on every supported architecture. Native Windows runtime validation remains required because this macOS worktree cannot exercise reparse-point and ACL behavior; reparse regression tests may skip when the test account lacks symlink privilege.
 
 ## Alternatives Considered
 
@@ -70,3 +80,4 @@ This loses the isolation contract. vNext may learn from that behavior and consum
 ## Revisions
 
 - 2026-08-29 — Initial record.
+- 2026-08-29 — Pinned the Windows-only `syscall` admission and recorded filesystem authority, ACL, symlink-alias, race, and runtime-validation limits.
