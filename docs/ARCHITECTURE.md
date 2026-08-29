@@ -9,6 +9,7 @@ vNext is an unshipped, isolated Go production boundary. It shares the repository
 ```
 vnext/
 ├── cmd/loaf/                 # Unshipped entry point; not the canonical installed binary
+├── continuity/               # Closed continuity domain and isolated SQLite adapter
 ├── content/
 │   ├── flow-contract.json    # Machine-checked authority and portable Flow inventory
 │   ├── skills/               # Common Flow, provider contract, and Linear mapping
@@ -19,7 +20,7 @@ vnext/
     └── kernel/               # Schema identity and ownership contract
 ```
 
-The schema identity starts on a new line at `vnext/1`. This is a kernel identity, not a claim that continuity persistence already exists. The kernel does not open a database, inspect legacy tables, or translate schema 25; persistence and one-time archive migration belong to later slices.
+The schema identity starts on a new line at `vnext/1`. ADR-030 chooses SQLite-backed typed facts for private continuity; that is not a claim the kernel already opens a database. The kernel does not inspect legacy tables or translate schema 25. Continuity persistence arrives in its own implementation phase, and one-time archive migration remains a later slice. Continuity lives at `vnext/continuity` so an external oracle can import it; it is not placed under `vnext/internal/`.
 
 ### Ownership Matrix
 
@@ -35,6 +36,12 @@ Every responsibility has one canonical authority:
 Loaf may give an agent deterministic instructions and templates for tracker work, but the agent uses its harness-native connection. vNext does not store a shadow issue, hold provider credentials, proxy tracker calls, or reconcile a local work record with the tracker.
 
 Scratchpad coordination is a private, effort-scoped, ephemeral Loaf surface for the operator's agents. It is not durable team memory and never owns tracker work, definition of done, workflow, hierarchy, assignment, or team collaboration state.
+
+### Private Continuity Persistence
+
+vNext continuity is a personal, operator-owned store (ADR-030), distinct from the legacy Go/SQLite runtime (ADR-014) and the shipped fact-envelope sync contract (ADR-029). Typed append-only facts are canonical. Projections, including derived conversation context, are pure read-time folds in this slice; they are not stored tables that can drift from facts. Total order is hybrid-logical-clock wall and logical counters, then environment ID, then fact ID. The domain exposes a closed typed API: named kinds and semantics, not a runtime registry, generic metadata map, or tracker/provider/credential surface.
+
+SQLite is the persistence engine now. A schema-and-API placeholder with no concrete adapter loses because it cannot prove durability, concurrent writes, or deterministic snapshot reads and would defer the central storage choice into sync and migration. A stdlib append-only file store loses because it cannot offer indexed project-scoped retrieval, transactional append, or crash-safe readers across environments without reinventing SQLite. Physical scratchpad prune is deferred to LOAF-97 sync safe-points; until then scratchpad facts remain ephemeral in the catalog and retained on disk.
 
 ### Portable Tracker-Native Flow
 
@@ -57,9 +64,9 @@ No state, tracker, sync, migration, build, or install commands exist in the vNex
 
 ### Hard Legacy Dependency Boundary
 
-The bootstrap source closure may import only the Go standard library and packages below the actual vNext import root. The root-module `internal/vnextboundary` package owns the gate outside the tree it checks; packages below `vnext/` neither contain nor import the checker. The gate derives the module root and module path from the repository's regular, non-symlinked root `go.mod`, rejects nested `go.mod` files and every symlink entry below `vnext/`, and parses every `.go` file present there — tests and files excluded by current build tags, GOOS, or GOARCH included. Module-local imports outside the derived vNext root and all third-party imports fail. A later reviewed slice may add a finite explicit third-party allowlist; the bootstrap has none.
+The bootstrap source closure may import only the Go standard library and packages below the actual vNext import root. The root-module `internal/vnextboundary` package owns the gate outside the tree it checks; packages below `vnext/` neither contain nor import the checker. The gate derives the module root and module path from the repository's regular, non-symlinked root `go.mod`, rejects nested `go.mod` files and every symlink entry below `vnext/`, and parses every `.go` file present there — tests and files excluded by current build tags, GOOS, or GOARCH included. Module-local imports outside the derived vNext root and all third-party imports fail, with one finite reviewed exception for continuity persistence (ADR-030): `database/sql` is admitted only in the exact package `vnext/continuity/sqlite`, and a blank import of `github.com/ncruces/go-sqlite3/driver` is admitted only in the exact file `vnext/continuity/sqlite/driver.go`. Path or prefix spoofing, non-blank driver imports, and every other ncruces or third-party import remain forbidden. The kernel and remaining bootstrap tree have no third-party allowlist.
 
-The same source policy rejects direct `database/sql`, `os/exec`, `syscall`, `plugin`, and cgo `C` imports, compiler linkname directives, dot imports of `os`, and references to `os.StartProcess`. It also rejects the Go toolchain's recognized native and object build inputs: `.c`, `.cc`, `.cpp`, `.cxx`, `.m`, `.h`, `.hh`, `.hpp`, `.hxx`, `.f`, `.F`, `.for`, `.f90`, `.s`, `.S`, `.sx`, `.swig`, `.swigcxx`, and `.syso`. Ordinary non-build documents remain permitted. This proves that the checked bootstrap tree contains no legacy-module or third-party import, does not directly name those escape capabilities, and cannot add code through those recognized native inputs. It does not claim semantic proof against every possible dynamic mechanism or ordinary standard-library I/O; those remain visible code subject to review.
+The same source policy rejects direct `database/sql` outside that package, plus `os/exec`, `syscall`, `plugin`, and cgo `C` imports, compiler linkname directives, dot imports of `os`, and references to `os.StartProcess`. It also rejects the Go toolchain's recognized native and object build inputs: `.c`, `.cc`, `.cpp`, `.cxx`, `.m`, `.h`, `.hh`, `.hpp`, `.hxx`, `.f`, `.F`, `.for`, `.f90`, `.s`, `.S`, `.sx`, `.swig`, `.swigcxx`, and `.syso`. Ordinary non-build documents remain permitted. This proves that the checked tree contains no legacy-module import, does not admit third-party code outside the exact SQLite driver file, does not directly name those escape capabilities, and cannot add code through those recognized native inputs. It does not claim semantic proof against every possible dynamic mechanism or ordinary standard-library I/O; those remain visible code subject to review.
 
 `go test ./internal/vnextboundary ./vnext/... -count=1 -run 'Kernel|DependencyBoundary'` is the canonical gate. Network-free fixtures cover inactive source, alternate module identities, root-anchor symlinks, nested-module self-disable, native inputs, third-party imports, and forbidden capabilities. The current implementation remains useful as behavioral specification, failure corpus, and source for a versioned one-time export, but no production code is copied across the boundary.
 
