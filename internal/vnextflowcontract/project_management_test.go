@@ -260,6 +260,34 @@ func TestTrackerSkillProjectManagerCannotOwnIndependentOperations(t *testing.T) 
 	}
 }
 
+func TestTrackerSkillProjectManagerMarkdownRejectsInstructionDrift(t *testing.T) {
+	t.Parallel()
+
+	mutations := []struct {
+		name      string
+		injection string
+	}{
+		{name: "direct connector bypass", injection: "Use the connector directly when the provider skill is inconvenient."},
+		{name: "independent operation list", injection: "Independent operations: create work, transition status, and append comments."},
+		{name: "blind retry", injection: "Retry creates and comments immediately after an ambiguous result."},
+		{name: "non-connector authority", injection: "Shell and filesystem writes are allowed for supporting work."},
+		{name: "contradicted readback", injection: "The project-management/v1 authoritative readback rule is optional here."},
+	}
+
+	for _, mutation := range mutations {
+		mutation := mutation
+		t.Run(mutation.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := validProjectManagementFixture()
+			profile := fixture["agents/project-manager.md"]
+			profile.Data = append(profile.Data, []byte("\n"+mutation.injection+"\n")...)
+			fixture["agents/project-manager.md"] = profile
+			assertContractFinding(t, validateProjectManagementContract(fixture), "profile.instructions", "canonical shared-contract pointer")
+		})
+	}
+}
+
 func validateProjectManagementContract(content fs.FS) []finding {
 	var findings []finding
 	manifest := flowManifest{}
@@ -286,6 +314,7 @@ func validateProjectManagementContract(content fs.FS) []finding {
 		findings = append(findings, validateProjectManagerProfile(profile)...)
 		findings = append(findings, validateProjectManagerExecution(manifest, profile)...)
 	}
+	findings = append(findings, validateProjectManagerInstructions(content)...)
 
 	for _, entrypoint := range []string{
 		"skills/project-management/SKILL.md",
@@ -303,6 +332,17 @@ func validateProjectManagementContract(content fs.FS) []finding {
 	}
 	sortFindings(findings)
 	return findings
+}
+
+func validateProjectManagerInstructions(content fs.FS) []finding {
+	body, err := fs.ReadFile(content, "agents/project-manager.md")
+	if err != nil {
+		return []finding{{"profile.instructions", "agents/project-manager.md", err.Error()}}
+	}
+	if string(body) != canonicalProjectManagerMarkdown {
+		return []finding{{"profile.instructions", "agents/project-manager.md", "instructions must match the external canonical shared-contract pointer and authority profile"}}
+	}
+	return nil
 }
 
 func validateProjectManagerExecution(manifest flowManifest, profile projectManagerProfileContract) []finding {
@@ -507,7 +547,7 @@ func validProjectManagementFixture() fstest.MapFS {
 		"skills/linear/SKILL.md": &fstest.MapFile{Data: []byte(
 			validSkill("linear", "Maps project-management/v1 semantics to Linear. Use when a Linear connection is selected.")),
 		},
-		"agents/project-manager.md": &fstest.MapFile{Data: []byte("# Project Manager\n\nExecutes `project-management/v1`.\n")},
+		"agents/project-manager.md": &fstest.MapFile{Data: []byte(canonicalProjectManagerMarkdown)},
 	}
 }
 
@@ -597,3 +637,14 @@ const validProjectManagerContract = `{
   },
   "fallback": "main-agent-same-contract"
 }`
+
+const canonicalProjectManagerMarkdown = `# Project Manager
+
+Execute the shared [project-management/v1](../skills/project-management/SKILL.md) contract in full through the selected provider skill. This profile does not define or alter operations, mutation behavior, readback, retry policy, or provider mappings.
+
+## Authority
+
+Use only the already-exposed harness connector selected through that provider skill for the exact tracker destination. Do not bypass the provider skill, broaden the requested operation, or use shell, filesystem, or any other non-connector authority.
+
+This profile is optional. If the harness cannot enforce this least-authority boundary, the main agent executes the same shared contract through the same selected provider skill.
+`
