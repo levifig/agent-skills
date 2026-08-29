@@ -15,9 +15,10 @@ import (
 const (
 	// Version1 is the first persisted-fact wire version.
 	Version1 uint16 = 1
+	// MaxFactBytes bounds one exact canonical persisted-fact wire value.
+	MaxFactBytes = 1_052_672
 
 	maximumPayloadBytes = 1_048_576
-	maximumFactBytes    = maximumPayloadBytes + 4_096
 )
 
 // ErrInvalidFact reports a fact that does not match the closed persisted-fact
@@ -89,7 +90,7 @@ func Encode(fact Fact) ([]byte, error) {
 		return nil, invalidFact("cannot encode")
 	}
 	encoded = encoded[:len(encoded)-1]
-	if len(encoded) > maximumFactBytes {
+	if len(encoded) > MaxFactBytes {
 		return nil, invalidFact("encoding exceeds the size limit")
 	}
 	return append([]byte(nil), encoded...), nil
@@ -97,7 +98,7 @@ func Encode(fact Fact) ([]byte, error) {
 
 // Decode strictly decodes one canonical fixed-field JSON fact.
 func Decode(encoded []byte) (Fact, error) {
-	if len(encoded) < 2 || len(encoded) > maximumFactBytes {
+	if len(encoded) < 2 || len(encoded) > MaxFactBytes {
 		return Fact{}, invalidFact("encoding size is outside the limit")
 	}
 	var wire encodedFactV1

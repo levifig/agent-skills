@@ -2,6 +2,7 @@ package continuitywire
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/levifig/loaf/vnext/continuity"
@@ -84,6 +85,17 @@ func TestFactValidationRejectsInvalidPersistedFields(t *testing.T) {
 				t.Fatal("Validate() error = nil, want refusal")
 			}
 		})
+	}
+}
+
+func TestMaxFactBytesIsExactAndEnforced(t *testing.T) {
+	t.Parallel()
+
+	if MaxFactBytes != 1_052_672 {
+		t.Fatalf("MaxFactBytes = %d, want 1052672", MaxFactBytes)
+	}
+	if _, err := Decode(make([]byte, MaxFactBytes+1)); !errors.Is(err, ErrInvalidFact) {
+		t.Fatalf("Decode(oversized fact) error = %v, want %v", err, ErrInvalidFact)
 	}
 }
 

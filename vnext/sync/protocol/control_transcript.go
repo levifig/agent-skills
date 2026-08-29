@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 
 	"github.com/levifig/loaf/vnext/continuity"
+	"github.com/levifig/loaf/vnext/internal/continuitywire"
 )
 
 const (
@@ -15,7 +17,6 @@ const (
 	pruneAcknowledgementDomain        = "loaf.sync.prune-acknowledgement.v1"
 	terminalRetirementBodyDomain      = "loaf.sync.terminal-retirement.body.v1"
 	terminalRetirementDomain          = "loaf.sync.terminal-retirement.v1"
-	pruneReferenceDomain              = "loaf.sync.prune-reference.v1"
 	pruneManifestDomain               = "loaf.sync.prune-manifest.v1"
 	pruneCertificateBodyDomain        = "loaf.sync.prune-certificate.body.v1"
 	pruneCertificateDomain            = "loaf.sync.prune-certificate.v1"
@@ -26,7 +27,6 @@ const (
 	pruneAcknowledgementFieldCount        = pruneAcknowledgementBodyFieldCount + 1
 	terminalRetirementBodyFieldCount      = 10
 	terminalRetirementFieldCount          = terminalRetirementBodyFieldCount + 1
-	pruneReferenceFieldCount              = 9
 	pruneManifestFieldCount               = 2
 	pruneCertificateBodyFieldCount        = 17
 	pruneCertificateFieldCount            = pruneCertificateBodyFieldCount + 1
@@ -209,12 +209,9 @@ func (reference PruneReference) MarshalBinary() ([]byte, error) {
 	if err := reference.Validate(); err != nil {
 		return nil, err
 	}
-	encoded, err := encodeTranscript(pruneReferenceDomain, pruneReferenceFields(reference)...)
+	encoded, err := continuitywire.EncodePruneReference(pruneReferenceWireV1(reference))
 	if err != nil {
-		return nil, controlEncodingError(err, ErrInvalidPruneReference)
-	}
-	if len(encoded) > MaxPruneReferenceBytes {
-		return nil, ErrTooLarge
+		return nil, pruneReferenceProtocolError(err)
 	}
 	return encoded, nil
 }
@@ -224,14 +221,11 @@ func ParsePruneReference(encoded []byte) (PruneReference, error) {
 	if len(encoded) > MaxPruneReferenceBytes {
 		return PruneReference{}, ErrTooLarge
 	}
-	fields, err := parseTranscript(encoded, pruneReferenceDomain, pruneReferenceFieldCount)
+	wireReference, err := continuitywire.DecodePruneReference(encoded)
 	if err != nil {
-		return PruneReference{}, ErrInvalidPruneReference
+		return PruneReference{}, pruneReferenceProtocolError(err)
 	}
-	reference, err := parsePruneReferenceFields(fields)
-	if err != nil {
-		return PruneReference{}, err
-	}
+	reference := pruneReferenceFromWireV1(wireReference)
 	if err := reference.Validate(); err != nil {
 		return PruneReference{}, err
 	}
@@ -243,7 +237,11 @@ func ParsePruneReference(encoded []byte) (PruneReference, error) {
 
 // PruneReferenceDigest identifies one exact opaque arrival reference.
 func PruneReferenceDigest(reference PruneReference) Digest {
-	return digestControlObject(reference.MarshalBinary)
+	digest, err := continuitywire.PruneReferenceDigest(pruneReferenceWireV1(reference))
+	if err != nil {
+		return Digest{}
+	}
+	return Digest(digest)
 }
 
 // MarshalBinary encodes an exact arrival-ordered prune manifest canonically.
@@ -574,51 +572,6 @@ func parseTerminalRetirementBody(fields [][]byte) (TerminalRetirement, error) {
 	return retirement, nil
 }
 
-func pruneReferenceFields(reference PruneReference) [][]byte {
-	return [][]byte{
-		[]byte(reference.FactID),
-		[]byte(reference.EnvironmentID),
-		int64Bytes(reference.EnvironmentSequence),
-		int64Bytes(reference.ArrivalSequence),
-		reference.EnvelopeDigest[:],
-		reference.CertificateID[:],
-		reference.PreviousEnvelopeDigest[:],
-		uint32Bytes(reference.KeyGeneration),
-		reference.Nonce[:],
-	}
-}
-
-func parsePruneReferenceFields(fields [][]byte) (PruneReference, error) {
-	if len(fields) != pruneReferenceFieldCount || len(fields[4]) != len(Digest{}) || len(fields[5]) != len(Digest{}) ||
-		len(fields[6]) != len(Digest{}) || len(fields[8]) != len(Nonce{}) {
-		return PruneReference{}, ErrInvalidPruneReference
-	}
-	environmentSequence, ok := parseInt64(fields[2])
-	if !ok {
-		return PruneReference{}, ErrInvalidPruneReference
-	}
-	arrivalSequence, ok := parseInt64(fields[3])
-	if !ok {
-		return PruneReference{}, ErrInvalidPruneReference
-	}
-	keyGeneration, ok := parseUint32(fields[7])
-	if !ok {
-		return PruneReference{}, ErrInvalidPruneReference
-	}
-	reference := PruneReference{
-		FactID:              continuity.FactID(string(fields[0])),
-		EnvironmentID:       continuity.EnvironmentID(string(fields[1])),
-		EnvironmentSequence: environmentSequence,
-		ArrivalSequence:     arrivalSequence,
-		KeyGeneration:       keyGeneration,
-	}
-	copy(reference.EnvelopeDigest[:], fields[4])
-	copy(reference.CertificateID[:], fields[5])
-	copy(reference.PreviousEnvelopeDigest[:], fields[6])
-	copy(reference.Nonce[:], fields[8])
-	return reference, nil
-}
-
 func pruneCertificateBodyTranscriptUnchecked(certificate PruneCertificate) ([]byte, error) {
 	fields, err := pruneCertificateBodyFields(certificate)
 	if err != nil {
@@ -829,4 +782,11 @@ func controlEncodingError(err, invalid error) error {
 		return ErrTooLarge
 	}
 	return invalid
+}
+
+func pruneReferenceProtocolError(err error) error {
+	if errors.Is(err, continuitywire.ErrPruneReferenceTooLarge) {
+		return ErrTooLarge
+	}
+	return ErrInvalidPruneReference
 }

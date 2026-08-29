@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -279,12 +280,90 @@ func TestPruneReferenceV1RejectsLegacySixFieldEncoding(t *testing.T) {
 	t.Parallel()
 
 	reference := testPruneReference("fact-legacy", "environment-legacy", 1, 1, 0x47)
-	legacyWire, err := encodeTranscript(pruneReferenceDomain, pruneReferenceFields(reference)[:6]...)
+	legacyWire, err := encodeTranscript(
+		"loaf.sync.prune-reference.v1",
+		[]byte(reference.FactID),
+		[]byte(reference.EnvironmentID),
+		int64Bytes(reference.EnvironmentSequence),
+		int64Bytes(reference.ArrivalSequence),
+		reference.EnvelopeDigest[:],
+		reference.CertificateID[:],
+	)
 	if err != nil {
 		t.Fatalf("encode legacy prune reference: %v", err)
 	}
 	if _, err := ParsePruneReference(legacyWire); !errors.Is(err, ErrInvalidPruneReference) {
 		t.Fatalf("legacy six-field parse error = %v, want %v", err, ErrInvalidPruneReference)
+	}
+}
+
+func TestPruneReferencePublishedVectorAndProtocolErrorMapping(t *testing.T) {
+	t.Parallel()
+
+	wantWire, err := hex.DecodeString("0000001c6c6f61662e73796e632e7072756e652d7265666572656e63652e7631000000090000000b666163742d7072756e65640000000d656e7669726f6e6d656e742d6100000008000000000000000200000008000000000000000b00000020f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f00000020f4c096647d5e33bf9e9c33903f454a68bce748887ebc05a5c5be9f808e439ec400000020eff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e000000040000000700000018f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708")
+	if err != nil {
+		t.Fatalf("decode published prune reference wire: %v", err)
+	}
+	wantDigestBytes, err := hex.DecodeString("775aa0ca23c795b0aa15f5abbee41014fe59b2429a6fc030cb3ae600c149fcdd")
+	if err != nil {
+		t.Fatalf("decode published prune reference digest: %v", err)
+	}
+	var wantDigest Digest
+	copy(wantDigest[:], wantDigestBytes)
+
+	reference := testPruneReference("fact-pruned", "environment-a", 2, 11, 0xf0)
+	certificateID, err := hex.DecodeString("f4c096647d5e33bf9e9c33903f454a68bce748887ebc05a5c5be9f808e439ec4")
+	if err != nil {
+		t.Fatalf("decode published certificate id: %v", err)
+	}
+	copy(reference.CertificateID[:], certificateID)
+	reference.PreviousEnvelopeDigest = testControlDigest(0xef)
+	for index := range reference.Nonce {
+		reference.Nonce[index] = byte(0xf1 + index)
+	}
+
+	wire, err := reference.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal published prune reference: %v", err)
+	}
+	if !bytes.Equal(wire, wantWire) {
+		t.Fatalf("published prune reference wire = %x, want %x", wire, wantWire)
+	}
+	if got := PruneReferenceDigest(reference); got != wantDigest {
+		t.Fatalf("published prune reference digest = %x, want %x", got, wantDigest)
+	}
+	parsed, err := ParsePruneReference(wire)
+	if err != nil {
+		t.Fatalf("parse published prune reference: %v", err)
+	}
+	for index := range wire {
+		wire[index] ^= 0xff
+	}
+	reencoded, err := parsed.MarshalBinary()
+	if err != nil {
+		t.Fatalf("remarshal published prune reference: %v", err)
+	}
+	if !bytes.Equal(reencoded, wantWire) {
+		t.Fatal("parsed prune reference aliases its input")
+	}
+
+	malformed := append(append([]byte(nil), wantWire...), 0)
+	if _, err := ParsePruneReference(malformed); err != ErrInvalidPruneReference {
+		t.Fatalf("malformed prune reference error = %v, want exact %v", err, ErrInvalidPruneReference)
+	}
+	if _, err := ParsePruneReference(make([]byte, MaxPruneReferenceBytes+1)); err != ErrTooLarge {
+		t.Fatalf("oversized prune reference error = %v, want exact %v", err, ErrTooLarge)
+	}
+	invalid := reference
+	invalid.FactID = "bad id"
+	if err := invalid.Validate(); err != ErrInvalidPruneReference {
+		t.Fatalf("invalid prune reference validation error = %v, want exact %v", err, ErrInvalidPruneReference)
+	}
+	if _, err := invalid.MarshalBinary(); err != ErrInvalidPruneReference {
+		t.Fatalf("invalid prune reference marshal error = %v, want exact %v", err, ErrInvalidPruneReference)
+	}
+	if got := PruneReferenceDigest(invalid); got != (Digest{}) {
+		t.Fatalf("invalid prune reference digest = %x, want zero", got)
 	}
 }
 
