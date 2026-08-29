@@ -282,10 +282,11 @@ type channelRecord struct {
 }
 
 type environmentRecord struct {
-	authority         relay.EnvironmentAuthority
-	tokenHash         relay.TokenHash
-	currentMembership uint32
-	retiredAtMillis   sql.NullInt64
+	authority           relay.EnvironmentAuthority
+	tokenHash           relay.TokenHash
+	relayTokenExpiresAt int64
+	currentMembership   uint32
+	retiredAtMillis     sql.NullInt64
 }
 
 func authenticateOwner(ctx context.Context, tx *sql.Tx, authorization relay.OwnerAuthorization) (channelRecord, error) {
@@ -355,7 +356,7 @@ WHERE c.channel_id = ? AND e.environment_id = ? AND e.token_id = ?`,
 		&certificateBytes,
 		&mode,
 		&record.authority.ExpiresAtMillis,
-		&record.authority.RelayTokenExpiresAtMillis,
+		&record.relayTokenExpiresAt,
 		&record.authority.MembershipGeneration,
 		&storedHash,
 		&record.retiredAtMillis,
@@ -393,7 +394,7 @@ func requireActiveEnvironment(record environmentRecord, nowMillis int64) error {
 	if record.authority.ExpiresAtMillis != 0 && nowMillis >= record.authority.ExpiresAtMillis {
 		return relay.ErrExpired
 	}
-	if record.authority.RelayTokenExpiresAtMillis != 0 && nowMillis >= record.authority.RelayTokenExpiresAtMillis {
+	if record.relayTokenExpiresAt != 0 && nowMillis >= record.relayTokenExpiresAt {
 		return relay.ErrExpired
 	}
 	return nil

@@ -139,15 +139,30 @@ type ChannelAuthority struct {
 	AdminPublicKey  PublicKey
 }
 
+// EnvironmentCertificateAuthority is the token-free registration view of an
+// environment certificate. Bearer token IDs, hashes, and relay-token expiry
+// metadata never cross the cryptographic verifier boundary; the signed
+// certificate expiry remains because it is part of the authenticated object.
+type EnvironmentCertificateAuthority struct {
+	ChannelAuthority
+	EnvironmentID        EnvironmentID
+	CertificateID        Digest
+	CertificateBytes     []byte
+	Mode                 EnvironmentMode
+	ExpiresAtMillis      int64
+	MembershipGeneration uint32
+}
+
+// EnvironmentAuthority is the complete token-free verification view used for
+// environment-signed facts and administrator-signed retirement fences.
 type EnvironmentAuthority struct {
 	ChannelAuthority
-	EnvironmentID             EnvironmentID
-	CertificateID             Digest
-	CertificateBytes          []byte
-	Mode                      EnvironmentMode
-	ExpiresAtMillis           int64
-	RelayTokenExpiresAtMillis int64
-	MembershipGeneration      uint32
+	EnvironmentID        EnvironmentID
+	CertificateID        Digest
+	CertificateBytes     []byte
+	Mode                 EnvironmentMode
+	ExpiresAtMillis      int64
+	MembershipGeneration uint32
 }
 
 type Envelope struct {
@@ -381,9 +396,9 @@ type Store interface {
 // calls these methods only after token authentication and structural checks,
 // and maps a refusal to ErrUnverified without persisting the candidate bytes.
 type Verifier interface {
-	VerifyEnvironmentCertificate(context.Context, ChannelAuthority, Environment) error
+	VerifyEnvironmentCertificate(context.Context, EnvironmentCertificateAuthority) error
 	VerifyEnvelope(context.Context, EnvironmentAuthority, Envelope) error
 	VerifyAcknowledgement(context.Context, EnvironmentAuthority, Acknowledgement) error
-	VerifyRetirement(context.Context, ChannelAuthority, Retirement) error
+	VerifyRetirement(context.Context, EnvironmentAuthority, Retirement) error
 	VerifyPruneCertificate(context.Context, PruneAuthority, PruneCertificate) error
 }
