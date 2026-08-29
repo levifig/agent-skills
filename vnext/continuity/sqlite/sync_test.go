@@ -61,15 +61,16 @@ func TestContinuityStoreStagesContiguousOpaquePageAtomically(t *testing.T) {
 	}
 	defer store.Close()
 	projectID := continuity.ProjectID("project-stage")
+	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
 	frames := []OpaqueSyncFrame{
 		testOpaqueFrame(1, "one"),
 		testOpaqueFrame(2, "two"),
 	}
-	progress, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 4, frames)
+	progress, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 4, frames)
 	if err != nil {
 		t.Fatalf("StageSyncPage() error = %v", err)
 	}
-	if progress.ChannelID != "channel-a" || progress.ActivationState != SyncActivationStaging || progress.DownloadedCursor != 2 || progress.AppliedCursor != 0 || progress.RelayHead != 4 {
+	if progress.ChannelID != testSyncChannelID("channel-a") || progress.ActivationState != SyncActivationStaging || progress.DownloadedCursor != 2 || progress.AppliedCursor != 0 || progress.RelayHead != 4 {
 		t.Fatalf("progress = %#v", progress)
 	}
 	pending, err := store.PendingSyncFrames(context.Background(), projectID, 16)
@@ -83,7 +84,7 @@ func TestContinuityStoreStagesContiguousOpaquePageAtomically(t *testing.T) {
 	_, err = store.StageSyncPage(
 		context.Background(),
 		projectID,
-		"channel-a",
+		testSyncChannelID("channel-a"),
 		2,
 		4,
 		[]OpaqueSyncFrame{testOpaqueFrame(4, "gap")},
@@ -98,10 +99,10 @@ func TestContinuityStoreStagesContiguousOpaquePageAtomically(t *testing.T) {
 	}
 	mismatched := testOpaqueFrame(3, "three")
 	mismatched.EnvelopeDigest = sha256.Sum256([]byte("different sealed bytes"))
-	_, err = store.StageSyncPage(context.Background(), projectID, "channel-a", 2, 4, []OpaqueSyncFrame{mismatched})
+	_, err = store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 2, 4, []OpaqueSyncFrame{mismatched})
 	assertSyncErrorCode(t, err, SyncErrorInvalid)
 
-	_, err = store.StageSyncPage(context.Background(), projectID, "channel-b", 2, 4, nil)
+	_, err = store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-b"), 2, 4, nil)
 	assertSyncErrorCode(t, err, SyncErrorConflict)
 }
 
@@ -110,13 +111,14 @@ func TestContinuityStoreRejectsDuplicateEnvelopeDigestAcrossStagedPages(t *testi
 
 	store := openSyncStore(t, "duplicate-staged-digest")
 	projectID := continuity.ProjectID("project-duplicate-staged-digest")
+	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
 	first := testOpaqueFrame(1, "same-envelope")
-	if _, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 2, []OpaqueSyncFrame{first}); err != nil {
+	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, []OpaqueSyncFrame{first}); err != nil {
 		t.Fatalf("StageSyncPage(first) error = %v", err)
 	}
 	duplicate := first
 	duplicate.ArrivalSequence = 2
-	_, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 1, 2, []OpaqueSyncFrame{duplicate})
+	_, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 1, 2, []OpaqueSyncFrame{duplicate})
 	assertSyncErrorCode(t, err, SyncErrorConflict)
 	progress, err := store.CurrentSyncProgress(context.Background(), projectID)
 	if err != nil {
@@ -420,12 +422,13 @@ func TestContinuityStoreStageRetryIsIdempotentAfterLostResponse(t *testing.T) {
 
 	store := openSyncStore(t, "stage-retry")
 	projectID := continuity.ProjectID("project-stage-retry")
+	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
 	frames := []OpaqueSyncFrame{testOpaqueFrame(1, "one"), testOpaqueFrame(2, "two")}
-	first, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 2, frames)
+	first, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, frames)
 	if err != nil {
 		t.Fatalf("first StageSyncPage() error = %v", err)
 	}
-	replayed, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 2, frames)
+	replayed, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, frames)
 	if err != nil {
 		t.Fatalf("replayed StageSyncPage() error = %v", err)
 	}
@@ -442,7 +445,7 @@ func TestContinuityStoreStageRetryIsIdempotentAfterLostResponse(t *testing.T) {
 
 	conflicting := append([]OpaqueSyncFrame(nil), frames...)
 	conflicting[0].SealedEnvelope = []byte("different sealed bytes")
-	_, err = store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 2, conflicting)
+	_, err = store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, conflicting)
 	assertSyncErrorCode(t, err, SyncErrorInvalid)
 }
 
@@ -460,7 +463,7 @@ func TestContinuityStoreStageRetryRecoversAfterAppliedResponseLoss(t *testing.T)
 	if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
 		t.Fatalf("ApplySyncBatch() error = %v", err)
 	}
-	replayed, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 1, staged)
+	replayed, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 1, staged)
 	if err != nil {
 		t.Fatalf("StageSyncPage(applied retry) error = %v", err)
 	}
@@ -476,29 +479,31 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		store := openSyncStore(t, "activation-rebind")
 		projectID := continuity.ProjectID("project-activation-rebind")
 		bogus := []OpaqueSyncFrame{testOpaqueFrame(1, "bogus")}
-		progress, err := store.StageSyncPage(context.Background(), projectID, "channel-bogus", 0, 1, bogus)
+		installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-bogus"))
+		progress, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-bogus"), 0, 1, bogus)
 		if err != nil {
 			t.Fatalf("StageSyncPage(bogus) error = %v", err)
 		}
 		if progress.ActivationState != SyncActivationStaging {
 			t.Fatalf("staged activation state = %q", progress.ActivationState)
 		}
-		if _, err := store.ActivateStagedSync(context.Background(), projectID, "channel-bogus"); err == nil {
+		if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-bogus")); err == nil {
 			t.Fatal("ActivateStagedSync(incomplete) error = nil")
 		} else {
 			assertSyncErrorCode(t, err, SyncErrorActivation)
 		}
-		if err := store.DiscardStagedSync(context.Background(), projectID, "channel-bogus"); err != nil {
+		if err := store.DiscardStagedSync(context.Background(), projectID, testSyncChannelID("channel-bogus")); err != nil {
 			t.Fatalf("DiscardStagedSync() error = %v", err)
 		}
-		progress, err = store.StageSyncPage(context.Background(), projectID, "channel-good", 0, 0, nil)
+		installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-good"))
+		progress, err = store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-good"), 0, 0, nil)
 		if err != nil {
 			t.Fatalf("StageSyncPage(rebind) error = %v", err)
 		}
-		if progress.ChannelID != "channel-good" || progress.ActivationState != SyncActivationStaging {
+		if progress.ChannelID != testSyncChannelID("channel-good") || progress.ActivationState != SyncActivationStaging {
 			t.Fatalf("rebound progress = %#v", progress)
 		}
-		if _, err := store.ActivateStagedSync(context.Background(), projectID, "channel-good"); err == nil {
+		if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-good")); err == nil {
 			t.Fatal("ActivateStagedSync(without root) error = nil")
 		} else {
 			assertSyncErrorCode(t, err, SyncErrorActivation)
@@ -510,7 +515,7 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		projectID := continuity.ProjectID("project-activation-complete")
 		root := syncProjectFact(t, projectID, "fact-project", "environment-a", 1, 100)
 		verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{root})
-		if _, err := store.ActivateStagedSync(context.Background(), projectID, "channel-a"); err == nil {
+		if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a")); err == nil {
 			t.Fatal("ActivateStagedSync(unapplied) error = nil")
 		} else {
 			assertSyncErrorCode(t, err, SyncErrorActivation)
@@ -518,18 +523,18 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
 			t.Fatalf("ApplySyncBatch() error = %v", err)
 		}
-		progress, err := store.ActivateStagedSync(context.Background(), projectID, "channel-a")
+		progress, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a"))
 		if err != nil {
 			t.Fatalf("ActivateStagedSync() error = %v", err)
 		}
 		if progress.ActivationState != SyncActivationAttached || progress.AppliedCursor != 1 || progress.RelayHead != 1 {
 			t.Fatalf("activated progress = %#v", progress)
 		}
-		retry, err := store.ActivateStagedSync(context.Background(), projectID, "channel-a")
+		retry, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a"))
 		if err != nil || retry != progress {
 			t.Fatalf("activation retry = %#v, %v; want %#v", retry, err, progress)
 		}
-		if err := store.DiscardStagedSync(context.Background(), projectID, "channel-a"); err == nil {
+		if err := store.DiscardStagedSync(context.Background(), projectID, testSyncChannelID("channel-a")); err == nil {
 			t.Fatal("DiscardStagedSync(attached) error = nil")
 		} else {
 			assertSyncErrorCode(t, err, SyncErrorConflict)
@@ -541,13 +546,13 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		projectID := continuity.ProjectID("project-activation-hostile-head")
 		root := syncProjectFact(t, projectID, "fact-project", "environment-a", 1, 100)
 		verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{root})
-		if _, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 1, math.MaxInt64, nil); err != nil {
+		if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 1, math.MaxInt64, nil); err != nil {
 			t.Fatalf("StageSyncPage(hostile head) error = %v", err)
 		}
 		if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
 			t.Fatalf("ApplySyncBatch() error = %v", err)
 		}
-		progress, err := store.ActivateStagedSync(context.Background(), projectID, "channel-a")
+		progress, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a"))
 		if err != nil {
 			t.Fatalf("ActivateStagedSync(hostile relay head) error = %v", err)
 		}
@@ -560,10 +565,11 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		store := openAppendStoreV1(t, filepath.Join(testTempDir(t), "state-activation-empty"), "environment-local", 100)
 		projectID := continuity.ProjectID("project-activation-empty")
 		mustAppendV1(t)(store.RegisterProject(context.Background(), projectID, "fact-project", continuity.ProjectRegistrationPayload{Observation: appendObservationV1(), Label: "Loaf"}))
-		if _, err := store.StageSyncPage(context.Background(), projectID, "channel-empty", 0, 0, nil); err != nil {
+		installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-empty"))
+		if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-empty"), 0, 0, nil); err != nil {
 			t.Fatalf("StageSyncPage(empty) error = %v", err)
 		}
-		progress, err := store.ActivateStagedSync(context.Background(), projectID, "channel-empty")
+		progress, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-empty"))
 		if err != nil {
 			t.Fatalf("ActivateStagedSync(empty) error = %v", err)
 		}
@@ -595,17 +601,18 @@ func TestContinuityStorePersistsLocalEnvelopeOnceAndConsumesEcho(t *testing.T) {
 	store := openAppendStoreV1(t, filepath.Join(testTempDir(t), "state"), "environment-local", 100)
 	projectID := continuity.ProjectID("project-outbox")
 	mustAppendV1(t)(store.RegisterProject(context.Background(), projectID, "fact-project", continuity.ProjectRegistrationPayload{Observation: appendObservationV1(), Label: "Loaf"}))
-	if _, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 0, nil); err != nil {
+	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
+	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 0, nil); err != nil {
 		t.Fatalf("stage sync project: %v", err)
 	}
-	if _, err := store.ActivateStagedSync(context.Background(), projectID, "channel-a"); err != nil {
+	if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a")); err != nil {
 		t.Fatalf("activate sync project: %v", err)
 	}
 	progress, err := store.CurrentSyncProgress(context.Background(), projectID)
 	if err != nil {
 		t.Fatalf("CurrentSyncProgress() error = %v", err)
 	}
-	if progress.ChannelID != "channel-a" || progress.DownloadedCursor != 0 || progress.AppliedCursor != 0 {
+	if progress.ChannelID != testSyncChannelID("channel-a") || progress.DownloadedCursor != 0 || progress.AppliedCursor != 0 {
 		t.Fatalf("CurrentSyncProgress() = %#v", progress)
 	}
 	unsealed, found, err := store.NextUnsealedLocalFact(context.Background(), projectID)
@@ -626,15 +633,15 @@ func TestContinuityStorePersistsLocalEnvelopeOnceAndConsumesEcho(t *testing.T) {
 	}
 	mismatchedOutbox := outbox
 	mismatchedOutbox.EnvelopeDigest = sha256.Sum256([]byte("different sealed local fact"))
-	if err := store.PersistSealedOutbox(context.Background(), projectID, "channel-a", mismatchedOutbox); err == nil {
+	if err := store.PersistSealedOutbox(context.Background(), projectID, testSyncChannelID("channel-a"), mismatchedOutbox); err == nil {
 		t.Fatal("PersistSealedOutbox(digest mismatch) error = nil")
 	} else {
 		assertSyncErrorCode(t, err, SyncErrorInvalid)
 	}
-	if err := store.PersistSealedOutbox(context.Background(), projectID, "channel-a", outbox); err != nil {
+	if err := store.PersistSealedOutbox(context.Background(), projectID, testSyncChannelID("channel-a"), outbox); err != nil {
 		t.Fatalf("PersistSealedOutbox() error = %v", err)
 	}
-	if err := store.PersistSealedOutbox(context.Background(), projectID, "channel-a", outbox); err != nil {
+	if err := store.PersistSealedOutbox(context.Background(), projectID, testSyncChannelID("channel-a"), outbox); err != nil {
 		t.Fatalf("PersistSealedOutbox(exact retry) error = %v", err)
 	}
 	pendingOutbox, err := store.PendingSealedOutbox(context.Background(), projectID, 16)
@@ -654,7 +661,7 @@ func TestContinuityStorePersistsLocalEnvelopeOnceAndConsumesEcho(t *testing.T) {
 	}
 	conflict := outbox
 	conflict.Nonce = testNonce("different nonce")
-	if err := store.PersistSealedOutbox(context.Background(), projectID, "channel-a", conflict); err == nil {
+	if err := store.PersistSealedOutbox(context.Background(), projectID, testSyncChannelID("channel-a"), conflict); err == nil {
 		t.Fatal("PersistSealedOutbox(conflict) error = nil")
 	} else {
 		assertSyncErrorCode(t, err, SyncErrorConflict)
@@ -665,7 +672,8 @@ func TestContinuityStorePersistsLocalEnvelopeOnceAndConsumesEcho(t *testing.T) {
 		t.Fatalf("ExportFact() error = %v", err)
 	}
 	opaque := OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: outbox.EnvelopeDigest, SealedEnvelope: outbox.SealedEnvelope}
-	if _, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 1, []OpaqueSyncFrame{opaque}); err != nil {
+	// The authority was installed before the initial empty stage and remains pinned.
+	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 1, []OpaqueSyncFrame{opaque}); err != nil {
 		t.Fatalf("stage local echo: %v", err)
 	}
 	verified := VerifiedSyncFrame{
@@ -693,7 +701,7 @@ func TestContinuityStorePersistsLocalEnvelopeOnceAndConsumesEcho(t *testing.T) {
 	if outboxRows != 0 || inboxRows != 0 || receiptRows != 1 {
 		t.Fatalf("consumed echo rows = outbox %d inbox %d receipts %d, want 0,0,1", outboxRows, inboxRows, receiptRows)
 	}
-	if err := store.PersistSealedOutbox(context.Background(), projectID, "channel-a", outbox); err != nil {
+	if err := store.PersistSealedOutbox(context.Background(), projectID, testSyncChannelID("channel-a"), outbox); err != nil {
 		t.Fatalf("PersistSealedOutbox(consumed exact retry) error = %v", err)
 	}
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_outbox WHERE fact_id = 'fact-project'`).Scan(&outboxRows); err != nil {
@@ -704,7 +712,7 @@ func TestContinuityStorePersistsLocalEnvelopeOnceAndConsumesEcho(t *testing.T) {
 	}
 	consumedConflict := outbox
 	consumedConflict.Nonce = testNonce("consumed conflicting nonce")
-	if err := store.PersistSealedOutbox(context.Background(), projectID, "channel-a", consumedConflict); err == nil {
+	if err := store.PersistSealedOutbox(context.Background(), projectID, testSyncChannelID("channel-a"), consumedConflict); err == nil {
 		t.Fatal("PersistSealedOutbox(consumed conflict) error = nil")
 	} else {
 		assertSyncErrorCode(t, err, SyncErrorConflict)
@@ -717,10 +725,11 @@ func TestContinuityStoreGapRefusesExhaustedLocalSealedSequence(t *testing.T) {
 	store := openAppendStoreV1(t, filepath.Join(testTempDir(t), "state-exhausted-sequence"), "environment-local", 100)
 	projectID := continuity.ProjectID("project-exhausted-sequence")
 	mustAppendV1(t)(store.RegisterProject(context.Background(), projectID, "fact-project", continuity.ProjectRegistrationPayload{Observation: appendObservationV1(), Label: "Loaf"}))
-	if _, err := store.StageSyncPage(context.Background(), projectID, "channel-a", 0, 0, nil); err != nil {
+	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
+	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 0, nil); err != nil {
 		t.Fatalf("stage sync project: %v", err)
 	}
-	if _, err := store.ActivateStagedSync(context.Background(), projectID, "channel-a"); err != nil {
+	if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a")); err != nil {
 		t.Fatalf("activate sync project: %v", err)
 	}
 	previous := sha256.Sum256([]byte("previous"))
@@ -812,7 +821,8 @@ func stageSyncFacts(t *testing.T, store *Store, projectID continuity.ProjectID, 
 	if len(facts) == 0 {
 		relayHead = firstArrival - 1
 	}
-	if _, err := store.StageSyncPage(context.Background(), projectID, "channel-a", firstArrival-1, relayHead, opaque); err != nil {
+	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
+	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), firstArrival-1, relayHead, opaque); err != nil {
 		t.Fatalf("StageSyncPage() error = %v", err)
 	}
 	return verified

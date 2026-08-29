@@ -19,6 +19,11 @@ const (
 	maximumSealedEnvelopeBytes = 1_102_000
 )
 
+// SyncChannelID is the protocol's fixed-width opaque channel identity. It is
+// intentionally defined at the persistence boundary so continuity storage does
+// not depend on relay or cryptographic packages.
+type SyncChannelID [32]byte
+
 // SyncErrorCode is a machine-stable private-sync persistence failure class.
 type SyncErrorCode string
 
@@ -96,7 +101,7 @@ type SealedOutboxFrame struct {
 // progress. RelayHead is an observed pagination watermark, not authority.
 type SyncProgress struct {
 	ProjectID        continuity.ProjectID
-	ChannelID        string
+	ChannelID        SyncChannelID
 	ActivationState  SyncActivationState
 	DownloadedCursor int64
 	AppliedCursor    int64
@@ -200,11 +205,11 @@ func (store *Store) CurrentSyncProgress(ctx context.Context, projectID continuit
 // and the complete inventory; this transaction proves only the local durable
 // conditions and deterministic corpus needed for an atomic activation flag.
 // An exact retry after an uncertain commit is idempotent.
-func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity.ProjectID, channelID string) (SyncProgress, error) {
+func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity.ProjectID, channelID SyncChannelID) (SyncProgress, error) {
 	if err := projectID.Validate(); err != nil {
 		return SyncProgress{}, syncProblem(SyncErrorInvalid, "project_id", "is invalid")
 	}
-	if !validOpaqueID(channelID) {
+	if channelID == (SyncChannelID{}) {
 		return SyncProgress{}, syncProblem(SyncErrorInvalid, "channel_id", "is invalid")
 	}
 	if store == nil {
@@ -288,11 +293,11 @@ WHERE project_id = ? AND activation_state = 'staging'`, string(projectID))
 // DiscardStagedSync removes an unactivated opaque staging channel so attach
 // can be retried against another channel. It refuses after any canonical
 // arrival was applied or after terminal activation.
-func (store *Store) DiscardStagedSync(ctx context.Context, projectID continuity.ProjectID, channelID string) error {
+func (store *Store) DiscardStagedSync(ctx context.Context, projectID continuity.ProjectID, channelID SyncChannelID) error {
 	if err := projectID.Validate(); err != nil {
 		return syncProblem(SyncErrorInvalid, "project_id", "is invalid")
 	}
-	if !validOpaqueID(channelID) {
+	if channelID == (SyncChannelID{}) {
 		return syncProblem(SyncErrorInvalid, "channel_id", "is invalid")
 	}
 	if store == nil {
@@ -345,6 +350,11 @@ SELECT
 	}
 	if _, err := tx.ExecContext(ctx, `
 DELETE FROM continuity_sync_inbox
+WHERE project_id = ?`, string(projectID)); err != nil {
+		return syncTransactionProblem(ctx)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM continuity_sync_environment_certificates
 WHERE project_id = ?`, string(projectID)); err != nil {
 		return syncTransactionProblem(ctx)
 	}
@@ -485,11 +495,11 @@ WHERE fact.project_id = ?
 
 // PersistSealedOutbox records exact local envelope bytes before first upload.
 // An exact retry is idempotent; any changed immutable byte is a conflict.
-func (store *Store) PersistSealedOutbox(ctx context.Context, projectID continuity.ProjectID, channelID string, frame SealedOutboxFrame) error {
+func (store *Store) PersistSealedOutbox(ctx context.Context, projectID continuity.ProjectID, channelID SyncChannelID, frame SealedOutboxFrame) error {
 	if err := projectID.Validate(); err != nil {
 		return syncProblem(SyncErrorInvalid, "project_id", "is invalid")
 	}
-	if !validOpaqueID(channelID) {
+	if channelID == (SyncChannelID{}) {
 		return syncProblem(SyncErrorInvalid, "channel_id", "is invalid")
 	}
 	if err := frame.FactID.Validate(); err != nil {
@@ -701,7 +711,7 @@ LIMIT ?`, string(projectID), limit)
 
 // StageSyncPage atomically stages one contiguous opaque relay page and advances
 // only the downloaded cursor.
-func (store *Store) StageSyncPage(ctx context.Context, projectID continuity.ProjectID, channelID string, expectedAfter, relayHead int64, frames []OpaqueSyncFrame) (SyncProgress, error) {
+func (store *Store) StageSyncPage(ctx context.Context, projectID continuity.ProjectID, channelID SyncChannelID, expectedAfter, relayHead int64, frames []OpaqueSyncFrame) (SyncProgress, error) {
 	if err := validateStageSyncPage(projectID, channelID, expectedAfter, relayHead, frames); err != nil {
 		return SyncProgress{}, err
 	}
@@ -731,22 +741,7 @@ func (store *Store) StageSyncPage(ctx context.Context, projectID continuity.Proj
 		return SyncProgress{}, err
 	}
 	if !found {
-		if expectedAfter != 0 {
-			return SyncProgress{}, syncProblem(SyncErrorCursor, "expected_after", "does not match an unattached project")
-		}
-		if _, err := tx.ExecContext(ctx, `
-INSERT INTO continuity_sync_projects(
-  project_id, channel_id, activation_state,
-  downloaded_cursor, applied_cursor, relay_head
-) VALUES(?, ?, 'staging', 0, 0, ?)`, string(projectID), channelID, relayHead); err != nil {
-			return SyncProgress{}, syncTransactionProblem(ctx)
-		}
-		progress = SyncProgress{
-			ProjectID:       projectID,
-			ChannelID:       channelID,
-			ActivationState: SyncActivationStaging,
-			RelayHead:       relayHead,
-		}
+		return SyncProgress{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
 	} else {
 		if progress.ChannelID != channelID {
 			return SyncProgress{}, syncProblem(SyncErrorConflict, "channel_id", "does not match the retained channel")
@@ -1320,11 +1315,11 @@ WHERE project_id = ?`, progress.AppliedCursor, string(projectID))
 	return progress, nil
 }
 
-func validateStageSyncPage(projectID continuity.ProjectID, channelID string, expectedAfter, relayHead int64, frames []OpaqueSyncFrame) error {
+func validateStageSyncPage(projectID continuity.ProjectID, channelID SyncChannelID, expectedAfter, relayHead int64, frames []OpaqueSyncFrame) error {
 	if err := projectID.Validate(); err != nil {
 		return syncProblem(SyncErrorInvalid, "project_id", "is invalid")
 	}
-	if !validOpaqueID(channelID) {
+	if channelID == (SyncChannelID{}) {
 		return syncProblem(SyncErrorInvalid, "channel_id", "is invalid")
 	}
 	if expectedAfter < 0 || relayHead < expectedAfter {
@@ -1510,11 +1505,12 @@ WHERE project_id = ? AND arrival_sequence = ?`,
 
 func readSyncProgressV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (SyncProgress, bool, error) {
 	progress := SyncProgress{ProjectID: projectID}
+	var channelID []byte
 	err := tx.QueryRowContext(ctx, `
 SELECT channel_id, activation_state, downloaded_cursor, applied_cursor, relay_head
 FROM continuity_sync_projects
 WHERE project_id = ?`, string(projectID)).Scan(
-		&progress.ChannelID,
+		&channelID,
 		&progress.ActivationState,
 		&progress.DownloadedCursor,
 		&progress.AppliedCursor,
@@ -1525,6 +1521,13 @@ WHERE project_id = ?`, string(projectID)).Scan(
 	}
 	if err != nil {
 		return SyncProgress{}, false, syncTransactionProblem(ctx)
+	}
+	if len(channelID) != len(progress.ChannelID) {
+		return SyncProgress{}, false, syncProblem(SyncErrorStore, "channel_id", "retained channel identity is corrupt")
+	}
+	copy(progress.ChannelID[:], channelID)
+	if progress.ChannelID == (SyncChannelID{}) {
+		return SyncProgress{}, false, syncProblem(SyncErrorStore, "channel_id", "retained channel identity is corrupt")
 	}
 	if progress.ActivationState != SyncActivationStaging && progress.ActivationState != SyncActivationAttached {
 		return SyncProgress{}, false, syncProblem(SyncErrorStore, "", "sync activation state is corrupt")

@@ -220,6 +220,7 @@ ORDER BY name`)
 		t.Fatalf("close sync tables: %v", err)
 	}
 	wantTables := []string{
+		"continuity_sync_environment_certificates",
 		"continuity_sync_environment_heads",
 		"continuity_sync_inbox",
 		"continuity_sync_outbox",
