@@ -95,6 +95,20 @@ func (store *Store) appendFactV1(ctx context.Context, projectID continuity.Proje
 	if err := insertFactV1(ctx, tx, intent, store.environmentID, sequence, clock); err != nil {
 		return continuity.AppendReceipt{}, err
 	}
+	if err := advanceEnvironmentHeadV1(ctx, tx, storedFactV1{
+		factID:              factID,
+		projectID:           projectID,
+		subject:             subject,
+		kind:                kind,
+		payloadVersion:      payloadVersionV1,
+		content:             content,
+		environmentID:       store.environmentID,
+		environmentSequence: sequence,
+		clock:               clock,
+		envelopeVersion:     envelopeVersionV1,
+	}); err != nil {
+		return continuity.AppendReceipt{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return continuity.AppendReceipt{}, &continuity.Problem{Code: continuity.ProblemCommitUnknown, Detail: "the append commit outcome is unknown; retry with the retained fact id"}
 	}

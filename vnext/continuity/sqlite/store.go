@@ -79,6 +79,10 @@ func Open(stateRoot string, environmentID continuity.EnvironmentID) (*Store, err
 		if _, err := initializeSchemaIfEmpty(db); err != nil {
 			return closeOnError(err)
 		}
+	} else {
+		if err := migrateSchema(db); err != nil {
+			return closeOnError(err)
+		}
 	}
 	if err := validateSchema(db); err != nil {
 		return closeOnError(err)
