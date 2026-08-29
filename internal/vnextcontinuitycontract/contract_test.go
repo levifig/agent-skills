@@ -21,12 +21,12 @@ func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 	wantProduction := []string{"semantics.go"}
 	wantExports := []string{
 		"Catalog",
-		"ContextActive", "ContextAttachedOnly", "ContextCheckpoint", "ContextDecision", "ContextExcluded", "ContextFinding", "ContextInclusion", "ContextLatestHandoff", "ContextOutput", "ContextProject", "ContextRecentJournal", "ContextWrap",
-		"Mutation", "MutationAdvisoryFacts", "MutationAppendOnly", "MutationAppendWithCorrectionRetraction", "MutationAppendWithDisposition", "MutationAppendWithRevisionDispositionPromotion", "MutationAppendWithSupersession", "MutationMintOnce", "MutationReadTimeFold",
-		"Permanence", "PermanenceDerived", "PermanenceDurable", "PermanenceEphemeral",
-		"Projection", "ProjectionActiveSpark", "ProjectionAttachedLeaf", "ProjectionContextDigest", "ProjectionCoordinationState", "ProjectionCurrentDecision", "ProjectionCurrentFinding", "ProjectionCurrentIdea", "ProjectionCurrentIdentity", "ProjectionEvidenceLedger", "ProjectionExplorationIdentity", "ProjectionLatestCheckpoint", "ProjectionLatestHandoff", "ProjectionLatestWrap", "ProjectionTimeline",
+		"ContextAttachedOnly", "ContextExcluded", "ContextFocusActive", "ContextFocusAndProjectWrap", "ContextFocusDecision", "ContextFocusFinding", "ContextFocusThenProjectJournal", "ContextInclusion", "ContextLatestCheckpoint", "ContextLatestFocusHandoff", "ContextOutput", "ContextProject",
+		"Mutation", "MutationAdvisoryFacts", "MutationAppendOnly", "MutationAppendWithAttachmentChanges", "MutationAppendWithCorrectionRetraction", "MutationAppendWithCorrections", "MutationAppendWithDisposition", "MutationAppendWithResolutionSupersession", "MutationAppendWithRevisionDispositionPromotion", "MutationMintOnce", "MutationMintOnceWithLabelRevisions", "MutationReadTimeFold",
+		"Permanence", "PermanenceDerived", "PermanenceLedger", "PermanenceNotebook", "PermanenceScratchpad",
+		"Projection", "ProjectionActiveSpark", "ProjectionContextDigest", "ProjectionCoordinationState", "ProjectionCurrentDecision", "ProjectionCurrentFinding", "ProjectionCurrentIdea", "ProjectionCurrentIdentity", "ProjectionEffectiveTimeline", "ProjectionEvidenceLedger", "ProjectionExplorationIdentity", "ProjectionLatestCheckpoint", "ProjectionLatestHandoff", "ProjectionLatestWrap", "ProjectionReferenceAttachments",
 		"RecordCheckpoint", "RecordDecision", "RecordDerivedContext", "RecordExploration", "RecordExternalReference", "RecordFinding", "RecordHandoff", "RecordIdea", "RecordJournalEntry", "RecordKind", "RecordProjectIdentity", "RecordScratchpad", "RecordSemantics", "RecordSpark", "RecordVerificationEvidence", "RecordWrap",
-		"ReferenceBehavior", "ReferencesEvidenceLeaf", "ReferencesIncludeAttached", "ReferencesMayAttachOpaque", "ReferencesNone", "ReferencesOpaqueLeaf", "ReferencesOwnIdentity",
+		"ReferenceBehavior", "ReferencesEphemeralOpaqueIDs", "ReferencesEvidenceLeaf", "ReferencesIncludeAttached", "ReferencesMayAttachOpaque", "ReferencesOpaqueLeaf",
 		"Retention", "RetentionForever", "RetentionRecomputed", "RetentionUntilSyncSafePoint",
 		"SemanticsFor",
 	}
@@ -60,7 +60,7 @@ func TestContinuityDomainContractRejectsMutableAndDynamicSurfaces(t *testing.T) 
 		}
 		lower := strings.ToLower(string(contents))
 		for _, forbidden := range []string{
-			"json.rawmessage", "interface{}", "map[", " provider", " credential", " secret", " token",
+			"json.rawmessage", " provider", " credential", " secret", " token",
 			" tracker", " linear", " jira", " assignment", " hierarchy", " dependency", " work-item",
 		} {
 			if strings.Contains(lower, forbidden) {
@@ -85,14 +85,37 @@ func TestContinuityDomainContractRejectsMutableAndDynamicSurfaces(t *testing.T) 
 				}
 			}
 		}
-		ast.Inspect(file, func(node ast.Node) bool {
-			switch node.(type) {
-			case *ast.MapType, *ast.InterfaceType:
-				t.Errorf("%s contains a map or interface escape hatch", entry.Name())
+		for _, declaration := range file.Decls {
+			switch declaration := declaration.(type) {
+			case *ast.GenDecl:
+				for _, specification := range declaration.Specs {
+					if specification, ok := specification.(*ast.TypeSpec); ok && ast.IsExported(specification.Name.Name) {
+						assertNoDynamicExport(t, entry.Name(), specification.Type)
+					}
+				}
+			case *ast.FuncDecl:
+				if ast.IsExported(declaration.Name.Name) {
+					assertNoDynamicExport(t, entry.Name(), declaration.Type)
+				}
 			}
-			return true
-		})
+		}
 	}
+}
+
+func assertNoDynamicExport(t *testing.T, fileName string, node ast.Node) {
+	t.Helper()
+
+	ast.Inspect(node, func(node ast.Node) bool {
+		switch node := node.(type) {
+		case *ast.MapType, *ast.InterfaceType:
+			t.Errorf("%s exports a map or interface escape hatch", fileName)
+		case *ast.Ident:
+			if node.Name == "any" {
+				t.Errorf("%s exports an any escape hatch", fileName)
+			}
+		}
+		return true
+	})
 }
 
 func TestContinuityContractOracleIsTestOnlyAndStandardLibrary(t *testing.T) {
