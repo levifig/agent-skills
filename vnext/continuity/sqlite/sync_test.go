@@ -387,7 +387,7 @@ func TestContinuityStoreRejectsEnvelopeChainGapCertificateChangeAndNonceReuse(t 
 		if _, err := store.ApplySyncBatch(context.Background(), projectID, firstVerified, 1_000, 100); err != nil {
 			t.Fatalf("apply first nonce: %v", err)
 		}
-		second := syncIdeaCreatedFact(t, projectID, "fact-two", "idea-two", "environment-c", 1, 101, "Two")
+		second := syncIdeaCreatedFact(t, projectID, "fact-two", "idea-two", "environment-a", 1, 101, "Two")
 		secondVerified := stageSyncFacts(t, store, projectID, 2, []continuitywire.Fact{second})
 		secondVerified[0].Nonce = firstVerified[0].Nonce
 		_, err := store.ApplySyncBatch(context.Background(), projectID, secondVerified, 1_000, 100)

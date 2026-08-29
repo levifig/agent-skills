@@ -373,10 +373,44 @@ func testSyncAuthority() SyncAuthority {
 
 func installTestSyncAuthority(t *testing.T, store *Store, projectID continuity.ProjectID, channelID SyncChannelID) {
 	t.Helper()
-	authority := testSyncAuthority()
+	authority := testActiveSyncAuthority()
 	authority.ChannelID = channelID
 	if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, authority); err != nil {
 		t.Fatalf("InstallVerifiedSyncAuthority(%x) error = %v", channelID, err)
+	}
+}
+
+func testActiveSyncAuthority() SyncAuthority {
+	relayGeneration := testAuthorityDigest(0x11)
+	return SyncAuthority{
+		ChannelID:            testSyncChannelID("channel-a"),
+		RelayGeneration:      relayGeneration,
+		AdminPublicKey:       testAuthorityDigest(0x22),
+		MembershipGeneration: 3,
+		Environments: []SyncEnvironmentCertificate{
+			{
+				EnvironmentID:            "environment-a",
+				CertificateID:            testSyncCertificateID("environment-a"),
+				CertificateBytes:         []byte("environment-a-certificate"),
+				Mode:                     SyncEnvironmentTrusted,
+				JoinMembershipGeneration: 1,
+			},
+			{
+				EnvironmentID:            "environment-b",
+				CertificateID:            testSyncCertificateID("environment-b"),
+				CertificateBytes:         []byte("environment-b-certificate"),
+				Mode:                     SyncEnvironmentEphemeral,
+				ExpiresAtMillis:          10_000,
+				JoinMembershipGeneration: 2,
+			},
+			{
+				EnvironmentID:            "environment-local",
+				CertificateID:            sha256.Sum256([]byte("local certificate")),
+				CertificateBytes:         []byte("environment-local-certificate"),
+				Mode:                     SyncEnvironmentTrusted,
+				JoinMembershipGeneration: 3,
+			},
+		},
 	}
 }
 
@@ -386,6 +420,10 @@ func testSyncChannelID(label string) SyncChannelID {
 
 func testAuthorityDigest(value byte) [32]byte {
 	return sha256.Sum256([]byte{value})
+}
+
+func testSyncCertificateID(environmentID string) [32]byte {
+	return sha256.Sum256([]byte("certificate:" + environmentID))
 }
 
 func cloneSyncAuthority(value SyncAuthority) SyncAuthority {

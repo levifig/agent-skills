@@ -57,7 +57,8 @@ func expectedPersistenceSourceDigests() map[string]string {
 		"snapshot_references_v1.go":        "61d8c47d16b90d630a697d9daecbce10a0c91fbc62b9680ccd3126986dfe920f",
 		"snapshot_scratchpad_v1.go":        "8eaf2d3dfc3e209966eb29fe6a334fdf60b7531d253d3466fcdc1d9b0c03e6d9",
 		"store.go":                         "25a31b8efe29c41bbc6dcac1a7e2dcb2fd5cfca38863c4b4ee56660115a856a2",
-		"sync.go":                          "065feb2bb13b8a2269dacf39cfb13446c06ac8a2511a4a27673b96b22fcbea92",
+		"sync.go":                          "9a6101aac545716eea070d307a842cf63189ee2ef6fa34c438bb86d58a7216e2",
+		"terminal_history.go":              "17794c85eee93b38008179e4734426fd542eba31ee810457b1547d0f0ef9aebd",
 		"wire_v1.go":                       "1b632f0aa5a96077e00ee660ef566a0da204cf004870dda2576b0bf141d32bbd",
 		"wire_validation_v1.go":            "783dff45234fa3717969d364c8e9e7d2b78aa420da262b6be230c238b57ba2f9",
 	}
@@ -343,7 +344,7 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 		},
 		"sync.go": {
 			"Store.ActivateStagedSync":         "dc3cbc8deeb2ff472ee1bcb2f9645f94a9eb785a7646085d1b80e34464eeecf4",
-			"Store.ApplySyncBatch":             "5b5be3310b6eb118e862348ea0ebad1e0500b83d58a9a5ff11eab982cdbdf5b4",
+			"Store.ApplySyncBatch":             "895f213e4d4fa91505959cb8be86ba3129658ab418886a04579d854ab96eaba3",
 			"Store.CurrentSyncProgress":        "8803ee55b04e7356c4dbc7bbc84686d380d337e3cf73d5ac9ab4b72eb01ec9a9",
 			"Store.DiscardStagedSync":          "d6ce3ffa5c87d0768bd419e8e1fb9d7b9781928fee827cc684da027a66f64406",
 			"Store.ExportFact":                 "83fb252618d36be0cf9a37151777572a065eebcd95db78a29e69401905e3ab98",
@@ -382,6 +383,13 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 			"validateStageSyncPage":            "d47680b77ecde306f791f9e4e6445d55cc69f2b6381fc9abf94904f592dda1b4",
 			"validateStagedBindingsV1":         "8c1ecb2378f8ba462c9675feeefc85f9405a27005e785ac8bd8e4249f9329e01",
 			"validateStagedPageReplayV1":       "f057b0bc69bb4487df4d404a700306592895e8218fe22e664ff7d1706f7bb0a6",
+		},
+		"terminal_history.go": {
+			"Store.PendingSyncFramesAfter":                     "b4cc08cd3604eb0ab5e1b09260674335cd7c3b43d8826427f55182c20ccc0c87",
+			"ordinarySyncEnvironmentRequiresTerminalHistoryV1": "b01259be99d6f7bea301ea8c33a62bf0c6471a26c046d0fd9dfc07a6589d5b45",
+			"pendingSyncFramesAfterV1":                         "c2fd017afc6db61e5129779ade9d11e7f51b105fbf13e67d175a9dc7dcadf46c",
+			"pinnedOrdinarySyncEnvironmentV1":                  "4a57899339a75b5b1d3dc57e68d8732f0d4926d59c419d8e3bfe3fb2d6afd2cb",
+			"validateOrdinarySyncFrameAuthorityV1":             "4d208896a30a238ea99772a5b32774c9c9a6bf346e815c5be120b764ee339bb7",
 		},
 		"wire_v1.go": {},
 		"wire_validation_v1.go": {
