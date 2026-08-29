@@ -64,7 +64,7 @@ The detailed threat analysis is [vNext Private Sync Threat Model](../security/vn
 
 Client sync metadata belongs in the same private continuity SQLite database under schema line `vnext/2`. This is the only way to atomically commit received facts, immutable receipts, environment heads, quarantine state, prune tombstones, and the applied cursor. The sealed outbox is derived from unreceipted local facts, so a fact cannot be stranded by a post-append enqueue failure. Credentials remain outside fact rows and sync metadata.
 
-The relay uses a separate SQLite database and schema because it stores only opaque envelopes and control-plane records. Arrival rows are append-only. A pruned arrival retains its fact ID, source environment and sequence, digest, and prune certificate while its ciphertext becomes `NULL`; arrival numbers are never reused.
+The relay uses a separate SQLite database and schema because it stores only opaque envelopes and control-plane records. Each physical relay database has one random immutable incarnation identifier shared by every channel; clients pin it and require recovery if it changes. Arrival rows are append-only. A pruned arrival retains its fact ID, source environment and sequence, digest, and prune certificate while its ciphertext becomes `NULL`; arrival numbers are never reused.
 
 One bounded sync pass is:
 
@@ -89,7 +89,7 @@ All wire encodings use fixed-field canonical JSON with unknown fields rejected, 
 
 Attach is explicit and staged: validate one credential class; require HTTPS except an explicit loopback-only test mode; match the intended local project and fingerprints; fetch the full relay inventory; verify every certificate, signature, envelope, nonce, gap, HLC, and canonical fact; validate the candidate corpus; atomically install sync state; rebuild the deterministic projection; then mark the environment active. An empty relay requires an explicit create-empty-channel choice.
 
-Environment identities are mint-once. Trusted environments remain active until explicit retirement. Ephemeral environments expire and must final-sync before terminal retirement. Membership changes increment a generation and invalidate unfinished prune barriers. A rolled-back or retired environment must reattach under a fresh identity. Content-key rotation is required when future confidentiality from a compromised client matters.
+Environment identities are mint-once. Trusted environments remain active until explicit retirement. Ephemeral environments have independently enforceable relay-token and certificate expiries and must final-sync before terminal retirement. Those expiries gate honest relay and client admission; a signature alone cannot prove that an envelope was authored before expiry. Before expiry, the project administrator therefore signs and retains a terminal fence binding the relay database incarnation, environment certificate, final source sequence, and final envelope digest. After expiry, a client accepts first-seen history only through that verified fence; an expired producer without one is quarantined as recovery-required. Locally retained authenticated envelopes remain readable. Membership changes increment a generation and invalidate unfinished prune barriers. A rolled-back or retired environment must reattach under a fresh identity. Content-key rotation is required when future confidentiality from a compromised client matters.
 
 ## Scratchpad Safe Points
 
@@ -97,7 +97,7 @@ v1 physically prunes only participant, message, claim, and claim-release facts f
 
 A prune certificate binds one membership generation, fixed relay barrier, closed scratchpad, exact sorted manifest, manifest digest, active environment set, producer frontiers, and every active environment acknowledgement. All active environments must have applied through the barrier, have no gap/skew/conflict, have an empty outbox after observing close, and agree on the manifest. Joining environments block completion; retired identities are fenced.
 
-Each active client transactionally deletes the manifest facts and records durable tombstones before acknowledging. Only after all acknowledgements does the relay null the ciphertext while retaining opaque tombstone metadata and the certificate. Exact stale replays remain duplicates; conflicting replays fail; retired clients cannot write. Complete removal of scratchpad roots and closes requires a future compacted terminal fact and is not part of v1.
+Each active client transactionally deletes the manifest facts and records durable tombstones before acknowledging. Only after all acknowledgements does the relay null the ciphertext while retaining opaque tombstone metadata and the certificate. Exact stale replays from active identities remain duplicates; conflicting replays fail; expired and retired identities are rejected uniformly and cannot use collision-specific responses as an oracle. Complete removal of scratchpad roots and closes requires a future compacted terminal fact and is not part of v1.
 
 ## Consequences
 
