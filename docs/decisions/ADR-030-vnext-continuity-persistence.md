@@ -10,6 +10,7 @@ related:
   - ADR-019
   - ADR-028
   - ADR-029
+  - ADR-031
 ---
 
 # ADR-030: vNext continuity persists as SQLite-backed typed facts
@@ -56,7 +57,7 @@ The kernel still does not open a database. The SQLite adapter and write chokepoi
 
 ### Neutral
 
-- Schema identity remains `vnext/1`; choosing an engine is not a schema bump.
+- LOAF-96 establishes schema identity `vnext/1`; choosing an engine is not a schema bump. ADR-031 advances the same schema line to `vnext/2` when sync metadata and atomic remote receive arrive.
 - Legacy ADR-014/029 remain in force for the shipped line until cutover.
 
 ### Filesystem Trust Boundary
@@ -90,3 +91,4 @@ This loses the isolation contract. vNext may learn from that behavior and consum
 - 2026-08-29 — Pinned deterministic fixed-layer context selection, focus existence, and one-hop attachment boundaries.
 - 2026-08-29 — Required one-hop records to inherit Focus, Scope, Branch, or project-remainder precedence before their own caps.
 - 2026-08-29 — Reserved a leading external-reference sub-tier for the explicit reference focus so its own layer cannot cap it out.
+- 2026-08-29 — Recorded ADR-031's later `vnext/2` sync migration without changing the LOAF-96 persistence decision.
