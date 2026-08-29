@@ -37,12 +37,15 @@ func (request SnapshotRequest) Validate() error {
 }
 
 // ContextRequest selects exact typed and textual context without inference.
-// Empty Scope and Branch are absent selectors. Nonempty values match exact
-// bytes. Focus precedes Scope, which precedes Branch, and overlaps are removed
-// by subject before caps. Scope applies only to effective journal entries,
-// active sparks, decisions, and effective findings. Branch applies only to the
-// winning journal content observation. AtMillis has the snapshot meaning even
-// though scratchpad content is excluded from context.
+// Focus must identify an existing same-project continuity subject. Empty Scope
+// and Branch are absent selectors. Nonempty values match exact bytes. Focus
+// precedes Scope, which precedes Branch, and overlaps are removed by subject
+// before caps. FocusedJournal contains only an exact journal focus;
+// ProjectJournal ranks Scope, then Branch, then the project remainder. Scope
+// applies only to effective journal entries, active sparks, decisions, and
+// effective findings. Branch applies only to the winning journal content
+// observation. AtMillis has the snapshot meaning even though scratchpad content
+// is excluded from context.
 type ContextRequest struct {
 	Focus    *SubjectRef
 	Scope    string
@@ -390,7 +393,9 @@ type ContextSelection struct {
 	Truncated      bool
 }
 
-// ContextJournalLayer is one bounded journal layer.
+// ContextJournalLayer is one bounded journal layer. Selection counts describe
+// the layer after semantic filtering and deduplication but before and after its
+// fixed cap.
 type ContextJournalLayer struct {
 	Selection ContextSelection
 	Entries   []JournalEntry
@@ -439,8 +444,9 @@ type ContextHandoffLayer struct {
 	Handoffs  []Handoff
 }
 
-// ContextExternalReference contains one selected locator and only the active
-// edges whose targets caused its inclusion in the context.
+// ContextExternalReference contains one selected locator and only active edges
+// whose targets are present in the capped primary context. A directly focused
+// reference remains visible even when no edge target is selected.
 type ContextExternalReference struct {
 	ProjectID             ProjectID
 	ReferenceID           SubjectID
@@ -451,19 +457,25 @@ type ContextExternalReference struct {
 }
 
 // ContextExternalReferenceLayer contains selected one-hop opaque references.
+// Each reference inherits the best selector rank among its matching targets;
+// a directly focused reference forms a strict leading subrank even without a
+// matching edge, so the explicit focus cannot be removed by this layer's cap.
 type ContextExternalReferenceLayer struct {
 	Selection  ContextSelection
 	References []ContextExternalReference
 }
 
-// ContextVerificationEvidenceLayer contains selected direct evidence.
+// ContextVerificationEvidenceLayer contains selected direct evidence ranked by
+// its target's selector rank.
 type ContextVerificationEvidenceLayer struct {
 	Selection ContextSelection
 	Evidence  []VerificationEvidence
 }
 
 // ContextDigest is the fixed-layer context derived from one project snapshot.
-// Layers preserve selector precedence and otherwise retain snapshot order.
+// Layers and one-hop records preserve selector precedence and otherwise retain
+// snapshot order within each selector rank. A directly focused external
+// reference is the sole exception: it leads inherited focus-rank references.
 type ContextDigest struct {
 	Project              ProjectIdentityProjection
 	Focus                *SubjectRef

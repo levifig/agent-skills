@@ -31,6 +31,7 @@ func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 		"sqlite/append_kernel.go",
 		"sqlite/append_methods.go",
 		"sqlite/codec_v1.go",
+		"sqlite/context_v1.go",
 		"sqlite/driver.go",
 		"sqlite/filesystem_attributes_windows.go",
 		"sqlite/filesystem_unix.go",
