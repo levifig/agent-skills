@@ -1,11 +1,11 @@
-package kernel
+package vnextboundary
 
 import (
 	"os"
 	"testing"
 )
 
-func TestDependencyBoundaryVNextSourceClosureSatisfiesBootstrapPolicy(t *testing.T) {
+func TestDependencyBoundary(t *testing.T) {
 	t.Parallel()
 
 	workingDirectory, err := os.Getwd()
