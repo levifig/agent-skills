@@ -32,6 +32,7 @@ vNext continuity persistence is SQLite now.
 6. **Physical scratchpad prune is deferred to LOAF-97 sync safe-points.** Scratchpad facts are ephemeral in the catalog and retained on disk until that slice.
 7. **A snapshot materializes one exact project corpus in one deferred read-only transaction.** The adapter strictly scans canonical rows in total order, commits the read transaction, releases the sole SQLite connection and store lock, and only then performs the cancellable in-memory fold. `AtMillis` evaluates scratchpad claim expiry only; the implementation never reads the current clock.
 8. **Concurrent history converges by canonical causal closure and semantic class.** The least ordered mint is the record root. Successors of that root and its eligible descendants remain candidates even when they are sibling branches. The greatest candidate wins within a semantic class, while terminal classes such as idea disposition, decision supersession, finding retraction, scratchpad close, and claim release dominate later nonterminal candidates. Missing, cross-subject, future, or impossible-transition predecessors make the history corrupt rather than producing a partial projection.
+9. **Derived context is one bounded projection, not another state model.** A valid focus must name an existing same-project subject, including a terminal or projection-hidden subject. Selection is exact and deterministic: focus, then scope, then branch, then project remainder, with subject deduplication before fixed per-layer caps. Scope applies only to journal entries, active sparks, decisions, and findings; branch applies only to the winning journal observation. Primary layers seed one-hop opaque references and direct verification evidence only after their caps, so omitted records cannot leak through attachments. One-hop records inherit their best selected target's precedence tier and retain snapshot order within a tier. A directly focused external reference forms a strict leading sub-tier before references that inherit focus precedence, even when none of its edges target a selected primary record, so the explicit focus cannot be capped out.
 
 This is a vNext decision. ADR-014 chose Go and left the legacy SQLite driver to SPEC-040. ADR-029 is the shipped grow-only envelope for the current runtime. Neither authorizes vNext packages, schema identity, or the continuity API.
 
@@ -43,6 +44,7 @@ The kernel still does not open a database. The SQLite adapter and write chokepoi
 
 - Continuity can be queried, transactionally appended, and later synced without inventing a second storage engine.
 - Read-time folds keep derived context honest: the digest cannot disagree with the fact log.
+- Fixed layers and pre-cap availability counts make context omission explicit without persisting a cache or accepting caller-defined limits.
 - Deferred read-only snapshots coexist with WAL writers and do not retain the database connection during CPU-heavy projection work.
 - The source gate can admit SQLite without opening a general third-party or `database/sql` allowlist.
 
@@ -85,3 +87,6 @@ This loses the isolation contract. vNext may learn from that behavior and consum
 - 2026-08-29 — Initial record.
 - 2026-08-29 — Pinned the Windows-only `syscall` admission and recorded filesystem authority, ACL, symlink-alias, race, and runtime-validation limits.
 - 2026-08-29 — Pinned deferred read-only snapshot materialization, cancellable post-transaction folding, and branch-tolerant semantic-class convergence.
+- 2026-08-29 — Pinned deterministic fixed-layer context selection, focus existence, and one-hop attachment boundaries.
+- 2026-08-29 — Required one-hop records to inherit Focus, Scope, Branch, or project-remainder precedence before their own caps.
+- 2026-08-29 — Reserved a leading external-reference sub-tier for the explicit reference focus so its own layer cannot cap it out.

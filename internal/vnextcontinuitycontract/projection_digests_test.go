@@ -23,7 +23,7 @@ func TestContinuityProjectionContractPinsExactSourceAndValidation(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read projection source: %v", err)
 	}
-	if got, want := fmt.Sprintf("%x", sha256.Sum256(contents)), "4a41baa223a44bf10af7a99f139226519744164d989a431edb9c58efbde87085"; got != want {
+	if got, want := fmt.Sprintf("%x", sha256.Sum256(contents)), "6aa14fa88bc39dc8a80b95cbcc9446c8c4dd75c49265869789a994641b45e75a"; got != want {
 		t.Errorf("projection exact source digest = %q, want %q", got, want)
 	}
 

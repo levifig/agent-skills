@@ -18,6 +18,17 @@ func (store *Store) Snapshot(ctx context.Context, projectID continuity.ProjectID
 	return store.snapshotV1(ctx, projectID, request.AtMillis)
 }
 
+// DeriveContext returns the deterministic fixed-layer context for one project.
+func (store *Store) DeriveContext(ctx context.Context, projectID continuity.ProjectID, request continuity.ContextRequest) (continuity.ContextDigest, error) {
+	if err := request.Validate(); err != nil {
+		return continuity.ContextDigest{}, err
+	}
+	if err := projectID.Validate(); err != nil {
+		return continuity.ContextDigest{}, refieldProblemV1(err, "project_id")
+	}
+	return store.deriveContextV1(ctx, projectID, request)
+}
+
 func (store *Store) snapshotV1(ctx context.Context, projectID continuity.ProjectID, atMillis int64) (continuity.Snapshot, error) {
 	if store == nil {
 		return continuity.Snapshot{}, storeClosedProblemV1()
@@ -36,6 +47,34 @@ func (store *Store) snapshotV1(ctx context.Context, projectID continuity.Project
 		return continuity.Snapshot{}, &continuity.Problem{Code: continuity.ProblemProjectNotRegistered, Field: "project_id", Detail: "has no continuity identity"}
 	}
 	return foldProjectSnapshotV1(ctx, projectID, atMillis, facts)
+}
+
+func (store *Store) deriveContextV1(ctx context.Context, projectID continuity.ProjectID, request continuity.ContextRequest) (continuity.ContextDigest, error) {
+	if store == nil {
+		return continuity.ContextDigest{}, storeClosedProblemV1()
+	}
+	if ctx == nil {
+		return continuity.ContextDigest{}, &continuity.Problem{Code: continuity.ProblemInvalid, Field: "context", Detail: "must not be nil"}
+	}
+	if err := ctx.Err(); err != nil {
+		return continuity.ContextDigest{}, err
+	}
+	facts, err := store.loadSnapshotFactsV1(ctx, projectID)
+	if err != nil {
+		return continuity.ContextDigest{}, err
+	}
+	if len(facts) == 0 {
+		return continuity.ContextDigest{}, &continuity.Problem{Code: continuity.ProblemProjectNotRegistered, Field: "project_id", Detail: "has no continuity identity"}
+	}
+	snapshot, err := foldProjectSnapshotV1(ctx, projectID, request.AtMillis, facts)
+	if err != nil {
+		return continuity.ContextDigest{}, err
+	}
+	relations, err := resolveContextFocusRelationsV1(ctx, facts, request.Focus)
+	if err != nil {
+		return continuity.ContextDigest{}, err
+	}
+	return deriveContextDigestV1(ctx, snapshot, request, relations)
 }
 
 func (store *Store) loadSnapshotFactsV1(ctx context.Context, projectID continuity.ProjectID) ([]storedFactV1, error) {

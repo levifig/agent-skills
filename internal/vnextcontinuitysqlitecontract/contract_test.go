@@ -73,6 +73,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"append_kernel.go",
 		"append_methods.go",
 		"codec_v1.go",
+		"context_v1.go",
 		"driver.go",
 		"filesystem_attributes_windows.go",
 		"filesystem_unix.go",
@@ -98,6 +99,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.CorrectFinding",
 		"Store.CorrectJournalEntry",
 		"Store.CreateIdea",
+		"Store.DeriveContext",
 		"Store.DetachExternalReference",
 		"Store.DismissSpark",
 		"Store.IntroduceScratchpadParticipant",
@@ -162,6 +164,7 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 			"io",
 			"strings",
 		},
+		"context_v1.go":                    {"context", "github.com/levifig/loaf/vnext/continuity"},
 		"driver.go":                        {"_:github.com/ncruces/go-sqlite3/driver"},
 		"filesystem_attributes_windows.go": {"fmt", "os", "syscall"},
 		"filesystem_unix.go":               {"errors", "fmt", "os", "path/filepath", "strings"},
@@ -386,6 +389,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"CorrectFinding":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingCorrectionPayload) (continuity.AppendReceipt, error)",
 		"CorrectJournalEntry":            "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.JournalCorrectionPayload) (continuity.AppendReceipt, error)",
 		"CreateIdea":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaCreatedPayload) (continuity.AppendReceipt, error)",
+		"DeriveContext":                  "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.ContextRequest) (continuity.ContextDigest, error)",
 		"DetachExternalReference":        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceDetachmentPayload) (continuity.AppendReceipt, error)",
 		"DismissSpark":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkDismissedPayload) (continuity.AppendReceipt, error)",
 		"IntroduceScratchpadParticipant": "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadParticipantPayload) (continuity.AppendReceipt, error)",
@@ -445,6 +449,103 @@ func TestContinuitySQLiteContractPinsSnapshotReadBoundary(t *testing.T) {
 	for _, forbidden := range []string{"Isolation:", "time.Now", "ExecContext(", "tx.Exec(", "store.db.Exec("} {
 		if strings.Contains(normalized, forbidden) {
 			t.Errorf("read.go contains forbidden Snapshot read behavior %q", forbidden)
+		}
+	}
+}
+
+func TestContinuitySQLiteContractPinsContextReadBoundaryAndCaps(t *testing.T) {
+	t.Parallel()
+
+	readContents, err := os.ReadFile(filepath.Join(sqliteSourceRoot, "read.go"))
+	if err != nil {
+		t.Fatalf("read context boundary: %v", err)
+	}
+	readNormalized := strings.Join(strings.Fields(string(readContents)), " ")
+	for _, required := range []string{
+		"return store.deriveContextV1(ctx, projectID, request)",
+		"store.loadSnapshotFactsV1(ctx, projectID)",
+		"foldProjectSnapshotV1(ctx, projectID, request.AtMillis, facts)",
+		"resolveContextFocusRelationsV1(ctx, facts, request.Focus)",
+		"deriveContextDigestV1(ctx, snapshot, request, relations)",
+	} {
+		if !strings.Contains(readNormalized, required) {
+			t.Errorf("read.go does not contain pinned context boundary %q", required)
+		}
+	}
+
+	readFile := parseGoFile(t, filepath.Join(sqliteSourceRoot, "read.go"))
+	var deriveContext *ast.FuncDecl
+	for _, declaration := range readFile.Decls {
+		candidate, ok := declaration.(*ast.FuncDecl)
+		if !ok || candidate.Name.Name != "deriveContextV1" || candidate.Recv == nil || len(candidate.Recv.List) != 1 || receiverName(candidate.Recv.List[0].Type) != "Store" {
+			continue
+		}
+		if deriveContext != nil {
+			t.Fatal("read.go has multiple Store.deriveContextV1 methods")
+		}
+		deriveContext = candidate
+	}
+	if deriveContext == nil || deriveContext.Body == nil {
+		t.Fatal("read.go does not define Store.deriveContextV1")
+	}
+	deriveBody := strings.Join(strings.Fields(compactNode(t, deriveContext.Body)), " ")
+	contextCalls := []string{
+		"store.loadSnapshotFactsV1(ctx, projectID)",
+		"foldProjectSnapshotV1(ctx, projectID, request.AtMillis, facts)",
+		"resolveContextFocusRelationsV1(ctx, facts, request.Focus)",
+		"deriveContextDigestV1(ctx, snapshot, request, relations)",
+	}
+	callPositions := make([]int, len(contextCalls))
+	for index, call := range contextCalls {
+		if count := strings.Count(deriveBody, call); count != 1 {
+			t.Errorf("Store.deriveContextV1 contains %d calls to %q, want exactly one", count, call)
+		}
+		callPositions[index] = strings.Index(deriveBody, call)
+		if index > 0 && callPositions[index-1] >= callPositions[index] {
+			t.Errorf("Store.deriveContextV1 call order = %v, want load, fold, relations, digest", callPositions)
+		}
+	}
+	for _, forbidden := range []string{"store.db", "BeginTx(", "QueryContext(", "QueryRowContext(", "ExecContext("} {
+		if strings.Contains(deriveBody, forbidden) {
+			t.Errorf("Store.deriveContextV1 contains forbidden direct persistence behavior %q", forbidden)
+		}
+	}
+	if callPositions[0] >= 0 {
+		afterMaterialization := deriveBody[callPositions[0]+len(contextCalls[0]):]
+		if strings.Contains(afterMaterialization, "store.") {
+			t.Error("Store.deriveContextV1 accesses Store after its one snapshot materialization")
+		}
+	}
+
+	contextContents, err := os.ReadFile(filepath.Join(sqliteSourceRoot, "context_v1.go"))
+	if err != nil {
+		t.Fatalf("read context implementation: %v", err)
+	}
+	contextNormalized := strings.Join(strings.Fields(string(contextContents)), " ")
+	for _, required := range []string{
+		"contextFocusedJournalLimitV1 = 1",
+		"contextProjectJournalLimitV1 = 10",
+		"contextWrapLimitV1 = 2",
+		"contextSparkLimitV1 = 10",
+		"contextIdeaLimitV1 = 10",
+		"contextDecisionLimitV1 = 10",
+		"contextCheckpointLimitV1 = 1",
+		"contextFindingLimitV1 = 10",
+		"contextHandoffLimitV1 = 1",
+		"contextExternalReferenceLimitV1 = 10",
+		"contextVerificationEvidenceLimitV1 = 10",
+		"entry.HeadObservation.Branch == request.Branch",
+		"finding.Content.Scope == request.Scope",
+		"optionalSubjectEqualV1(wrap.Focus, focus)",
+		"optionalSubjectEqualV1(handoff.Focus, focus)",
+	} {
+		if !strings.Contains(contextNormalized, required) {
+			t.Errorf("context_v1.go does not contain pinned context semantic %q", required)
+		}
+	}
+	for _, forbidden := range []string{"database/sql", "time.Now", "BeginTx(", "QueryContext(", "ExecContext(", "store.db", "loadSnapshotFactsV1("} {
+		if strings.Contains(contextNormalized, forbidden) {
+			t.Errorf("context_v1.go contains forbidden context behavior %q", forbidden)
 		}
 	}
 }
