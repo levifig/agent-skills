@@ -148,6 +148,8 @@ func (store *Store) PruneInventory(ctx context.Context, request relay.PruneInven
 		}
 		rows, err := tx.QueryContext(ctx, `
 SELECT prune_sequence, prune_id, membership_generation, barrier_arrival_sequence,
+       closure_fact_id, closure_environment_id, closure_environment_sequence,
+       closure_arrival_sequence, closure_envelope_digest, closure_certificate_id,
        certificate_id, certificate_bytes, target_count, created_at_millis
 FROM relay_prune_certificates
 WHERE channel_id = ? AND prune_sequence > ? AND prune_sequence <= ?
@@ -283,7 +285,7 @@ func zeroDigest(value relay.Digest) bool {
 
 func scanPruneInventory(scanner rowScanner, channelID relay.ChannelID) (relay.PruneInventoryRecord, int, error) {
 	var record relay.PruneInventoryRecord
-	var pruneID, certificateID, certificateBytes []byte
+	var pruneID, closureEnvelopeDigest, closureCertificateID, certificateID, certificateBytes []byte
 	var createdAtMillis int64
 	var targetCount int
 	record.Certificate.ChannelID = channelID
@@ -292,6 +294,12 @@ func scanPruneInventory(scanner rowScanner, channelID relay.ChannelID) (relay.Pr
 		&pruneID,
 		&record.Certificate.MembershipGeneration,
 		&record.Certificate.Barrier,
+		&record.Certificate.Closure.FactID,
+		&record.Certificate.Closure.EnvironmentID,
+		&record.Certificate.Closure.EnvironmentSequence,
+		&record.Certificate.Closure.ArrivalSequence,
+		&closureEnvelopeDigest,
+		&closureCertificateID,
 		&certificateID,
 		&certificateBytes,
 		&targetCount,
@@ -299,7 +307,10 @@ func scanPruneInventory(scanner rowScanner, channelID relay.ChannelID) (relay.Pr
 	); err != nil {
 		return relay.PruneInventoryRecord{}, 0, fmt.Errorf("scan relay prune inventory: %w", err)
 	}
-	if !scanFixed(record.Certificate.PruneID[:], pruneID) || !scanFixed(record.Certificate.CertificateID[:], certificateID) {
+	if !scanFixed(record.Certificate.PruneID[:], pruneID) ||
+		!scanFixed(record.Certificate.Closure.EnvelopeDigest[:], closureEnvelopeDigest) ||
+		!scanFixed(record.Certificate.Closure.CertificateID[:], closureCertificateID) ||
+		!scanFixed(record.Certificate.CertificateID[:], certificateID) {
 		return relay.PruneInventoryRecord{}, 0, fmt.Errorf("relay prune inventory contains invalid fixed-width metadata")
 	}
 	record.Certificate.CertificateBytes = append([]byte(nil), certificateBytes...)

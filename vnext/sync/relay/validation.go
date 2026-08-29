@@ -161,12 +161,17 @@ func (certificate PruneCertificate) Validate() error {
 		len(certificate.Targets) > MaxPruneTargets {
 		return fmt.Errorf("%w: prune certificate", ErrInvalidArgument)
 	}
+	if !validPruneReference(certificate.Closure, certificate.Barrier) {
+		return fmt.Errorf("%w: prune closure", ErrInvalidArgument)
+	}
 	seen := make(map[FactID]struct{}, len(certificate.Targets))
 	for _, target := range certificate.Targets {
-		if !validOpaqueID(string(target.FactID)) || !validOpaqueID(string(target.EnvironmentID)) ||
-			target.EnvironmentSequence < 1 || target.ArrivalSequence < 1 ||
-			zeroBytes(target.EnvelopeDigest[:]) || zeroBytes(target.CertificateID[:]) || target.ArrivalSequence > certificate.Barrier {
+		if !validPruneReference(target, certificate.Barrier) {
 			return fmt.Errorf("%w: prune target", ErrInvalidArgument)
+		}
+		if target.ArrivalSequence == certificate.Closure.ArrivalSequence || target.FactID == certificate.Closure.FactID ||
+			(target.EnvironmentID == certificate.Closure.EnvironmentID && target.EnvironmentSequence == certificate.Closure.EnvironmentSequence) {
+			return fmt.Errorf("%w: prune closure is a target", ErrInvalidArgument)
 		}
 		if _, exists := seen[target.FactID]; exists {
 			return fmt.Errorf("%w: duplicate prune target", ErrInvalidArgument)
@@ -174,6 +179,12 @@ func (certificate PruneCertificate) Validate() error {
 		seen[target.FactID] = struct{}{}
 	}
 	return nil
+}
+
+func validPruneReference(reference PruneTarget, barrier int64) bool {
+	return validOpaqueID(string(reference.FactID)) && validOpaqueID(string(reference.EnvironmentID)) &&
+		reference.EnvironmentSequence >= 1 && reference.ArrivalSequence >= 1 && reference.ArrivalSequence <= barrier &&
+		!zeroBytes(reference.EnvelopeDigest[:]) && !zeroBytes(reference.CertificateID[:])
 }
 
 func (retirement Retirement) Validate() error {

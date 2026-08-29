@@ -242,6 +242,7 @@ type PruneCertificate struct {
 	PruneID              Digest
 	MembershipGeneration uint32
 	Barrier              int64
+	Closure              PruneTarget
 	CertificateID        Digest
 	CertificateBytes     []byte
 	Targets              []PruneTarget

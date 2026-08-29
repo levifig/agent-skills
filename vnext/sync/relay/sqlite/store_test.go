@@ -499,7 +499,8 @@ func TestRelayAcknowledgementsGatePruneAndTombstonesPreserveOpaqueIdentity(t *te
 		t.Fatalf("Append(A) error = %v", err)
 	}
 	second := testEnvelope(environmentB, "fact-b", 1, relay.Digest{}, 0x64)
-	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentB, Envelope: second}); err != nil {
+	secondResult, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentB, Envelope: second})
+	if err != nil {
 		t.Fatalf("Append(B) error = %v", err)
 	}
 
@@ -510,6 +511,7 @@ func TestRelayAcknowledgementsGatePruneAndTombstonesPreserveOpaqueIdentity(t *te
 			PruneID:              testDigest(0x71),
 			MembershipGeneration: 2,
 			Barrier:              2,
+			Closure:              testPruneTarget(secondResult.Arrival),
 			CertificateID:        testDigest(0x72),
 			CertificateBytes:     []byte("opaque-signed-prune-certificate"),
 			Targets: []relay.PruneTarget{{
@@ -574,6 +576,115 @@ func TestRelayAcknowledgementsGatePruneAndTombstonesPreserveOpaqueIdentity(t *te
 	if err != nil || !duplicatePrune.Duplicate || duplicatePrune.Tombstoned != 1 {
 		t.Fatalf("Tombstone(exact replay) = %#v, %v, want duplicate", duplicatePrune, err)
 	}
+}
+
+func TestRelayTombstoneRejectsFictionalOrPrunedClosureBeforeVerifier(t *testing.T) {
+	t.Parallel()
+
+	verifier := &gatedTestVerifier{}
+	store, owner, environment := newTestStoreWithEnvironmentAndVerifier(t, relay.TrustedEnvironment, 0, verifier)
+	targetEnvelope := testEnvelope(environment, "fact-target", 1, relay.Digest{}, 0x76)
+	targetResult, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environment, Envelope: targetEnvelope})
+	if err != nil {
+		t.Fatalf("Append(target) error = %v", err)
+	}
+	closureEnvelope := testEnvelope(environment, "fact-close", 2, targetEnvelope.EnvelopeDigest, 0x77)
+	closureResult, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environment, Envelope: closureEnvelope})
+	if err != nil {
+		t.Fatalf("Append(closure) error = %v", err)
+	}
+	acknowledgeTestHead(t, store, environment, 1, 2, 2, closureEnvelope.EnvelopeDigest, 0x78)
+
+	target := testPruneTarget(targetResult.Arrival)
+	closure := testPruneTarget(closureResult.Arrival)
+	certificate := relay.PruneCertificate{
+		ChannelID:            owner.ChannelID,
+		PruneID:              testDigest(0x79),
+		MembershipGeneration: 1,
+		Barrier:              2,
+		Closure:              closure,
+		CertificateID:        testDigest(0x7a),
+		CertificateBytes:     []byte("opaque-signed-prune-certificate-with-closure"),
+		Targets:              []relay.PruneTarget{target},
+	}
+	fictional := certificate
+	fictional.Closure.FactID = "fact-fictional-close"
+	if _, err := store.Tombstone(t.Context(), relay.TombstoneRequest{Authorization: owner, Certificate: fictional}); !errors.Is(err, relay.ErrImmutableConflict) {
+		t.Fatalf("Tombstone(fictional closure) error = %v, want ErrImmutableConflict", err)
+	}
+	if verifier.pruneCalls != 0 {
+		t.Fatalf("prune verifier calls after fictional closure = %d, want 0", verifier.pruneCalls)
+	}
+	assertTableCount(t, store, "relay_prune_certificates", 0)
+	assertArrivalCiphertextRetained(t, store, owner.ChannelID, target.ArrivalSequence)
+
+	result, err := store.Tombstone(t.Context(), relay.TombstoneRequest{Authorization: owner, Certificate: certificate})
+	if err != nil {
+		t.Fatalf("Tombstone(valid closure) error = %v", err)
+	}
+	if result.Duplicate || result.Tombstoned != 1 || verifier.pruneCertificate.Closure != closure {
+		t.Fatalf("Tombstone(valid closure) = %#v, verifier certificate %#v", result, verifier.pruneCertificate)
+	}
+	assertArrivalCiphertextRetained(t, store, owner.ChannelID, closure.ArrivalSequence)
+
+	inventory, err := store.PruneInventory(t.Context(), relay.PruneInventoryRequest{
+		Authorization: relay.InventoryAuthorization{Owner: &owner},
+		Limit:         1,
+	})
+	if err != nil {
+		t.Fatalf("PruneInventory() error = %v", err)
+	}
+	if len(inventory.Prunes) != 1 || inventory.Prunes[0].Certificate.Closure != closure {
+		t.Fatalf("PruneInventory() = %#v, want exact closure %#v", inventory, closure)
+	}
+
+	changedReplay := certificate
+	changedReplay.Closure.EnvelopeDigest[0] ^= 0xff
+	if _, err := store.Tombstone(t.Context(), relay.TombstoneRequest{Authorization: owner, Certificate: changedReplay}); !errors.Is(err, relay.ErrImmutableConflict) {
+		t.Fatalf("Tombstone(changed closure replay) error = %v, want ErrImmutableConflict", err)
+	}
+
+	thirdEnvelope := testEnvelope(environment, "fact-third", 3, closureEnvelope.EnvelopeDigest, 0x7b)
+	thirdResult, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environment, Envelope: thirdEnvelope})
+	if err != nil {
+		t.Fatalf("Append(third) error = %v", err)
+	}
+	acknowledgeTestHead(t, store, environment, 1, 3, 3, thirdEnvelope.EnvelopeDigest, 0x7c)
+	priorClosureTarget := relay.PruneCertificate{
+		ChannelID:            owner.ChannelID,
+		PruneID:              testDigest(0x7d),
+		MembershipGeneration: 1,
+		Barrier:              3,
+		Closure:              testPruneTarget(thirdResult.Arrival),
+		CertificateID:        testDigest(0x7e),
+		CertificateBytes:     []byte("opaque-prune-that-targets-a-prior-closure"),
+		Targets:              []relay.PruneTarget{closure},
+	}
+	if _, err := store.Tombstone(t.Context(), relay.TombstoneRequest{Authorization: owner, Certificate: priorClosureTarget}); !errors.Is(err, relay.ErrImmutableConflict) {
+		t.Fatalf("Tombstone(prior closure target) error = %v, want ErrImmutableConflict", err)
+	}
+	if verifier.pruneCalls != 1 {
+		t.Fatalf("prune verifier calls after prior closure target = %d, want 1", verifier.pruneCalls)
+	}
+	assertArrivalCiphertextRetained(t, store, owner.ChannelID, closure.ArrivalSequence)
+
+	prunedClosure := relay.PruneCertificate{
+		ChannelID:            owner.ChannelID,
+		PruneID:              testDigest(0x7f),
+		MembershipGeneration: 1,
+		Barrier:              3,
+		Closure:              target,
+		CertificateID:        testDigest(0x80),
+		CertificateBytes:     []byte("opaque-signed-prune-certificate-with-pruned-closure"),
+		Targets:              []relay.PruneTarget{testPruneTarget(thirdResult.Arrival)},
+	}
+	if _, err := store.Tombstone(t.Context(), relay.TombstoneRequest{Authorization: owner, Certificate: prunedClosure}); !errors.Is(err, relay.ErrImmutableConflict) {
+		t.Fatalf("Tombstone(pruned closure) error = %v, want ErrImmutableConflict", err)
+	}
+	if verifier.pruneCalls != 1 {
+		t.Fatalf("prune verifier calls after invalid closure attempts = %d, want 1", verifier.pruneCalls)
+	}
+	assertArrivalCiphertextRetained(t, store, owner.ChannelID, thirdResult.Arrival.ArrivalSequence)
 }
 
 func TestRelayControlMutationsAreIdempotentAfterLostResponses(t *testing.T) {
@@ -698,15 +809,20 @@ func TestRelayVerifierRefusalCannotReachPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Append(allowed) error = %v", err)
 	}
+	closureEnvelope := testEnvelope(authorization, "fact-close", 2, envelope.EnvelopeDigest, 0xb6)
+	closureAccepted, err := store.Append(t.Context(), relay.AppendRequest{Authorization: authorization, Envelope: closureEnvelope})
+	if err != nil {
+		t.Fatalf("Append(closure) error = %v", err)
+	}
 	acknowledgement := relay.AcknowledgeRequest{
 		Authorization: authorization,
 		Acknowledgement: relay.Acknowledgement{
 			ChannelID:              owner.ChannelID,
 			EnvironmentID:          authorization.EnvironmentID,
 			MembershipGeneration:   1,
-			AppliedArrivalSequence: 1,
-			ProducerSequence:       1,
-			ProducerEnvelopeDigest: envelope.EnvelopeDigest,
+			AppliedArrivalSequence: 2,
+			ProducerSequence:       2,
+			ProducerEnvelopeDigest: closureEnvelope.EnvelopeDigest,
 			CertificateID:          authorization.CertificateID,
 			AcknowledgementDigest:  testDigest(0xb2),
 			AcknowledgementBytes:   []byte("opaque-signed-acknowledgement"),
@@ -728,7 +844,8 @@ func TestRelayVerifierRefusalCannotReachPersistence(t *testing.T) {
 			ChannelID:            owner.ChannelID,
 			PruneID:              testDigest(0xb3),
 			MembershipGeneration: 1,
-			Barrier:              1,
+			Barrier:              2,
+			Closure:              testPruneTarget(closureAccepted.Arrival),
 			CertificateID:        testDigest(0xb4),
 			CertificateBytes:     []byte("opaque-signed-prune-certificate"),
 			Targets: []relay.PruneTarget{{
@@ -790,8 +907,8 @@ func TestRelayVerifierRefusalCannotReachPersistence(t *testing.T) {
 			EnvironmentID:            authorization.EnvironmentID,
 			CertificateID:            authorization.CertificateID,
 			MembershipGeneration:     2,
-			FinalEnvironmentSequence: 1,
-			FinalEnvelopeDigest:      envelope.EnvelopeDigest,
+			FinalEnvironmentSequence: 2,
+			FinalEnvelopeDigest:      closureEnvelope.EnvelopeDigest,
 			RetirementID:             testDigest(0xb5),
 			RetirementBytes:          []byte("opaque-signed-retirement"),
 		},
@@ -829,7 +946,8 @@ func TestRelayAuthenticatedInventoryPagesExposeBoundedVerificationMaterial(t *te
 		t.Fatalf("Append(A) error = %v", err)
 	}
 	second := testEnvelope(environmentB, "fact-b", 1, relay.Digest{}, 0xd2)
-	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentB, Envelope: second}); err != nil {
+	secondAccepted, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentB, Envelope: second})
+	if err != nil {
 		t.Fatalf("Append(B) error = %v", err)
 	}
 	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, first.EnvelopeDigest, 0xd3)
@@ -839,6 +957,7 @@ func TestRelayAuthenticatedInventoryPagesExposeBoundedVerificationMaterial(t *te
 		PruneID:              testDigest(0xd5),
 		MembershipGeneration: 2,
 		Barrier:              2,
+		Closure:              testPruneTarget(secondAccepted.Arrival),
 		CertificateID:        testDigest(0xd6),
 		CertificateBytes:     []byte("opaque-signed-prune-certificate-for-attach"),
 		Targets: []relay.PruneTarget{{
@@ -933,6 +1052,7 @@ func TestRelayAuthenticatedInventoryPagesExposeBoundedVerificationMaterial(t *te
 	gotPrune := prunePage.Prunes[0]
 	if gotPrune.PruneSequence != 1 || gotPrune.Certificate.PruneID != prune.PruneID ||
 		gotPrune.Certificate.CertificateID != prune.CertificateID ||
+		gotPrune.Certificate.Closure != prune.Closure ||
 		!bytes.Equal(gotPrune.Certificate.CertificateBytes, prune.CertificateBytes) ||
 		len(gotPrune.Certificate.Targets) != 1 || gotPrune.Certificate.Targets[0] != prune.Targets[0] {
 		t.Fatalf("PruneInventory()[0] = %#v, want exact certificate and target manifest", gotPrune)
@@ -1038,13 +1158,19 @@ func TestRelayInventoryContinuationsPinSnapshotsAndRejectMembershipChanges(t *te
 		t.Fatalf("EnvironmentInventory(continued) = %#v, want producer heads bounded through arrival 1", continuedEnvironmentPage)
 	}
 
-	acknowledgeTestHead(t, store, environmentA, 2, 2, 1, first.EnvelopeDigest, 0xe3)
-	acknowledgeTestHead(t, store, environmentB, 2, 2, 1, second.EnvelopeDigest, 0xe4)
+	third := testEnvelope(environmentA, "fact-c", 2, first.EnvelopeDigest, 0xe9)
+	thirdAccepted, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentA, Envelope: third})
+	if err != nil {
+		t.Fatalf("Append(A second producer envelope) error = %v", err)
+	}
+	acknowledgeTestHead(t, store, environmentA, 2, 3, 2, third.EnvelopeDigest, 0xe3)
+	acknowledgeTestHead(t, store, environmentB, 2, 3, 1, second.EnvelopeDigest, 0xe4)
 	prune := relay.PruneCertificate{
 		ChannelID:            owner.ChannelID,
 		PruneID:              testDigest(0xe5),
 		MembershipGeneration: 2,
-		Barrier:              2,
+		Barrier:              3,
+		Closure:              testPruneTarget(secondAccepted.Arrival),
 		CertificateID:        testDigest(0xe6),
 		CertificateBytes:     []byte("opaque-signed-prune-certificate"),
 		Targets: []relay.PruneTarget{{
@@ -1063,17 +1189,11 @@ func TestRelayInventoryContinuationsPinSnapshotsAndRejectMembershipChanges(t *te
 		ChannelID:            owner.ChannelID,
 		PruneID:              testDigest(0xe7),
 		MembershipGeneration: 2,
-		Barrier:              2,
+		Barrier:              3,
+		Closure:              testPruneTarget(secondAccepted.Arrival),
 		CertificateID:        testDigest(0xe8),
 		CertificateBytes:     []byte("second-opaque-signed-prune-certificate"),
-		Targets: []relay.PruneTarget{{
-			FactID:              second.FactID,
-			EnvironmentID:       second.EnvironmentID,
-			EnvironmentSequence: second.EnvironmentSequence,
-			ArrivalSequence:     secondAccepted.Arrival.ArrivalSequence,
-			EnvelopeDigest:      second.EnvelopeDigest,
-			CertificateID:       second.CertificateID,
-		}},
+		Targets:              []relay.PruneTarget{testPruneTarget(thirdAccepted.Arrival)},
 	}
 	if _, err := store.Tombstone(t.Context(), relay.TombstoneRequest{Authorization: owner, Certificate: secondPrune}); err != nil {
 		t.Fatalf("Tombstone(second) error = %v", err)
@@ -1085,11 +1205,11 @@ func TestRelayInventoryContinuationsPinSnapshotsAndRejectMembershipChanges(t *te
 	if err != nil {
 		t.Fatalf("PruneInventory(first) error = %v", err)
 	}
-	if !firstPrunePage.More || firstPrunePage.Snapshot.ArrivalHead != 2 || firstPrunePage.Snapshot.PruneHead != 2 {
+	if !firstPrunePage.More || firstPrunePage.Snapshot.ArrivalHead != 3 || firstPrunePage.Snapshot.PruneHead != 2 {
 		t.Fatalf("PruneInventory(first) = %#v, want pinned arrival/prune heads and continuation", firstPrunePage)
 	}
-	third := testEnvelope(environmentA, "fact-c", 2, first.EnvelopeDigest, 0xe9)
-	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentA, Envelope: third}); err != nil {
+	fourth := testEnvelope(environmentA, "fact-d", 3, third.EnvelopeDigest, 0xea)
+	if _, err := store.Append(t.Context(), relay.AppendRequest{Authorization: environmentA, Envelope: fourth}); err != nil {
 		t.Fatalf("Append(A between prune inventory pages) error = %v", err)
 	}
 	continuedPrunePage, err := store.PruneInventory(t.Context(), relay.PruneInventoryRequest{
@@ -1295,6 +1415,31 @@ func testEnvelope(authorization relay.EnvironmentAuthorization, factID relay.Fac
 	}
 }
 
+func testPruneTarget(arrival relay.Arrival) relay.PruneTarget {
+	return relay.PruneTarget{
+		FactID:              arrival.FactID,
+		EnvironmentID:       arrival.EnvironmentID,
+		EnvironmentSequence: arrival.EnvironmentSequence,
+		ArrivalSequence:     arrival.ArrivalSequence,
+		EnvelopeDigest:      arrival.EnvelopeDigest,
+		CertificateID:       arrival.CertificateID,
+	}
+}
+
+func assertArrivalCiphertextRetained(t *testing.T, store *Store, channelID relay.ChannelID, arrivalSequence int64) {
+	t.Helper()
+	var ciphertext, pruneID []byte
+	if err := store.db.QueryRow(`
+SELECT ciphertext, prune_id
+FROM relay_arrivals
+WHERE channel_id = ? AND arrival_sequence = ?`, channelID[:], arrivalSequence).Scan(&ciphertext, &pruneID); err != nil {
+		t.Fatalf("read retained relay arrival %d: %v", arrivalSequence, err)
+	}
+	if ciphertext == nil || pruneID != nil {
+		t.Fatalf("relay arrival %d retention = ciphertext %v, prune id %x; want retained ciphertext and no prune", arrivalSequence, ciphertext != nil, pruneID)
+	}
+}
+
 func acknowledgeTestHead(t *testing.T, store *Store, authorization relay.EnvironmentAuthorization, membership uint32, applied, producer int64, producerDigest relay.Digest, seed byte) {
 	t.Helper()
 	if err := store.Acknowledge(t.Context(), relay.AcknowledgeRequest{
@@ -1415,6 +1560,7 @@ type gatedTestVerifier struct {
 	retirementCalls       int
 	pruneCalls            int
 	pruneAuthority        relay.PruneAuthority
+	pruneCertificate      relay.PruneCertificate
 	rejectCertificate     bool
 	rejectEnvelope        bool
 	rejectAcknowledgement bool
@@ -1454,9 +1600,10 @@ func (verifier *gatedTestVerifier) VerifyRetirement(_ context.Context, _ relay.C
 	return nil
 }
 
-func (verifier *gatedTestVerifier) VerifyPruneCertificate(_ context.Context, authority relay.PruneAuthority, _ relay.PruneCertificate) error {
+func (verifier *gatedTestVerifier) VerifyPruneCertificate(_ context.Context, authority relay.PruneAuthority, certificate relay.PruneCertificate) error {
 	verifier.pruneCalls++
 	verifier.pruneAuthority = authority
+	verifier.pruneCertificate = certificate
 	if verifier.rejectPrune {
 		return errors.New("rejected test prune")
 	}
