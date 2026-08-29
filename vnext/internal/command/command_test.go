@@ -13,6 +13,15 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write failed")
 }
 
+type shortWriter struct{}
+
+func (shortWriter) Write(value []byte) (int, error) {
+	if len(value) == 0 {
+		return 0, nil
+	}
+	return len(value) - 1, nil
+}
+
 func TestKernelCommandSurfaceIsLimitedToIntrospection(t *testing.T) {
 	t.Parallel()
 
@@ -86,5 +95,27 @@ func TestKernelCommandSurfaceReturnsFailureWhenOutputFails(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr = %q, want empty output", stderr.String())
+	}
+}
+
+func TestKernelCommandSurfaceReturnsFailureOnShortWrite(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	code := New(shortWriter{}, &stderr).Run([]string{"version"})
+	if code != 1 {
+		t.Errorf("Run() code = %d, want 1", code)
+	}
+}
+
+func TestKernelCommandSurfaceTreatsNilStreamsAsDiscardedOutput(t *testing.T) {
+	t.Parallel()
+
+	runner := New(nil, nil)
+	if code := runner.Run([]string{"version"}); code != 0 {
+		t.Errorf("Run(version) code = %d, want 0", code)
+	}
+	if code := runner.Run([]string{"unknown"}); code != 2 {
+		t.Errorf("Run(unknown) code = %d, want 2", code)
 	}
 }

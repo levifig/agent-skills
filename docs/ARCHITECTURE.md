@@ -29,6 +29,8 @@ Every responsibility has one canonical authority:
 
 Loaf may give an agent deterministic instructions and templates for tracker work, but the agent uses its harness-native connection. vNext does not store a shadow issue, hold provider credentials, proxy tracker calls, or reconcile a local work record with the tracker.
 
+Scratchpad coordination is a private, effort-scoped, ephemeral Loaf surface for the operator's agents. It is not durable team memory and never owns tracker work, definition of done, workflow, hierarchy, assignment, or team collaboration state.
+
 ### Bootstrap Command Ceremonies
 
 | Command | Purpose |
@@ -40,9 +42,11 @@ No state, tracker, sync, migration, build, or install commands exist in the vNex
 
 ### Hard Legacy Dependency Boundary
 
-Production packages below `vnext/` may depend on the Go standard library, other `vnext/` packages, and later dependencies that receive explicit review. They cannot import the module root, `cmd/loaf`, or anything under the legacy `internal/` tree. The bootstrap dependency graph additionally cannot reach `database/sql` or `os/exec`, which prevents the kernel from querying the old store or invoking the old CLI as a hidden backend.
+The bootstrap source closure may import only the Go standard library and packages below the actual vNext import root. The gate derives the module root and module path from the repository's `go.mod`, rejects nested `go.mod` files, rejects source symlinks, and parses every `.go` file present below `vnext/` — tests and files excluded by current build tags, GOOS, or GOARCH included. Module-local imports outside the derived vNext root and all third-party imports fail. A later reviewed slice may add a finite explicit third-party allowlist; the bootstrap has none.
 
-`go test ./vnext/... -count=1 -run 'Kernel|DependencyBoundary'` inspects the complete Go dependency graph, including test dependencies, and enforces this boundary. The current implementation remains useful as behavioral specification, failure corpus, and source for a versioned one-time export, but no production code is copied across the boundary.
+The same source policy rejects direct `database/sql`, `os/exec`, `syscall`, `plugin`, and cgo `C` imports, compiler linkname directives, dot imports of `os`, and references to `os.StartProcess`. This proves that the checked source closure contains no legacy-module or third-party import and does not directly name those escape capabilities. It does not claim semantic proof against every possible dynamic mechanism or ordinary standard-library I/O; those remain visible code subject to review.
+
+`go test ./vnext/... -count=1 -run 'Kernel|DependencyBoundary'` enforces the policy with network-free fixtures for inactive source, alternate module identities, nested modules, third-party imports, and forbidden capabilities. The current implementation remains useful as behavioral specification, failure corpus, and source for a versioned one-time export, but no production code is copied across the boundary.
 
 Everything below this section documents the current shipped legacy line. It remains operational until the reviewed cutover, but its ownership model, package graph, schema, and command breadth are not vNext precedent.
 
@@ -503,4 +507,4 @@ When strict invariant enforcement would break existing callers but silent fallba
 
 ## Changelog
 
-- 2026-08-29 - Add the isolated vNext kernel, ownership matrix, bootstrap command surface, independent schema identity, and mechanical legacy dependency boundary.
+- 2026-08-29 - Add the isolated vNext kernel and harden its ownership, source-import, capability, schema-identity, and bootstrap command boundaries.

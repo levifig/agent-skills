@@ -13,7 +13,7 @@ const (
 type Authority string
 
 const (
-	// AuthorityLoaf owns private continuity and the workflow definition.
+	// AuthorityLoaf owns private continuity and the Flow ceremonies.
 	AuthorityLoaf Authority = "loaf"
 	// AuthorityTracker owns shared work and collaboration state.
 	AuthorityTracker Authority = "tracker"
@@ -27,39 +27,6 @@ const (
 type Ownership struct {
 	Authority        Authority
 	Responsibilities []string
-}
-
-var ownershipMatrix = []Ownership{
-	{Authority: AuthorityLoaf, Responsibilities: []string{
-		"flow-ceremonies",
-		"skills",
-		"templates",
-		"profiles",
-		"project-identity",
-		"private-continuity",
-		"derived-context",
-		"private-sync",
-	}},
-	{Authority: AuthorityTracker, Responsibilities: []string{
-		"work-identity",
-		"work-definition",
-		"definition-of-done",
-		"workflow-state",
-		"hierarchy",
-		"assignment",
-		"collaboration",
-	}},
-	{Authority: AuthorityGit, Responsibilities: []string{
-		"code",
-		"promoted-artifacts",
-	}},
-	{Authority: AuthorityHarness, Responsibilities: []string{
-		"execution",
-		"model-selection",
-		"tool-boundaries",
-		"service-connections",
-		"service-credentials",
-	}},
 }
 
 // SchemaIdentity names an independent schema line and its current version.
@@ -87,14 +54,38 @@ func CurrentIdentity() Identity {
 	}
 }
 
-// OwnershipMatrix returns a defensive copy of the vNext ownership contract.
+// OwnershipMatrix constructs a fresh vNext ownership contract.
 func OwnershipMatrix() []Ownership {
-	matrix := make([]Ownership, len(ownershipMatrix))
-	for index, ownership := range ownershipMatrix {
-		matrix[index] = Ownership{
-			Authority:        ownership.Authority,
-			Responsibilities: append([]string(nil), ownership.Responsibilities...),
-		}
+	return []Ownership{
+		{Authority: AuthorityLoaf, Responsibilities: []string{
+			"flow-ceremonies",
+			"skills",
+			"templates",
+			"profiles",
+			"project-identity",
+			"private-continuity",
+			"derived-context",
+			"private-sync",
+		}},
+		{Authority: AuthorityTracker, Responsibilities: []string{
+			"work-identity",
+			"work-definition",
+			"definition-of-done",
+			"workflow-state",
+			"hierarchy",
+			"assignment",
+			"collaboration",
+		}},
+		{Authority: AuthorityGit, Responsibilities: []string{
+			"code",
+			"promoted-artifacts",
+		}},
+		{Authority: AuthorityHarness, Responsibilities: []string{
+			"execution",
+			"model-selection",
+			"tool-boundaries",
+			"service-connections",
+			"service-credentials",
+		}},
 	}
-	return matrix
 }
