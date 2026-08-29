@@ -20,7 +20,7 @@ const (
 	MaxRetirementBytes                   = 4_096
 	MaxControlObjectBytes                = 1_048_576
 	MaxPageSize                          = 256
-	MaxPruneTargets                      = 4_096
+	MaxPruneTargets                      = 1_024
 	MaxPruneAuthorityEnvironments        = 256
 	MaxEnvironmentInventoryPage          = 4
 	MaxPruneInventoryPage                = 4
@@ -224,12 +224,15 @@ type AcknowledgeRequest struct {
 }
 
 type PruneTarget struct {
-	FactID              FactID
-	EnvironmentID       EnvironmentID
-	EnvironmentSequence int64
-	ArrivalSequence     int64
-	EnvelopeDigest      Digest
-	CertificateID       Digest
+	FactID                 FactID
+	EnvironmentID          EnvironmentID
+	EnvironmentSequence    int64
+	ArrivalSequence        int64
+	EnvelopeDigest         Digest
+	CertificateID          Digest
+	PreviousEnvelopeDigest Digest
+	KeyGeneration          uint32
+	Nonce                  Nonce
 }
 
 type TombstoneRequest struct {

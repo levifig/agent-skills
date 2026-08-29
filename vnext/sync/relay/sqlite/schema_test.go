@@ -40,7 +40,8 @@ func TestRelaySchemaInventoryIsExactAndOpaqueOnly(t *testing.T) {
 		"relay_prune_certificates": {
 			"channel_id", "prune_sequence", "prune_id", "membership_generation", "barrier_arrival_sequence",
 			"closure_fact_id", "closure_environment_id", "closure_environment_sequence", "closure_arrival_sequence",
-			"closure_envelope_digest", "closure_certificate_id", "certificate_id", "certificate_bytes", "target_count", "created_at_millis",
+			"closure_envelope_digest", "closure_certificate_id", "closure_previous_envelope_digest", "closure_key_generation", "closure_nonce",
+			"certificate_id", "certificate_bytes", "target_count", "created_at_millis",
 		},
 		"relay_schema":   {"singleton", "schema_line", "schema_version", "schema_checksum"},
 		"relay_instance": {"singleton", "relay_generation"},

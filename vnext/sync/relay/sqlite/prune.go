@@ -92,11 +92,14 @@ INSERT INTO relay_prune_certificates(
   closure_arrival_sequence,
   closure_envelope_digest,
   closure_certificate_id,
+  closure_previous_envelope_digest,
+  closure_key_generation,
+  closure_nonce,
   certificate_id,
   certificate_bytes,
   target_count,
   created_at_millis
-) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			certificate.ChannelID[:],
 			pruneSequence,
 			certificate.PruneID[:],
@@ -108,6 +111,9 @@ INSERT INTO relay_prune_certificates(
 			certificate.Closure.ArrivalSequence,
 			certificate.Closure.EnvelopeDigest[:],
 			certificate.Closure.CertificateID[:],
+			certificate.Closure.PreviousEnvelopeDigest[:],
+			certificate.Closure.KeyGeneration,
+			certificate.Closure.Nonce[:],
 			certificate.CertificateID[:],
 			certificate.CertificateBytes,
 			len(certificate.Targets),
@@ -126,6 +132,9 @@ WHERE channel_id = ?
   AND environment_sequence = ?
   AND envelope_digest = ?
   AND certificate_id = ?
+  AND previous_envelope_digest = ?
+  AND key_generation = ?
+  AND nonce = ?
   AND ciphertext IS NOT NULL
   AND prune_id IS NULL`,
 				certificate.PruneID[:],
@@ -137,6 +146,9 @@ WHERE channel_id = ?
 				target.EnvironmentSequence,
 				target.EnvelopeDigest[:],
 				target.CertificateID[:],
+				target.PreviousEnvelopeDigest[:],
+				target.KeyGeneration,
+				target.Nonce[:],
 			)
 			if err != nil {
 				return fmt.Errorf("tombstone relay arrival: %w", err)
@@ -301,11 +313,13 @@ SELECT EXISTS(
 func verifyRetainedPruneReference(ctx context.Context, tx *sql.Tx, channelID relay.ChannelID, reference relay.PruneTarget, label string) error {
 	var factID, environmentID string
 	var environmentSequence, arrivalSequence int64
-	var envelopeDigest, certificateID, ciphertext []byte
+	var keyGeneration int64
+	var envelopeDigest, certificateID, previousEnvelopeDigest, nonce, ciphertext []byte
 	var pruneID []byte
 	err := tx.QueryRowContext(ctx, `
 SELECT fact_id, environment_id, environment_sequence, arrival_sequence,
-       envelope_digest, certificate_id, ciphertext, prune_id
+       envelope_digest, certificate_id, previous_envelope_digest,
+       key_generation, nonce, ciphertext, prune_id
 FROM relay_arrivals
 WHERE channel_id = ? AND arrival_sequence = ?`,
 		channelID[:], reference.ArrivalSequence,
@@ -316,6 +330,9 @@ WHERE channel_id = ? AND arrival_sequence = ?`,
 		&arrivalSequence,
 		&envelopeDigest,
 		&certificateID,
+		&previousEnvelopeDigest,
+		&keyGeneration,
+		&nonce,
 		&ciphertext,
 		&pruneID,
 	)
@@ -328,6 +345,8 @@ WHERE channel_id = ? AND arrival_sequence = ?`,
 	if relay.FactID(factID) != reference.FactID || relay.EnvironmentID(environmentID) != reference.EnvironmentID ||
 		environmentSequence != reference.EnvironmentSequence || arrivalSequence != reference.ArrivalSequence ||
 		!bytes.Equal(envelopeDigest, reference.EnvelopeDigest[:]) || !bytes.Equal(certificateID, reference.CertificateID[:]) ||
+		!bytes.Equal(previousEnvelopeDigest, reference.PreviousEnvelopeDigest[:]) ||
+		keyGeneration != int64(reference.KeyGeneration) || !bytes.Equal(nonce, reference.Nonce[:]) ||
 		ciphertext == nil || pruneID != nil {
 		return relay.ErrImmutableConflict
 	}
@@ -335,9 +354,9 @@ WHERE channel_id = ? AND arrival_sequence = ?`,
 }
 
 func readExistingPrune(ctx context.Context, tx *sql.Tx, candidate relay.PruneCertificate) (bool, error) {
-	var pruneID, closureEnvelopeDigest, closureCertificateID, certificateID, certificateBytes []byte
+	var pruneID, closureEnvelopeDigest, closureCertificateID, closurePreviousEnvelopeDigest, closureNonce, certificateID, certificateBytes []byte
 	var closureFactID, closureEnvironmentID string
-	var closureEnvironmentSequence, closureArrivalSequence int64
+	var closureEnvironmentSequence, closureArrivalSequence, closureKeyGeneration int64
 	var membership uint32
 	var barrier int64
 	var targetCount int
@@ -345,6 +364,7 @@ func readExistingPrune(ctx context.Context, tx *sql.Tx, candidate relay.PruneCer
 SELECT prune_id, membership_generation, barrier_arrival_sequence,
        closure_fact_id, closure_environment_id, closure_environment_sequence,
        closure_arrival_sequence, closure_envelope_digest, closure_certificate_id,
+       closure_previous_envelope_digest, closure_key_generation, closure_nonce,
        certificate_id, certificate_bytes, target_count
 FROM relay_prune_certificates
 WHERE channel_id = ? AND (prune_id = ? OR certificate_id = ?)`,
@@ -359,6 +379,9 @@ WHERE channel_id = ? AND (prune_id = ? OR certificate_id = ?)`,
 		&closureArrivalSequence,
 		&closureEnvelopeDigest,
 		&closureCertificateID,
+		&closurePreviousEnvelopeDigest,
+		&closureKeyGeneration,
+		&closureNonce,
 		&certificateID,
 		&certificateBytes,
 		&targetCount,
@@ -375,6 +398,9 @@ WHERE channel_id = ? AND (prune_id = ? OR certificate_id = ?)`,
 		closureEnvironmentSequence != candidate.Closure.EnvironmentSequence || closureArrivalSequence != candidate.Closure.ArrivalSequence ||
 		!bytes.Equal(closureEnvelopeDigest, candidate.Closure.EnvelopeDigest[:]) ||
 		!bytes.Equal(closureCertificateID, candidate.Closure.CertificateID[:]) ||
+		!bytes.Equal(closurePreviousEnvelopeDigest, candidate.Closure.PreviousEnvelopeDigest[:]) ||
+		closureKeyGeneration != int64(candidate.Closure.KeyGeneration) ||
+		!bytes.Equal(closureNonce, candidate.Closure.Nonce[:]) ||
 		!bytes.Equal(certificateID, candidate.CertificateID[:]) ||
 		!bytes.Equal(certificateBytes, candidate.CertificateBytes) || targetCount != len(candidate.Targets) {
 		return false, relay.ErrImmutableConflict
@@ -385,7 +411,8 @@ WHERE channel_id = ? AND (prune_id = ? OR certificate_id = ?)`,
 	}
 	rows, err := tx.QueryContext(ctx, `
 SELECT fact_id, environment_id, environment_sequence, arrival_sequence,
-       envelope_digest, certificate_id
+       envelope_digest, certificate_id, previous_envelope_digest,
+       key_generation, nonce
 FROM relay_arrivals
 WHERE channel_id = ? AND prune_id = ?
 ORDER BY arrival_sequence`, candidate.ChannelID[:], candidate.PruneID[:])
@@ -395,9 +422,19 @@ ORDER BY arrival_sequence`, candidate.ChannelID[:], candidate.PruneID[:])
 	seen := 0
 	for rows.Next() {
 		var factID, environmentID string
-		var environmentSequence, arrivalSequence int64
-		var envelopeDigest, environmentCertificateID []byte
-		if err := rows.Scan(&factID, &environmentID, &environmentSequence, &arrivalSequence, &envelopeDigest, &environmentCertificateID); err != nil {
+		var environmentSequence, arrivalSequence, keyGeneration int64
+		var envelopeDigest, environmentCertificateID, previousEnvelopeDigest, nonce []byte
+		if err := rows.Scan(
+			&factID,
+			&environmentID,
+			&environmentSequence,
+			&arrivalSequence,
+			&envelopeDigest,
+			&environmentCertificateID,
+			&previousEnvelopeDigest,
+			&keyGeneration,
+			&nonce,
+		); err != nil {
 			closeErr := rows.Close()
 			if closeErr != nil {
 				return false, errors.Join(fmt.Errorf("scan relay existing prune target: %w", err), fmt.Errorf("close relay existing prune targets: %w", closeErr))
@@ -407,7 +444,9 @@ ORDER BY arrival_sequence`, candidate.ChannelID[:], candidate.PruneID[:])
 		target, exists := want[arrivalSequence]
 		if !exists || target.FactID != relay.FactID(factID) || target.EnvironmentID != relay.EnvironmentID(environmentID) ||
 			target.EnvironmentSequence != environmentSequence || !bytes.Equal(target.EnvelopeDigest[:], envelopeDigest) ||
-			!bytes.Equal(target.CertificateID[:], environmentCertificateID) {
+			!bytes.Equal(target.CertificateID[:], environmentCertificateID) ||
+			!bytes.Equal(target.PreviousEnvelopeDigest[:], previousEnvelopeDigest) ||
+			int64(target.KeyGeneration) != keyGeneration || !bytes.Equal(target.Nonce[:], nonce) {
 			if closeErr := rows.Close(); closeErr != nil {
 				return false, errors.Join(relay.ErrImmutableConflict, fmt.Errorf("close relay existing prune targets: %w", closeErr))
 			}

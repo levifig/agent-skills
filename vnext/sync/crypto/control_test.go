@@ -324,21 +324,27 @@ func controlPruneCertificateForWitnesses(
 		t.Fatal("control prune witnesses must have matching non-empty certificates and seeds")
 	}
 	certificate := certificates[0]
-	closure := protocol.PruneReference{
-		FactID:              "fact-close",
-		EnvironmentID:       certificate.EnvironmentID,
-		EnvironmentSequence: 2,
-		ArrivalSequence:     4,
-		EnvelopeDigest:      controlDigest(0x50),
-		CertificateID:       protocol.CertificateID(certificate),
-	}
 	target := protocol.PruneReference{
-		FactID:              "fact-target",
-		EnvironmentID:       certificate.EnvironmentID,
-		EnvironmentSequence: 1,
-		ArrivalSequence:     7,
-		EnvelopeDigest:      controlDigest(0x60),
-		CertificateID:       protocol.CertificateID(certificate),
+		FactID:                 "fact-target",
+		EnvironmentID:          certificate.EnvironmentID,
+		EnvironmentSequence:    1,
+		ArrivalSequence:        4,
+		EnvelopeDigest:         controlDigest(0x60),
+		CertificateID:          protocol.CertificateID(certificate),
+		PreviousEnvelopeDigest: protocol.Digest{},
+		KeyGeneration:          7,
+		Nonce:                  controlNonce(0x60),
+	}
+	closure := protocol.PruneReference{
+		FactID:                 "fact-close",
+		EnvironmentID:          certificate.EnvironmentID,
+		EnvironmentSequence:    2,
+		ArrivalSequence:        7,
+		EnvelopeDigest:         controlDigest(0x50),
+		CertificateID:          protocol.CertificateID(certificate),
+		PreviousEnvelopeDigest: target.EnvelopeDigest,
+		KeyGeneration:          7,
+		Nonce:                  controlNonce(0x50),
 	}
 	manifest := protocol.PruneManifest{Targets: []protocol.PruneReference{target}}
 	acknowledgements := make([]protocol.PruneAcknowledgement, 0, len(certificates))
@@ -390,6 +396,14 @@ func controlRelayGeneration() protocol.RelayGeneration {
 
 func controlDigest(seed byte) protocol.Digest {
 	var value protocol.Digest
+	for index := range value {
+		value[index] = seed + byte(index)
+	}
+	return value
+}
+
+func controlNonce(seed byte) protocol.Nonce {
+	var value protocol.Nonce
 	for index := range value {
 		value[index] = seed + byte(index)
 	}
