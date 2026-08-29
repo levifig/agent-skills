@@ -88,6 +88,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"snapshot_scratchpad_v1.go",
 		"store.go",
 		"sync.go",
+		"terminal_candidate_codec.go",
 		"terminal_history.go",
 		"wire_v1.go",
 		"wire_validation_v1.go",
@@ -331,6 +332,15 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 			"github.com/levifig/loaf/vnext/internal/continuitywire",
 			"math",
 			"sort",
+		},
+		"terminal_candidate_codec.go": {
+			"bytes",
+			"crypto/sha256",
+			"encoding/binary",
+			"errors",
+			"github.com/levifig/loaf/vnext/continuity",
+			"github.com/levifig/loaf/vnext/internal/continuitywire",
+			"math",
 		},
 		"terminal_history.go": {
 			"context",
