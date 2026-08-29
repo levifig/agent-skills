@@ -123,6 +123,8 @@ The recovery credential contains full project recovery/admin authority and is an
 
 Recovery encoding is versioned fixed-field canonical JSON plus a truncated SHA-256 corruption checksum. The checksum is not a password hash, MAC, or proof of authenticity. Recovery must fetch and validate a full inventory, mint a fresh environment identity, and reach an attached projection before success. Root compromise requires a new root, channel, tokens, and explicit reattachment; ordinary recovery cannot make a compromised root safe.
 
+Because vNext sync remains unshipped and pre-cutover, the capsule correction intentionally redefines V1 prune acknowledgements, prune certificates, and ephemeral credentials in place. The strict decoders require the new capsule digest, typed capsule, purpose version, and bootstrap key fields; old pre-capsule forms fail rather than receiving defaults, optional parsing, or a silent upgrade. Discovery of supported persisted V1 sync bytes would require a new strict version instead of this in-place change.
+
 Secrets must enter through a protected file, standard input, or harness secret channel. They never enter command arguments, logs, repository configuration, continuity facts, sync diagnostics, or relay plaintext. A portable OS keychain is future hardening; a `0600` file retains the documented same-UID limitation.
 
 ## Relay Metadata and Authorization
