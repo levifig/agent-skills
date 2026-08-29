@@ -178,6 +178,138 @@ func TestCredentialDecodeRejectsChecksumUnknownAndNoncanonicalJSON(t *testing.T)
 	}
 }
 
+func TestCredentialDecodersRejectAdversarialJSON(t *testing.T) {
+	t.Parallel()
+
+	recovery, trusted, ephemeral := testCredentials(t)
+	tests := []struct {
+		name           string
+		prefix         string
+		kind           string
+		wire           string
+		decode         func(string) error
+		omittedField   string
+		authorityField string
+	}{
+		{
+			name:           "recovery",
+			prefix:         RecoveryPrefix,
+			kind:           recoveryKind,
+			wire:           mustEncodeCredential(t, func() (string, error) { return EncodeRecovery(recovery) }),
+			decode:         func(encoded string) error { _, err := DecodeRecovery(encoded); return err },
+			omittedField:   "last_signed_checkpoint",
+			authorityField: "environment_seed",
+		},
+		{
+			name:           "trusted",
+			prefix:         TrustedPrefix,
+			kind:           trustedKind,
+			wire:           mustEncodeCredential(t, func() (string, error) { return EncodeTrusted(trusted) }),
+			decode:         func(encoded string) error { _, err := DecodeTrusted(encoded); return err },
+			omittedField:   "last_observed_checkpoint",
+			authorityField: "admin_seed",
+		},
+		{
+			name:           "ephemeral",
+			prefix:         EphemeralPrefix,
+			kind:           ephemeralKind,
+			wire:           mustEncodeCredential(t, func() (string, error) { return EncodeEphemeral(ephemeral) }),
+			decode:         func(encoded string) error { _, err := DecodeEphemeral(encoded); return err },
+			omittedField:   "relay_token_expires_at_millis",
+			authorityField: "project_root",
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			body := rawBodyFromWire(t, test.wire, test.prefix)
+			mutations := []struct {
+				name   string
+				mutate func([]byte) []byte
+			}{
+				{
+					name: "duplicate top-level key",
+					mutate: func(value []byte) []byte {
+						const versionPrefix = `{"version":1,`
+						if !bytes.HasPrefix(value, []byte(versionPrefix)) {
+							t.Fatalf("body does not start with %q", versionPrefix)
+						}
+						return append([]byte(versionPrefix), value[1:]...)
+					},
+				},
+				{
+					name: "omitted required field",
+					mutate: func(value []byte) []byte {
+						return omitTopLevelJSONField(t, value, test.omittedField)
+					},
+				},
+				{
+					name: "reordered top-level fields",
+					mutate: func(value []byte) []byte {
+						return reorderVersionAndKind(t, value, test.kind)
+					},
+				},
+				{
+					name: "cross-class authority field",
+					mutate: func(value []byte) []byte {
+						return prependUnknownTopLevelField(value, test.authorityField)
+					},
+				},
+				{
+					name: "trailing JSON value",
+					mutate: func(value []byte) []byte {
+						return append(append([]byte(nil), value...), []byte(` {}`)...)
+					},
+				},
+			}
+			for _, mutation := range mutations {
+				mutation := mutation
+				t.Run(mutation.name, func(t *testing.T) {
+					mutatedBody := mutation.mutate(body)
+					encoded, err := encodeCredentialFrame(test.prefix, test.kind, mutatedBody)
+					if err != nil {
+						t.Fatalf("encode adversarial frame: %v", err)
+					}
+					if err := test.decode(encoded); err == nil {
+						t.Fatal("adversarial credential unexpectedly decoded")
+					}
+				})
+			}
+
+			t.Run("padded frame base64", func(t *testing.T) {
+				payload := strings.TrimPrefix(test.wire, test.prefix)
+				if payload == test.wire {
+					t.Fatalf("wire does not have prefix %q", test.prefix)
+				}
+				if err := test.decode(test.prefix + payload + "="); err == nil {
+					t.Fatal("padded base64 credential unexpectedly decoded")
+				}
+			})
+
+			if test.name == "ephemeral" {
+				t.Run("nested generation-key unknown field", func(t *testing.T) {
+					marker := []byte(`{"generation":`)
+					index := bytes.Index(body, marker)
+					if index < 0 {
+						t.Fatalf("body has no generation-key object")
+					}
+					mutatedBody := append([]byte(nil), body[:index+1]...)
+					mutatedBody = append(mutatedBody, []byte(`"unexpected":true,`)...)
+					mutatedBody = append(mutatedBody, body[index+1:]...)
+					encoded, err := encodeCredentialFrame(test.prefix, test.kind, mutatedBody)
+					if err != nil {
+						t.Fatalf("encode nested adversarial frame: %v", err)
+					}
+					if err := test.decode(encoded); err == nil {
+						t.Fatal("nested unknown generation-key field unexpectedly decoded")
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestEphemeralCredentialRequiresExactExplicitGenerationKeysAndExpiry(t *testing.T) {
 	t.Parallel()
 
@@ -460,4 +592,73 @@ func rawBodyFromWire(t *testing.T, wire, prefix string) []byte {
 		t.Fatalf("decode framed body: %v", err)
 	}
 	return decoded[:len(decoded)-credentialChecksumBytes]
+}
+
+func mustEncodeCredential(t *testing.T, encode func() (string, error)) string {
+	t.Helper()
+	encoded, err := encode()
+	if err != nil {
+		t.Fatalf("encode credential fixture: %v", err)
+	}
+	return encoded
+}
+
+func omitTopLevelJSONField(t *testing.T, body []byte, field string) []byte {
+	t.Helper()
+	marker := []byte(`"` + field + `":`)
+	fieldStart := bytes.Index(body, marker)
+	if fieldStart < 1 || body[fieldStart-1] != ',' {
+		t.Fatalf("top-level field %q not found in canonical body", field)
+	}
+	inString := false
+	escaped := false
+	depth := 0
+	for index := fieldStart + len(marker); index < len(body); index++ {
+		value := body[index]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if value == '\\' {
+				escaped = true
+			} else if value == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch value {
+		case '"':
+			inString = true
+		case '{', '[':
+			depth++
+		case '}', ']':
+			if depth > 0 {
+				depth--
+			} else if value == '}' {
+				return append(append([]byte(nil), body[:fieldStart-1]...), body[index:]...)
+			}
+		case ',':
+			if depth == 0 {
+				return append(append([]byte(nil), body[:fieldStart-1]...), body[index:]...)
+			}
+		}
+	}
+	t.Fatalf("top-level field %q has no JSON value", field)
+	return nil
+}
+
+func reorderVersionAndKind(t *testing.T, body []byte, kind string) []byte {
+	t.Helper()
+	canonicalPrefix := []byte(`{"version":1,"kind":"` + kind + `",`)
+	if !bytes.HasPrefix(body, canonicalPrefix) {
+		t.Fatalf("body does not have canonical version/kind prefix")
+	}
+	reorderedPrefix := []byte(`{"kind":"` + kind + `","version":1,`)
+	return append(append([]byte(nil), reorderedPrefix...), body[len(canonicalPrefix):]...)
+}
+
+func prependUnknownTopLevelField(body []byte, field string) []byte {
+	prefix := []byte(`{"` + field + `":null,`)
+	return append(prefix, body[1:]...)
 }
