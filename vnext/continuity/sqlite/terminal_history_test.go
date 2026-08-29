@@ -331,8 +331,8 @@ func TestPendingSyncFramesAfterRejectsInboxCursorCorruption(t *testing.T) {
 		beyond := testOpaqueFrame(2, "beyond-downloaded")
 		if _, err := store.db.Exec(`
 INSERT INTO continuity_sync_inbox (
-  project_id, arrival_sequence, envelope_digest, sealed_envelope, state
-) VALUES (?, ?, ?, ?, 'staged')`, string(projectID), beyond.ArrivalSequence, beyond.EnvelopeDigest[:], beyond.SealedEnvelope); err != nil {
+  project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
+) VALUES (?, ?, ?, 'sealed', ?, 'staged')`, string(projectID), beyond.ArrivalSequence, beyond.EnvelopeDigest[:], beyond.SealedEnvelope); err != nil {
 			t.Fatalf("seed inbox row beyond downloaded cursor: %v", err)
 		}
 		before := captureTerminalMutationStateV1(t, store, projectID)
@@ -402,8 +402,8 @@ WHERE project_id = ?`, int64(math.MaxInt64), int64(math.MaxInt64-1), int64(math.
 		}
 		if _, err := store.db.Exec(`
 INSERT INTO continuity_sync_inbox (
-  project_id, arrival_sequence, envelope_digest, sealed_envelope, state
-) VALUES (?, ?, ?, ?, 'staged')`, string(projectID), frame.ArrivalSequence, frame.EnvelopeDigest[:], frame.SealedEnvelope); err != nil {
+  project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
+) VALUES (?, ?, ?, 'sealed', ?, 'staged')`, string(projectID), frame.ArrivalSequence, frame.EnvelopeDigest[:], frame.SealedEnvelope); err != nil {
 			t.Fatalf("seed final maximum arrival: %v", err)
 		}
 		before := captureTerminalMutationStateV1(t, store, projectID)

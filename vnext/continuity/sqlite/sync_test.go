@@ -106,6 +106,40 @@ func TestContinuityStoreStagesContiguousOpaquePageAtomically(t *testing.T) {
 	assertSyncErrorCode(t, err, SyncErrorConflict)
 }
 
+func TestContinuityStoreSealedOnlyReadsRejectPrunedInboxFrame(t *testing.T) {
+	t.Parallel()
+
+	store := openSyncStore(t, "reject-pruned-inbox")
+	projectID := continuity.ProjectID("project-reject-pruned-inbox")
+	channelID := testSyncChannelID("channel-a")
+	installTestSyncAuthority(t, store, projectID, channelID)
+	sealed := []byte("sealed-retry-bytes")
+	digest := sha256.Sum256(sealed)
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_inbox(
+  project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
+) VALUES(?, 1, ?, 'pruned', X'01', 'staged')`, string(projectID), digest[:]); err != nil {
+		t.Fatalf("seed pruned inbox frame: %v", err)
+	}
+	if _, err := store.db.Exec(`
+UPDATE continuity_sync_projects
+SET downloaded_cursor = 1, relay_head = 1
+WHERE project_id = ?`, string(projectID)); err != nil {
+		t.Fatalf("advance seeded pruned cursor: %v", err)
+	}
+
+	_, err := store.PendingSyncFrames(context.Background(), projectID, 1)
+	assertSyncErrorCode(t, err, SyncErrorTerminalHistoryRequired)
+	_, err = store.PendingSyncFramesAfter(context.Background(), projectID, 0, 1)
+	assertSyncErrorCode(t, err, SyncErrorTerminalHistoryRequired)
+	_, err = store.StageSyncPage(context.Background(), projectID, channelID, 0, 1, []OpaqueSyncFrame{{
+		ArrivalSequence: 1,
+		EnvelopeDigest:  digest,
+		SealedEnvelope:  sealed,
+	}})
+	assertSyncErrorCode(t, err, SyncErrorConflict)
+}
+
 func TestContinuityStoreRejectsDuplicateEnvelopeDigestAcrossStagedPages(t *testing.T) {
 	t.Parallel()
 

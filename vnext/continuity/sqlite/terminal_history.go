@@ -73,7 +73,7 @@ SELECT EXISTS (
 		return nil, syncProblem(SyncErrorStore, "", "staged inbox outruns the downloaded cursor")
 	}
 	rows, err := tx.QueryContext(ctx, `
-SELECT arrival_sequence, envelope_digest, sealed_envelope, state
+SELECT arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
 FROM continuity_sync_inbox
 WHERE project_id = ? AND arrival_sequence > ? AND arrival_sequence <= ?
 ORDER BY arrival_sequence
@@ -85,12 +85,16 @@ LIMIT ?`, string(projectID), afterArrivalSequence, downloadedCursor, limit)
 	for rows.Next() {
 		var frame OpaqueSyncFrame
 		var digest []byte
-		var state string
-		if err := rows.Scan(&frame.ArrivalSequence, &digest, &frame.SealedEnvelope, &state); err != nil {
+		var frameKind, state string
+		if err := rows.Scan(&frame.ArrivalSequence, &digest, &frameKind, &frame.SealedEnvelope, &state); err != nil {
 			rows.Close()
 			return nil, syncTransactionProblem(ctx)
 		}
 		expectedArrivalSequence := afterArrivalSequence + int64(len(frames)) + 1
+		if frameKind != "sealed" {
+			rows.Close()
+			return nil, syncProblem(SyncErrorTerminalHistoryRequired, "frame_kind", "requires tagged terminal-history handling")
+		}
 		if frame.ArrivalSequence != expectedArrivalSequence || len(digest) != len(frame.EnvelopeDigest) ||
 			(state != "staged" && state != "quarantined") {
 			rows.Close()
