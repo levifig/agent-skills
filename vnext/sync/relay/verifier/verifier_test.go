@@ -370,14 +370,20 @@ func TestVerifierBindsPruneRelayGenerationAndChannelToAuthority(t *testing.T) {
 			certificate := cloneProtocolPruneCertificate(f.prune)
 			if name == "relay generation" {
 				certificate.RelayGeneration[0] ^= 1
+				certificate.Capsule.RelayGeneration = certificate.RelayGeneration
+				certificate.CapsuleDigest = protocol.PruneBootstrapDigest(certificate.Capsule)
 				for index := range certificate.Acknowledgements {
 					certificate.Acknowledgements[index].RelayGeneration = certificate.RelayGeneration
+					certificate.Acknowledgements[index].CapsuleDigest = certificate.CapsuleDigest
 					certificate.Acknowledgements[index] = rawSignPruneAcknowledgement(t, certificate.Acknowledgements[index], f.environmentSeed)
 				}
 			} else {
 				certificate.ChannelID[0] ^= 1
+				certificate.Capsule.ChannelID = certificate.ChannelID
+				certificate.CapsuleDigest = protocol.PruneBootstrapDigest(certificate.Capsule)
 				for index := range certificate.Acknowledgements {
 					certificate.Acknowledgements[index].ChannelID = certificate.ChannelID
+					certificate.Acknowledgements[index].CapsuleDigest = certificate.CapsuleDigest
 					certificate.Acknowledgements[index] = rawSignPruneAcknowledgement(t, certificate.Acknowledgements[index], f.environmentSeed)
 				}
 			}
@@ -449,12 +455,18 @@ func TestVerifierRejectsPruneOuterInnerAndAuthorityMismatches(t *testing.T) {
 		{name: "closure", mutate: func(value *protocol.PruneCertificate) {
 			value.Closure.EnvelopeDigest[0] ^= 1
 			value.ClosureDigest = protocol.PruneReferenceDigest(value.Closure)
+			value.Capsule.ClosureReferenceDigest = value.ClosureDigest
+			value.CapsuleDigest = protocol.PruneBootstrapDigest(value.Capsule)
 			value.Acknowledgements[0].ClosureReferenceDigest = value.ClosureDigest
+			value.Acknowledgements[0].CapsuleDigest = value.CapsuleDigest
 		}},
 		{name: "target", mutate: func(value *protocol.PruneCertificate) {
 			value.Manifest.Targets[0].EnvelopeDigest[0] ^= 1
 			value.ManifestDigest = protocol.PruneManifestDigest(value.Manifest)
+			value.Capsule.ManifestDigest = value.ManifestDigest
+			value.CapsuleDigest = protocol.PruneBootstrapDigest(value.Capsule)
 			value.Acknowledgements[0].ManifestDigest = value.ManifestDigest
+			value.Acknowledgements[0].CapsuleDigest = value.CapsuleDigest
 		}},
 		{name: "vote frontier", mutate: func(value *protocol.PruneCertificate) {
 			value.Acknowledgements[0].AppliedArrivalSequence++
@@ -605,6 +617,26 @@ func newVerifierFixture(t *testing.T) verifierFixture {
 		Nonce:                  nonce(0xb0),
 	}
 	manifest := protocol.PruneManifest{Targets: []protocol.PruneReference{target}}
+	closureDigest := protocol.PruneReferenceDigest(closure)
+	manifestDigest := protocol.PruneManifestDigest(manifest)
+	pruneID := digest(0xc0)
+	capsule := protocol.PruneBootstrap{
+		CapsuleVersion:          protocol.PruneBootstrapCapsuleVersionV1,
+		ProtocolVersion:         protocol.ProtocolVersionV1,
+		CipherSuite:             protocol.CipherSuiteXChaCha20Poly1305,
+		BootstrapPurposeVersion: protocol.PruneBootstrapPurposeVersionV1,
+		ChannelID:               channelID,
+		RelayGeneration:         relayGeneration,
+		PruneID:                 pruneID,
+		MembershipGeneration:    1,
+		BarrierArrivalSequence:  2,
+		ClosureReferenceDigest:  closureDigest,
+		ManifestCount:           1,
+		ManifestDigest:          manifestDigest,
+		Nonce:                   nonce(0xd0),
+		Ciphertext:              bytes.Repeat([]byte{0xd1}, 16),
+	}
+	capsuleDigest := protocol.PruneBootstrapDigest(capsule)
 	pruneAcknowledgement := protocol.PruneAcknowledgement{
 		Version:                       protocol.ControlVersionV1,
 		ProtocolVersion:               protocol.ProtocolVersionV1,
@@ -618,11 +650,12 @@ func newVerifierFixture(t *testing.T) verifierFixture {
 		AppliedArrivalSequence:        progress.AppliedArrivalSequence,
 		ProducerSequence:              progress.ProducerSequence,
 		ProducerEnvelopeDigest:        progress.ProducerEnvelopeDigest,
-		PruneID:                       digest(0xc0),
+		PruneID:                       pruneID,
 		BarrierArrivalSequence:        2,
-		ClosureReferenceDigest:        protocol.PruneReferenceDigest(closure),
+		ClosureReferenceDigest:        closureDigest,
 		ManifestCount:                 1,
-		ManifestDigest:                protocol.PruneManifestDigest(manifest),
+		ManifestDigest:                manifestDigest,
+		CapsuleDigest:                 capsuleDigest,
 	}
 	pruneAcknowledgement, err = synccrypto.SignPruneAcknowledgement(pruneAcknowledgement, certificate, adminPublic, environmentSeed)
 	if err != nil {
@@ -638,10 +671,12 @@ func newVerifierFixture(t *testing.T) verifierFixture {
 		MembershipGeneration:       1,
 		BarrierArrivalSequence:     2,
 		Closure:                    closure,
-		ClosureDigest:              protocol.PruneReferenceDigest(closure),
+		ClosureDigest:              closureDigest,
 		ManifestCount:              1,
-		ManifestDigest:             protocol.PruneManifestDigest(manifest),
+		ManifestDigest:             manifestDigest,
 		Manifest:                   manifest,
+		CapsuleDigest:              capsuleDigest,
+		Capsule:                    capsule,
 		ActiveAcknowledgementCount: 1,
 		Acknowledgements:           []protocol.PruneAcknowledgement{pruneAcknowledgement},
 	}
@@ -903,6 +938,7 @@ func cloneRelayPruneCertificate(value relay.PruneCertificate) relay.PruneCertifi
 
 func cloneProtocolPruneCertificate(value protocol.PruneCertificate) protocol.PruneCertificate {
 	value.Manifest.Targets = append([]protocol.PruneReference(nil), value.Manifest.Targets...)
+	value.Capsule.Ciphertext = append([]byte(nil), value.Capsule.Ciphertext...)
 	value.Acknowledgements = append([]protocol.PruneAcknowledgement(nil), value.Acknowledgements...)
 	return value
 }

@@ -99,6 +99,7 @@ type PruneAcknowledgement struct {
 	ClosureReferenceDigest        Digest
 	ManifestCount                 uint32
 	ManifestDigest                Digest
+	CapsuleDigest                 Digest
 	EnvironmentSignature          Signature
 }
 
@@ -122,7 +123,8 @@ func (acknowledgement PruneAcknowledgement) Validate() error {
 		isZero(acknowledgement.PruneID[:]) || acknowledgement.BarrierArrivalSequence < 1 ||
 		acknowledgement.AppliedArrivalSequence < acknowledgement.BarrierArrivalSequence ||
 		isZero(acknowledgement.ClosureReferenceDigest[:]) || acknowledgement.ManifestCount < 1 ||
-		acknowledgement.ManifestCount > MaxPruneTargets || isZero(acknowledgement.ManifestDigest[:]) {
+		acknowledgement.ManifestCount > MaxPruneTargets || isZero(acknowledgement.ManifestDigest[:]) ||
+		isZero(acknowledgement.CapsuleDigest[:]) {
 		return ErrInvalidPruneAcknowledgement
 	}
 	return nil
@@ -240,6 +242,8 @@ type PruneCertificate struct {
 	ManifestCount              uint32
 	ManifestDigest             Digest
 	Manifest                   PruneManifest
+	CapsuleDigest              Digest
+	Capsule                    PruneBootstrap
 	ActiveAcknowledgementCount uint32
 	Acknowledgements           []PruneAcknowledgement
 	AdminSignature             Signature
@@ -257,6 +261,12 @@ func (certificate PruneCertificate) Validate() error {
 	if certificate.CipherSuite != CipherSuiteXChaCha20Poly1305 {
 		return ErrUnsupportedCipherSuite
 	}
+	if err := certificate.Capsule.Validate(); err != nil {
+		if errors.Is(err, ErrTooLarge) {
+			return ErrTooLarge
+		}
+		return ErrInvalidPruneCertificate
+	}
 	if isZero(certificate.ChannelID[:]) || isZero(certificate.RelayGeneration[:]) ||
 		isZero(certificate.PruneID[:]) || certificate.MembershipGeneration < 1 ||
 		certificate.BarrierArrivalSequence < 1 || certificate.Closure.Validate() != nil ||
@@ -264,6 +274,14 @@ func (certificate PruneCertificate) Validate() error {
 		certificate.ClosureDigest != PruneReferenceDigest(certificate.Closure) ||
 		certificate.Manifest.Validate() != nil || certificate.ManifestCount != uint32(len(certificate.Manifest.Targets)) ||
 		certificate.ManifestDigest != PruneManifestDigest(certificate.Manifest) ||
+		isZero(certificate.CapsuleDigest[:]) || certificate.CapsuleDigest != PruneBootstrapDigest(certificate.Capsule) ||
+		certificate.Capsule.ProtocolVersion != certificate.ProtocolVersion ||
+		certificate.Capsule.CipherSuite != certificate.CipherSuite || certificate.Capsule.ChannelID != certificate.ChannelID ||
+		certificate.Capsule.RelayGeneration != certificate.RelayGeneration || certificate.Capsule.PruneID != certificate.PruneID ||
+		certificate.Capsule.MembershipGeneration != certificate.MembershipGeneration ||
+		certificate.Capsule.BarrierArrivalSequence != certificate.BarrierArrivalSequence ||
+		certificate.Capsule.ClosureReferenceDigest != certificate.ClosureDigest ||
+		certificate.Capsule.ManifestCount != certificate.ManifestCount || certificate.Capsule.ManifestDigest != certificate.ManifestDigest ||
 		certificate.ActiveAcknowledgementCount != uint32(len(certificate.Acknowledgements)) ||
 		len(certificate.Acknowledgements) < 1 || len(certificate.Acknowledgements) > MaxPruneAcknowledgements {
 		return ErrInvalidPruneCertificate
@@ -291,6 +309,7 @@ func (certificate PruneCertificate) Validate() error {
 			acknowledgement.ClosureReferenceDigest != certificate.ClosureDigest ||
 			acknowledgement.ManifestCount != certificate.ManifestCount ||
 			acknowledgement.ManifestDigest != certificate.ManifestDigest ||
+			acknowledgement.CapsuleDigest != certificate.CapsuleDigest ||
 			(index > 0 && strings.Compare(previousEnvironment, string(acknowledgement.EnvironmentID)) >= 0) {
 			return ErrInvalidPruneCertificate
 		}

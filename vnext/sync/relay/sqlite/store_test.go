@@ -1085,6 +1085,25 @@ func TestProductionVerifierAcceptsSignedRelayLifecycle(t *testing.T) {
 	closure := productionPruneReference(second.Arrival)
 	manifest := protocol.PruneManifest{Targets: []protocol.PruneReference{target}}
 	pruneID := protocol.Digest(testDigest(0x91))
+	closureDigest := protocol.PruneReferenceDigest(closure)
+	manifestDigest := protocol.PruneManifestDigest(manifest)
+	capsule := protocol.PruneBootstrap{
+		CapsuleVersion:          protocol.PruneBootstrapCapsuleVersionV1,
+		ProtocolVersion:         protocol.ProtocolVersionV1,
+		CipherSuite:             protocol.CipherSuiteXChaCha20Poly1305,
+		BootstrapPurposeVersion: protocol.PruneBootstrapPurposeVersionV1,
+		ChannelID:               certificate.ChannelID,
+		RelayGeneration:         protocol.RelayGeneration(owner.RelayGeneration),
+		PruneID:                 pruneID,
+		MembershipGeneration:    1,
+		BarrierArrivalSequence:  2,
+		ClosureReferenceDigest:  closureDigest,
+		ManifestCount:           1,
+		ManifestDigest:          manifestDigest,
+		Nonce:                   protocol.Nonce(testNonce(0x92)),
+		Ciphertext:              bytes.Repeat([]byte{0x93}, 16),
+	}
+	capsuleDigest := protocol.PruneBootstrapDigest(capsule)
 	pruneVote := protocol.PruneAcknowledgement{
 		Version:                       protocol.ControlVersionV1,
 		ProtocolVersion:               protocol.ProtocolVersionV1,
@@ -1100,9 +1119,10 @@ func TestProductionVerifierAcceptsSignedRelayLifecycle(t *testing.T) {
 		ProducerEnvelopeDigest:        progress.ProducerEnvelopeDigest,
 		PruneID:                       pruneID,
 		BarrierArrivalSequence:        2,
-		ClosureReferenceDigest:        protocol.PruneReferenceDigest(closure),
+		ClosureReferenceDigest:        closureDigest,
 		ManifestCount:                 1,
-		ManifestDigest:                protocol.PruneManifestDigest(manifest),
+		ManifestDigest:                manifestDigest,
+		CapsuleDigest:                 capsuleDigest,
 	}
 	pruneVote, err = synccrypto.SignPruneAcknowledgement(pruneVote, certificate, adminPublic, environmentSeed)
 	if err != nil {
@@ -1118,10 +1138,12 @@ func TestProductionVerifierAcceptsSignedRelayLifecycle(t *testing.T) {
 		MembershipGeneration:       1,
 		BarrierArrivalSequence:     2,
 		Closure:                    closure,
-		ClosureDigest:              protocol.PruneReferenceDigest(closure),
+		ClosureDigest:              closureDigest,
 		ManifestCount:              1,
-		ManifestDigest:             protocol.PruneManifestDigest(manifest),
+		ManifestDigest:             manifestDigest,
 		Manifest:                   manifest,
+		CapsuleDigest:              capsuleDigest,
+		Capsule:                    capsule,
 		ActiveAcknowledgementCount: 1,
 		Acknowledgements:           []protocol.PruneAcknowledgement{pruneVote},
 	}

@@ -56,6 +56,11 @@ func TestTypedControlSignaturesUseCertifiedAuthoritiesAndExactBindings(t *testin
 	if err := VerifyPruneAcknowledgement(tamperedPruneAcknowledgement, certificate, adminPublic); !errors.Is(err, ErrControlBinding) {
 		t.Fatalf("prune certificate binding error = %v, want %v", err, ErrControlBinding)
 	}
+	tamperedPruneAcknowledgement = signedPruneAcknowledgement
+	tamperedPruneAcknowledgement.CapsuleDigest[0] ^= 1
+	if err := VerifyPruneAcknowledgement(tamperedPruneAcknowledgement, certificate, adminPublic); !errors.Is(err, ErrInvalidControlSignature) {
+		t.Fatalf("prune capsule signature error = %v, want %v", err, ErrInvalidControlSignature)
+	}
 
 	retirement := controlTerminalRetirement(certificate)
 	signedRetirement, err := SignTerminalRetirement(retirement, certificate, adminSeed)
@@ -108,6 +113,27 @@ func TestPruneCertificateUsesAdministratorSignatureAndTypedEnvironmentVotes(t *t
 	tampered.AdminSignature[0] ^= 1
 	if err := VerifyPruneCertificate(tampered, environmentCertificates, adminPublic); !errors.Is(err, ErrInvalidControlSignature) {
 		t.Fatalf("prune certificate signature error = %v, want %v", err, ErrInvalidControlSignature)
+	}
+
+	tampered = cloneControlPruneCertificate(signed)
+	tampered.Capsule.Ciphertext[0] ^= 1
+	if err := VerifyPruneCertificate(tampered, environmentCertificates, adminPublic); !errors.Is(err, protocol.ErrInvalidPruneCertificate) {
+		t.Fatalf("prune capsule digest error = %v, want %v", err, protocol.ErrInvalidPruneCertificate)
+	}
+
+	tampered = cloneControlPruneCertificate(signed)
+	tampered.Capsule.Ciphertext[0] ^= 1
+	tampered.CapsuleDigest = protocol.PruneBootstrapDigest(tampered.Capsule)
+	tamperedAcknowledgement := tampered.Acknowledgements[0]
+	tamperedAcknowledgement.CapsuleDigest = tampered.CapsuleDigest
+	tamperedAcknowledgement.EnvironmentSignature = protocol.Signature{}
+	tamperedAcknowledgement, err = SignPruneAcknowledgement(tamperedAcknowledgement, certificate, adminPublic, environmentSeed)
+	if err != nil {
+		t.Fatalf("re-sign capsule-mutated acknowledgement: %v", err)
+	}
+	tampered.Acknowledgements[0] = tamperedAcknowledgement
+	if err := VerifyPruneCertificate(tampered, environmentCertificates, adminPublic); !errors.Is(err, ErrInvalidControlSignature) {
+		t.Fatalf("prune capsule administrator signature error = %v, want %v", err, ErrInvalidControlSignature)
 	}
 
 	if _, err := SignPruneCertificate(pruneCertificate, environmentCertificates, AdminSeed{}); !errors.Is(err, ErrInvalidSigningKey) {
@@ -163,6 +189,19 @@ func TestPruneCertificateRequiresExactAuthenticatedWitnessSet(t *testing.T) {
 	copy(tamperedVote.AdminSignature[:], ed25519.Sign(ed25519.NewKeyFromSeed(adminSeed[:]), body))
 	if err := VerifyPruneCertificate(tamperedVote, environmentCertificates, adminPublic); !errors.Is(err, ErrInvalidControlSignature) {
 		t.Fatalf("tampered witness signature error = %v, want %v", err, ErrInvalidControlSignature)
+	}
+
+	disagreeingVote := cloneControlPruneCertificate(pruneCertificate)
+	disagreeingAcknowledgement := disagreeingVote.Acknowledgements[1]
+	disagreeingAcknowledgement.CapsuleDigest[0] ^= 1
+	disagreeingAcknowledgement.EnvironmentSignature = protocol.Signature{}
+	disagreeingAcknowledgement, err = SignPruneAcknowledgement(disagreeingAcknowledgement, certificateB, adminPublic, environmentSeedB)
+	if err != nil {
+		t.Fatalf("sign disagreeing capsule acknowledgement: %v", err)
+	}
+	disagreeingVote.Acknowledgements[1] = disagreeingAcknowledgement
+	if _, err := SignPruneCertificate(disagreeingVote, environmentCertificates, adminSeed); !errors.Is(err, protocol.ErrInvalidPruneCertificate) {
+		t.Fatalf("disagreeing capsule witness error = %v, want %v", err, protocol.ErrInvalidPruneCertificate)
 	}
 
 	missingVote := cloneControlPruneCertificate(pruneCertificate)
@@ -285,6 +324,7 @@ func controlPruneAcknowledgement(certificate protocol.EnvironmentCertificate, pr
 		ClosureReferenceDigest:        controlDigest(0x31),
 		ManifestCount:                 1,
 		ManifestDigest:                controlDigest(0x32),
+		CapsuleDigest:                 controlDigest(0x33),
 	}
 }
 
@@ -347,13 +387,37 @@ func controlPruneCertificateForWitnesses(
 		Nonce:                  controlNonce(0x50),
 	}
 	manifest := protocol.PruneManifest{Targets: []protocol.PruneReference{target}}
+	closureDigest := protocol.PruneReferenceDigest(closure)
+	manifestDigest := protocol.PruneManifestDigest(manifest)
+	capsuleCiphertext := make([]byte, 32)
+	for index := range capsuleCiphertext {
+		capsuleCiphertext[index] = byte(0x90 + index)
+	}
+	capsule := protocol.PruneBootstrap{
+		CapsuleVersion:          protocol.PruneBootstrapCapsuleVersionV1,
+		ProtocolVersion:         protocol.ProtocolVersionV1,
+		CipherSuite:             protocol.CipherSuiteXChaCha20Poly1305,
+		BootstrapPurposeVersion: protocol.PruneBootstrapPurposeVersionV1,
+		ChannelID:               certificate.ChannelID,
+		RelayGeneration:         controlRelayGeneration(),
+		PruneID:                 controlDigest(0x30),
+		MembershipGeneration:    3,
+		BarrierArrivalSequence:  7,
+		ClosureReferenceDigest:  closureDigest,
+		ManifestCount:           1,
+		ManifestDigest:          manifestDigest,
+		Nonce:                   controlNonce(0x90),
+		Ciphertext:              capsuleCiphertext,
+	}
+	capsuleDigest := protocol.PruneBootstrapDigest(capsule)
 	acknowledgements := make([]protocol.PruneAcknowledgement, 0, len(certificates))
 	for index, witnessCertificate := range certificates {
 		progress := controlProgressAcknowledgement(witnessCertificate)
 		pruneAcknowledgement := controlPruneAcknowledgement(witnessCertificate, progress)
-		pruneAcknowledgement.ClosureReferenceDigest = protocol.PruneReferenceDigest(closure)
+		pruneAcknowledgement.ClosureReferenceDigest = closureDigest
 		pruneAcknowledgement.ManifestCount = 1
-		pruneAcknowledgement.ManifestDigest = protocol.PruneManifestDigest(manifest)
+		pruneAcknowledgement.ManifestDigest = manifestDigest
+		pruneAcknowledgement.CapsuleDigest = capsuleDigest
 		signedAcknowledgement, err := SignPruneAcknowledgement(pruneAcknowledgement, witnessCertificate, adminPublic, environmentSeeds[index])
 		if err != nil {
 			t.Fatalf("sign prune acknowledgement: %v", err)
@@ -370,10 +434,12 @@ func controlPruneCertificateForWitnesses(
 		MembershipGeneration:       acknowledgements[0].MembershipGeneration,
 		BarrierArrivalSequence:     acknowledgements[0].BarrierArrivalSequence,
 		Closure:                    closure,
-		ClosureDigest:              protocol.PruneReferenceDigest(closure),
+		ClosureDigest:              closureDigest,
 		ManifestCount:              1,
-		ManifestDigest:             protocol.PruneManifestDigest(manifest),
+		ManifestDigest:             manifestDigest,
 		Manifest:                   manifest,
+		CapsuleDigest:              capsuleDigest,
+		Capsule:                    capsule,
 		ActiveAcknowledgementCount: uint32(len(acknowledgements)),
 		Acknowledgements:           acknowledgements,
 	}
@@ -382,6 +448,7 @@ func controlPruneCertificateForWitnesses(
 func cloneControlPruneCertificate(certificate protocol.PruneCertificate) protocol.PruneCertificate {
 	cloned := certificate
 	cloned.Manifest.Targets = append([]protocol.PruneReference(nil), certificate.Manifest.Targets...)
+	cloned.Capsule.Ciphertext = append([]byte(nil), certificate.Capsule.Ciphertext...)
 	cloned.Acknowledgements = append([]protocol.PruneAcknowledgement(nil), certificate.Acknowledgements...)
 	return cloned
 }
