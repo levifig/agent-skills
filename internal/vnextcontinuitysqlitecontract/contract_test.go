@@ -85,12 +85,28 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"snapshot_references_v1.go",
 		"snapshot_scratchpad_v1.go",
 		"store.go",
+		"sync.go",
 		"wire_v1.go",
 		"wire_validation_v1.go",
 	}
 	wantExports := []string{
+		"OpaqueSyncFrame",
+		"OpaqueSyncFrame.ArrivalSequence",
+		"OpaqueSyncFrame.EnvelopeDigest",
+		"OpaqueSyncFrame.Quarantined",
+		"OpaqueSyncFrame.SealedEnvelope",
 		"Open",
+		"SealedOutboxFrame",
+		"SealedOutboxFrame.CertificateID",
+		"SealedOutboxFrame.EnvelopeDigest",
+		"SealedOutboxFrame.FactID",
+		"SealedOutboxFrame.KeyGeneration",
+		"SealedOutboxFrame.Nonce",
+		"SealedOutboxFrame.PreviousEnvelopeDigest",
+		"SealedOutboxFrame.SealedEnvelope",
 		"Store",
+		"Store.ActivateStagedSync",
+		"Store.ApplySyncBatch",
 		"Store.ArchiveIdea",
 		"Store.AttachExternalReference",
 		"Store.CaptureSpark",
@@ -99,12 +115,19 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.CorrectFinding",
 		"Store.CorrectJournalEntry",
 		"Store.CreateIdea",
+		"Store.CurrentSyncProgress",
 		"Store.DeriveContext",
 		"Store.DetachExternalReference",
+		"Store.DiscardStagedSync",
 		"Store.DismissSpark",
+		"Store.ExportFact",
 		"Store.IntroduceScratchpadParticipant",
+		"Store.NextUnsealedLocalFact",
 		"Store.OpenDecision",
 		"Store.OpenScratchpad",
+		"Store.PendingSealedOutbox",
+		"Store.PendingSyncFrames",
+		"Store.PersistSealedOutbox",
 		"Store.PromoteIdeaToExternalReference",
 		"Store.PromoteSparkToIdea",
 		"Store.RecordCheckpoint",
@@ -124,8 +147,50 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.ReviseIdea",
 		"Store.ReviseProjectLabel",
 		"Store.Snapshot",
+		"Store.StageSyncPage",
 		"Store.StartExploration",
 		"Store.SupersedeDecision",
+		"SyncActivationAttached",
+		"SyncActivationStaging",
+		"SyncActivationState",
+		"SyncError",
+		"SyncError.Code",
+		"SyncError.Detail",
+		"SyncError.Error",
+		"SyncError.Field",
+		"SyncErrorActivation",
+		"SyncErrorArrivalGap",
+		"SyncErrorCandidate",
+		"SyncErrorCertificate",
+		"SyncErrorCode",
+		"SyncErrorConflict",
+		"SyncErrorCursor",
+		"SyncErrorEnvelopeChain",
+		"SyncErrorEnvironmentGap",
+		"SyncErrorHLC",
+		"SyncErrorInvalid",
+		"SyncErrorNonceReuse",
+		"SyncErrorNotAttached",
+		"SyncErrorNotFound",
+		"SyncErrorStore",
+		"SyncProgress",
+		"SyncProgress.ActivationState",
+		"SyncProgress.AppliedCursor",
+		"SyncProgress.ChannelID",
+		"SyncProgress.DownloadedCursor",
+		"SyncProgress.ProjectID",
+		"SyncProgress.RelayHead",
+		"UnsealedLocalFact",
+		"UnsealedLocalFact.Fact",
+		"UnsealedLocalFact.PreviousEnvelopeDigest",
+		"VerifiedSyncFrame",
+		"VerifiedSyncFrame.ArrivalSequence",
+		"VerifiedSyncFrame.CertificateID",
+		"VerifiedSyncFrame.EnvelopeDigest",
+		"VerifiedSyncFrame.Fact",
+		"VerifiedSyncFrame.KeyGeneration",
+		"VerifiedSyncFrame.Nonce",
+		"VerifiedSyncFrame.PreviousEnvelopeDigest",
 	}
 	files, exports := inspectSQLiteSource(t)
 	if !reflect.DeepEqual(files, wantFiles) {
@@ -187,6 +252,18 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 			"strings",
 			"sync",
 			"time",
+		},
+		"sync.go": {
+			"bytes",
+			"context",
+			"crypto/sha256",
+			"database/sql",
+			"errors",
+			"fmt",
+			"github.com/levifig/loaf/vnext/continuity",
+			"github.com/levifig/loaf/vnext/internal/continuitywire",
+			"math",
+			"sort",
 		},
 		"wire_v1.go":            nil,
 		"wire_validation_v1.go": {"github.com/levifig/loaf/vnext/continuity"},
@@ -261,7 +338,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		t.Fatalf("read user version: %v", err)
 	}
-	if applicationID != 1280267825 || userVersion != 1 {
+	if applicationID != 1280267825 || userVersion != 2 {
 		t.Fatalf("schema pragmas = application_id %d, user_version %d", applicationID, userVersion)
 	}
 
@@ -270,7 +347,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`SELECT schema_line, schema_version, schema_checksum FROM continuity_schema WHERE singleton = 1`).Scan(&line, &version, &checksum); err != nil {
 		t.Fatalf("read schema identity: %v", err)
 	}
-	if line != "vnext" || version != 1 || checksum != "6fcc409d4d49d1f7702e57ea96c493623ef37eec4e1aae6ec888f542532f0004" {
+	if line != "vnext" || version != 2 || checksum != "87ce2e973d85c5d39084f8fa6cd06521225c87c801453a82b91ba10cb74ce55a" {
 		t.Fatalf("schema identity = %q, %d, %q", line, version, checksum)
 	}
 
@@ -279,7 +356,13 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 		{kind: "index", name: "ix_continuity_facts_subject_order", table: "continuity_facts", digest: "4e442bf181f90b62b48372a200f3eb7ad1ac2863efc36f25d23db11e062d0ab9"},
 		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", digest: "53c7715e0a375cff5f23cf76cc860b1df863e89050e451ffcfce720e67d28720"},
 		{kind: "table", name: "continuity_facts", table: "continuity_facts", digest: "cc2165e3ec85a50478f7ee550bf4a25db6b3282b56de7b1332a007961c75555f"},
-		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "d5a4ef2584db92e7ca999ec9b012c14a08c83bb181d8260a49d79d820d1a59dd"},
+		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "965815e14a8ab8e70e9e83ef88fe19c62e74d10c0034d02d35581ca60a8499c9"},
+		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", digest: "542dc7124d2db185a983d6a997274f975870521524daaf82d940f824ae7b69e3"},
+		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", digest: "c11affdea01c439657339c5a5e1af9bedc44edebf588da031469894ab90e506f"},
+		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", digest: "2702a3d8ce8bd29fc5556db6065e053b26f1263fb534ecb3dd22c94bdf5cd1e5"},
+		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", digest: "dc963a8fc0879e14d677636d16b673245a5f2a819330e4e0617ca13fb4d9661c"},
+		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", digest: "46460af061b8950c529da755f66f2d4d05fb24f0a1df5c95dee9f97ef6ebe35b"},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", digest: "f9cd6d9cfba708fbdfab1a5447cc7395762bcb0ec85c36d29cda2aea84a8fb4b"},
 		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", digest: "2efe75c94d4bd6bdce39f25536d6856e61b681c127ddb60b11ae32420b9163da"},
 	}
 	if got := readObjectDigests(t, db); !reflect.DeepEqual(got, wantObjects) {
@@ -381,6 +464,8 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 
 	pointerType := reflect.TypeOf((*continuitysqlite.Store)(nil))
 	wantMethods := map[string]string{
+		"ActivateStagedSync":             "func(*sqlite.Store, context.Context, continuity.ProjectID, string) (sqlite.SyncProgress, error)",
+		"ApplySyncBatch":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, []sqlite.VerifiedSyncFrame, int64, int64) (sqlite.SyncProgress, error)",
 		"ArchiveIdea":                    "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaArchivePayload) (continuity.AppendReceipt, error)",
 		"AttachExternalReference":        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceAttachmentPayload) (continuity.AppendReceipt, error)",
 		"CaptureSpark":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkCapturedPayload) (continuity.AppendReceipt, error)",
@@ -389,12 +474,19 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"CorrectFinding":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingCorrectionPayload) (continuity.AppendReceipt, error)",
 		"CorrectJournalEntry":            "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.JournalCorrectionPayload) (continuity.AppendReceipt, error)",
 		"CreateIdea":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaCreatedPayload) (continuity.AppendReceipt, error)",
+		"CurrentSyncProgress":            "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncProgress, error)",
 		"DeriveContext":                  "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.ContextRequest) (continuity.ContextDigest, error)",
 		"DetachExternalReference":        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceDetachmentPayload) (continuity.AppendReceipt, error)",
+		"DiscardStagedSync":              "func(*sqlite.Store, context.Context, continuity.ProjectID, string) error",
 		"DismissSpark":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkDismissedPayload) (continuity.AppendReceipt, error)",
+		"ExportFact":                     "func(*sqlite.Store, context.Context, continuity.FactID) (continuitywire.Fact, error)",
 		"IntroduceScratchpadParticipant": "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadParticipantPayload) (continuity.AppendReceipt, error)",
+		"NextUnsealedLocalFact":          "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.UnsealedLocalFact, bool, error)",
 		"OpenDecision":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionOpenedPayload) (continuity.AppendReceipt, error)",
 		"OpenScratchpad":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ScratchpadOpenedPayload) (continuity.AppendReceipt, error)",
+		"PendingSealedOutbox":            "func(*sqlite.Store, context.Context, continuity.ProjectID, int) ([]sqlite.SealedOutboxFrame, error)",
+		"PendingSyncFrames":              "func(*sqlite.Store, context.Context, continuity.ProjectID, int) ([]sqlite.OpaqueSyncFrame, error)",
+		"PersistSealedOutbox":            "func(*sqlite.Store, context.Context, continuity.ProjectID, string, sqlite.SealedOutboxFrame) error",
 		"PromoteIdeaToExternalReference": "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaPromotionPayload) (continuity.AppendReceipt, error)",
 		"PromoteSparkToIdea":             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkPromotionPayload) (continuity.AppendReceipt, error)",
 		"RecordCheckpoint":               "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.CheckpointRecordedPayload) (continuity.AppendReceipt, error)",
@@ -414,6 +506,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"ReviseIdea":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaRevisionPayload) (continuity.AppendReceipt, error)",
 		"ReviseProjectLabel":             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.ProjectLabelRevisionPayload) (continuity.AppendReceipt, error)",
 		"Snapshot":                       "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.SnapshotRequest) (continuity.Snapshot, error)",
+		"StageSyncPage":                  "func(*sqlite.Store, context.Context, continuity.ProjectID, string, int64, int64, []sqlite.OpaqueSyncFrame) (sqlite.SyncProgress, error)",
 		"StartExploration":               "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExplorationStartedPayload) (continuity.AppendReceipt, error)",
 		"SupersedeDecision":              "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionSupersessionPayload) (continuity.AppendReceipt, error)",
 	}
@@ -786,7 +879,7 @@ func TestContinuitySQLiteContractRejectsDynamicPersistenceEscapeHatches(t *testi
 		"codec_v1.go:encodeWireV1",
 		"codec_v1.go:requireCanonicalV1",
 	}
-	wantInterfaces := []string{"wire_v1.go:wireValueV1"}
+	wantInterfaces := []string{"schema.go:schemaQuerier", "wire_v1.go:wireValueV1"}
 
 	entries, err := os.ReadDir(sqliteSourceRoot)
 	if err != nil {
@@ -871,8 +964,8 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"filesystem_attributes_windows.go": "1e3b5f12e4debbc5432f2153818862cdc39ec617409e526b750e6db093dcb0a0",
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
-		"schema.go":                        "5eb35bcf96fed17242202e75b24af1a82555b42c3079a87d4d491d67051d57ab",
-		"store.go":                         "07fb4c03e28e989b2f8d3155b4899e1d81b3a69e1de4aef48d29fe99f6cbd8a6",
+		"schema.go":                        "a44732ffb08268a5a3c3ce6cde62343fe08a0006fd1efb8830adb996e885e9fb",
+		"store.go":                         "25a31b8efe29c41bbc6dcac1a7e2dcb2fd5cfca38863c4b4ee56660115a856a2",
 	}
 	for fileName, wantDigest := range wantSourceDigests {
 		gotDigest := digestSourceFile(t, filepath.Join(sqliteSourceRoot, fileName))
@@ -910,15 +1003,20 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 			"windowsUserDataRoot":                   "97b6595bfcf4d216279ef990542b9b02509a1763f09ac0cfdd1898a69b5bc3d9",
 		},
 		"schema.go": {
-			"checksumSchema":          "e697037955f01095488bb1258a6f4ed1107c40fb10407ad2beb7e473e389efdb",
-			"expectedSchemaObjects":   "966a8404232d9612b7c59245b2a709786930097715d60b547ecc962f403ed204",
-			"initializeSchemaIfEmpty": "373d4af0aac75988cdb891d1494a6d0560fa0959a9f5635d95a6b0d183dbca09",
-			"normalizeSQL":            "ba395a0d4dddb73b4b9669ad5a6cd12d28494ba464560910074abbddd0d96e98",
-			"validateSchema":          "0ee48b24d251815fa8ba379118493edf06fd843ea4a3ea6ba41d9febf9fb6079",
+			"checksumSchema":               "e697037955f01095488bb1258a6f4ed1107c40fb10407ad2beb7e473e389efdb",
+			"checksumSchemaV1":             "b283f0fcbf64ee761d24a494b22d92729c3303745fd1c48ec9a95f91f0a4c1c7",
+			"expectedSchemaObjects":        "c40af23c0584a73799d1bcab25bbfe48179dd182e0dd18d2eaa4e60b1e866da2",
+			"expectedSchemaV1Objects":      "690fbda019e83a41451abc381d9d1c10f56f9597c2b55a0809bf977abd4b6da1",
+			"initializeSchemaIfEmpty":      "4ffb3a1ee40b832a4f59a04302ed3fa4f8db862c565d6f47ca5a228b60bb62eb",
+			"migrateSchema":                "4b8ed733f71ca99ba3a8f2d78ca6126caef3be4d142d652e74445d6a26cd694b",
+			"normalizeSQL":                 "ba395a0d4dddb73b4b9669ad5a6cd12d28494ba464560910074abbddd0d96e98",
+			"validateSchema":               "03e687e88be737459ecbdde22172fd82222a45c8b6c6bd9942fb83a1da1c1e93",
+			"validateSchemaVersion":        "56b5625f087b8809fd6abc6e9e67326dac4e35d71ba77e32cf6cad00c5ec41f4",
+			"validateV1EnvironmentHistory": "fea75b609db237d482ce9cf8769c8bec944a7a4532692d7d87ddf3f7d02e5528",
 		},
 		"store.go": {
 			"Close":                     "69f3a1056e0ce920d07dbdbf96c0559b9edf375218c904d29ea307d6623006f1",
-			"Open":                      "c5e946b2c2be830e01091143f2a8f0e3b19a8428d434b3b31cdf032dfc197971",
+			"Open":                      "074877062be5bb129401c555bb8734fb952a284d8a8a00aaed2d20ca7f06f357",
 			"databaseDSN":               "31b0b9b4bd1269c1e5f8c521c17fcac5ed99cfe1609e48e1937744a729788e19",
 			"inspectRegularPrivateFile": "177aaa7ec2087d38ca322829f4a54d9c333a51aea70be68823d1d9d34772e64a",
 			"openDatabase":              "63865fcf446d578fad398587c9c01c6e7330f6117673125cd4afd351b57c3dfc",
@@ -1812,6 +1910,7 @@ func inspectSQLiteSource(t *testing.T) ([]string, []string) {
 						}
 						exports = append(exports, specification.Name.Name)
 						if structure, ok := specification.Type.(*ast.StructType); ok {
+							publicData := specification.Name.Name != "Store"
 							for _, field := range structure.Fields.List {
 								if len(field.Names) == 0 {
 									t.Errorf("%s embeds an anonymous field", specification.Name.Name)
@@ -1819,7 +1918,11 @@ func inspectSQLiteSource(t *testing.T) ([]string, []string) {
 								}
 								for _, name := range field.Names {
 									if ast.IsExported(name.Name) {
-										t.Errorf("%s.%s is an exported field", specification.Name.Name, name.Name)
+										if publicData {
+											exports = append(exports, specification.Name.Name+"."+name.Name)
+										} else {
+											t.Errorf("%s.%s is an exported field", specification.Name.Name, name.Name)
+										}
 									}
 								}
 							}
