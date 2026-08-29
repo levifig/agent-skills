@@ -62,6 +62,34 @@ func TestFlowContractRejectsUnknownManifestFieldsDeterministically(t *testing.T)
 	assertContractFinding(t, first, "flow.manifest", "unknown field")
 }
 
+func TestFlowExecutionContractKeepsMainAgentPrimary(t *testing.T) {
+	t.Parallel()
+
+	mutations := []struct {
+		name     string
+		oldValue string
+		newValue string
+	}{
+		{name: "missing main agent", oldValue: `"actor": "main-agent"`, newValue: `"actor": "project-manager"`},
+		{name: "provider bypass", oldValue: `"provider_route": "selected-provider-skill"`, newValue: `"provider_route": "direct-connector"`},
+		{name: "missing primary fallback", oldValue: `"fallback": "primary"`, newValue: `"fallback": "none"`},
+		{name: "different behavior source", oldValue: `"behavior_contract": "skills/project-management/contract.json"`, newValue: `"behavior_contract": "agents/project-manager.contract.json"`},
+	}
+
+	for _, mutation := range mutations {
+		mutation := mutation
+		t.Run(mutation.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := validFlowFixture()
+			manifest := fixture[flowManifestPath]
+			manifest.Data = []byte(strings.Replace(string(manifest.Data), mutation.oldValue, mutation.newValue, 1))
+			fixture[flowManifestPath] = manifest
+			assertContractFinding(t, validateFlowContract(fixture), "flow.execution", "execution")
+		})
+	}
+}
+
 func validFlowFixture() fstest.MapFS {
 	return fstest.MapFS{
 		flowManifestPath: &fstest.MapFile{Data: []byte(validFlowManifest)},
@@ -144,6 +172,19 @@ const validFlowManifest = `{
     "service_connections": "harness",
     "flow_ceremonies": "loaf",
     "code": "git"
+  },
+  "execution": {
+    "primary": {
+      "actor": "main-agent",
+      "behavior_contract": "skills/project-management/contract.json",
+      "behavior_skill": "skills/project-management/SKILL.md",
+      "provider_route": "selected-provider-skill"
+    },
+    "optional_profile": {
+      "id": "project-manager/v1",
+      "contract_path": "agents/project-manager.contract.json",
+      "fallback": "primary"
+    }
   },
   "local_work_record": false,
   "tracker_proxy": false,

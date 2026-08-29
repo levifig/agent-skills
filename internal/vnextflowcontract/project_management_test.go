@@ -243,8 +243,29 @@ func TestTrackerSkillSharedMutationSafetyCannotDrift(t *testing.T) {
 	}
 }
 
+func TestTrackerSkillProjectManagerCannotOwnIndependentOperations(t *testing.T) {
+	t.Parallel()
+
+	for _, field := range []string{"operations", "capabilities", "retry_policy"} {
+		field := field
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := validProjectManagementFixture()
+			profile := fixture[projectManagerContractPath]
+			profile.Data = []byte(strings.Replace(string(profile.Data), "\n}", fmt.Sprintf(",\n  %q: []\n}", field), 1))
+			fixture[projectManagerContractPath] = profile
+			assertContractFinding(t, validateProjectManagementContract(fixture), "profile.contract", "unknown field")
+		})
+	}
+}
+
 func validateProjectManagementContract(content fs.FS) []finding {
 	var findings []finding
+	manifest := flowManifest{}
+	if err := decodeStrictJSON(content, flowManifestPath, &manifest); err != nil {
+		return []finding{{"flow.manifest", flowManifestPath, err.Error()}}
+	}
 	contract := projectManagementContract{}
 	if err := decodeStrictJSON(content, projectManagementContractPath, &contract); err != nil {
 		return []finding{{"tracker.contract", projectManagementContractPath, err.Error()}}
@@ -263,6 +284,7 @@ func validateProjectManagementContract(content fs.FS) []finding {
 		findings = append(findings, finding{"profile.contract", projectManagerContractPath, err.Error()})
 	} else {
 		findings = append(findings, validateProjectManagerProfile(profile)...)
+		findings = append(findings, validateProjectManagerExecution(manifest, profile)...)
 	}
 
 	for _, entrypoint := range []string{
@@ -280,6 +302,27 @@ func validateProjectManagementContract(content fs.FS) []finding {
 		}
 	}
 	sortFindings(findings)
+	return findings
+}
+
+func validateProjectManagerExecution(manifest flowManifest, profile projectManagerProfileContract) []finding {
+	wantExecution := canonicalExecutionContract()
+	var findings []finding
+	if manifest.Execution != wantExecution {
+		findings = append(findings, finding{"profile.execution", flowManifestPath, "main-agent primary execution and optional profile fallback must match the canonical route"})
+	}
+	if profile.BehaviorSource.ContractID != manifest.TrackerContract ||
+		profile.BehaviorSource.ContractPath != manifest.Execution.Primary.BehaviorContract ||
+		profile.BehaviorSource.SkillPath != manifest.Execution.Primary.BehaviorSkill ||
+		profile.BehaviorSource.ProviderRoute != manifest.Execution.Primary.ProviderRoute {
+		findings = append(findings, finding{"profile.execution", projectManagerContractPath, "optional profile behavior must derive from the primary main-agent contract, skill, and provider route"})
+	}
+	if profile.ID != manifest.Execution.OptionalProfile.ID ||
+		manifest.Execution.OptionalProfile.ContractPath != projectManagerContractPath ||
+		manifest.Execution.OptionalProfile.Fallback != "primary" ||
+		profile.Fallback != "main-agent-same-contract" {
+		findings = append(findings, finding{"profile.execution", projectManagerContractPath, "optional profile must fall back to primary main-agent execution of the same contract"})
+	}
 	return findings
 }
 
@@ -454,6 +497,7 @@ func canonicalProviderOperations() []providerOperationMapping {
 
 func validProjectManagementFixture() fstest.MapFS {
 	return fstest.MapFS{
+		flowManifestPath:              &fstest.MapFile{Data: []byte(validFlowManifest)},
 		projectManagementContractPath: &fstest.MapFile{Data: []byte(validProjectManagementContract)},
 		linearCapabilitiesPath:        &fstest.MapFile{Data: []byte(validLinearCapabilities)},
 		projectManagerContractPath:    &fstest.MapFile{Data: []byte(validProjectManagerContract)},
