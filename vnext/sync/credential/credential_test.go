@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -326,6 +327,15 @@ func TestEphemeralCredentialRequiresExactExplicitGenerationKeysAndExpiry(t *test
 		{name: "token past certificate", mutate: func(value *EphemeralProjectCredential) {
 			value.RelayTokenExpiresAtMillis = value.Certificate.ExpiresAtMillis + 1
 		}},
+		{name: "no prune bootstrap key", mutate: func(value *EphemeralProjectCredential) {
+			value.PruneBootstrapKey = synccrypto.PruneBootstrapKey{}
+		}},
+		{name: "no prune bootstrap purpose", mutate: func(value *EphemeralProjectCredential) {
+			value.PruneBootstrapPurposeVersion = 0
+		}},
+		{name: "unsupported prune bootstrap purpose", mutate: func(value *EphemeralProjectCredential) {
+			value.PruneBootstrapPurposeVersion = protocol.PruneBootstrapPurposeVersionV1 + 1
+		}},
 	}
 	for _, test := range tests {
 		test := test
@@ -338,6 +348,139 @@ func TestEphemeralCredentialRequiresExactExplicitGenerationKeysAndExpiry(t *test
 				t.Fatalf("error = %v, want %v", err, ErrInvalidCredential)
 			}
 		})
+	}
+}
+
+func TestEphemeralCredentialRejectsCrossProjectPruneBootstrapAuthority(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	material := ephemeral.PruneBootstrapKey.Bytes()
+	crossProject, err := synccrypto.NewPruneBootstrapKey(
+		"project-2",
+		protocol.PruneBootstrapPurposeVersionV1,
+		material,
+	)
+	if err != nil {
+		t.Fatalf("create cross-project prune bootstrap key: %v", err)
+	}
+	ephemeral.PruneBootstrapKey = crossProject
+	if _, err := EncodeEphemeral(ephemeral); !errors.Is(err, ErrInvalidCredential) {
+		t.Fatalf("cross-project prune bootstrap key error = %v, want %v", err, ErrInvalidCredential)
+	}
+}
+
+func TestEphemeralCredentialCarriesExactPruneBootstrapAuthority(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode ephemeral credential: %v", err)
+	}
+	decoded, err := DecodeEphemeral(encoded)
+	if err != nil {
+		t.Fatalf("decode ephemeral credential: %v", err)
+	}
+	if decoded.PruneBootstrapPurposeVersion != ephemeral.PruneBootstrapPurposeVersion ||
+		decoded.PruneBootstrapKey.ProjectID() != ephemeral.PruneBootstrapKey.ProjectID() ||
+		decoded.PruneBootstrapKey.ProtocolVersion() != ephemeral.PruneBootstrapKey.ProtocolVersion() ||
+		decoded.PruneBootstrapKey.CipherSuite() != ephemeral.PruneBootstrapKey.CipherSuite() ||
+		decoded.PruneBootstrapKey.PurposeVersion() != ephemeral.PruneBootstrapKey.PurposeVersion() ||
+		decoded.PruneBootstrapKey.Bytes() != ephemeral.PruneBootstrapKey.Bytes() {
+		t.Fatal("ephemeral credential changed prune bootstrap authority")
+	}
+}
+
+func TestEphemeralCredentialRejectsPreBootstrapV1Wire(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode ephemeral credential: %v", err)
+	}
+	body := rawBodyFromWire(t, encoded, EphemeralPrefix)
+	body = omitTopLevelJSONField(t, body, "prune_bootstrap_purpose_version")
+	body = omitTopLevelJSONField(t, body, "prune_bootstrap_key")
+	preBootstrap, err := encodeCredentialFrame(EphemeralPrefix, ephemeralKind, body)
+	if err != nil {
+		t.Fatalf("encode pre-bootstrap credential: %v", err)
+	}
+	if _, err := DecodeEphemeral(preBootstrap); !errors.Is(err, ErrInvalidCredential) {
+		t.Fatalf("pre-bootstrap credential error = %v, want %v", err, ErrInvalidCredential)
+	}
+}
+
+func TestEphemeralCredentialRejectsMalformedPruneBootstrapWireAuthority(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode ephemeral credential: %v", err)
+	}
+	body := rawBodyFromWire(t, encoded, EphemeralPrefix)
+	material := ephemeral.PruneBootstrapKey.Bytes()
+	encodedMaterial := base64.RawURLEncoding.EncodeToString(material[:])
+	zeroMaterial := base64.RawURLEncoding.EncodeToString(make([]byte, len(material)))
+	replaceExactlyOnce := func(value []byte, old, replacement string) []byte {
+		t.Helper()
+		if bytes.Count(value, []byte(old)) != 1 {
+			t.Fatalf("canonical body occurrence count for %q != 1", old)
+		}
+		return bytes.Replace(value, []byte(old), []byte(replacement), 1)
+	}
+	tests := []struct {
+		name   string
+		mutate func([]byte) []byte
+	}{
+		{name: "missing purpose", mutate: func(value []byte) []byte {
+			return omitTopLevelJSONField(t, value, "prune_bootstrap_purpose_version")
+		}},
+		{name: "missing key", mutate: func(value []byte) []byte {
+			return omitTopLevelJSONField(t, value, "prune_bootstrap_key")
+		}},
+		{name: "unsupported purpose", mutate: func(value []byte) []byte {
+			return replaceExactlyOnce(value, `"prune_bootstrap_purpose_version":1`, `"prune_bootstrap_purpose_version":2`)
+		}},
+		{name: "zero key", mutate: func(value []byte) []byte {
+			return replaceExactlyOnce(
+				value,
+				`"prune_bootstrap_key":"`+encodedMaterial+`"`,
+				`"prune_bootstrap_key":"`+zeroMaterial+`"`,
+			)
+		}},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			mutated, err := encodeCredentialFrame(EphemeralPrefix, ephemeralKind, test.mutate(body))
+			if err != nil {
+				t.Fatalf("encode malformed credential: %v", err)
+			}
+			if _, err := DecodeEphemeral(mutated); !errors.Is(err, ErrInvalidCredential) {
+				t.Fatalf("malformed prune bootstrap authority error = %v, want %v", err, ErrInvalidCredential)
+			}
+		})
+	}
+}
+
+func TestEphemeralCredentialFormattingRedactsPruneBootstrapKey(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	material := ephemeral.PruneBootstrapKey.Bytes()
+	encodedMaterial := base64.RawURLEncoding.EncodeToString(material[:])
+	for _, formatted := range []string{
+		fmt.Sprint(ephemeral),
+		fmt.Sprintf("%#v", ephemeral),
+		fmt.Sprint(ephemeral.PruneBootstrapKey),
+		fmt.Sprintf("%#v", ephemeral.PruneBootstrapKey),
+	} {
+		if strings.Contains(formatted, encodedMaterial) {
+			t.Fatal("credential formatting exposed prune bootstrap key material")
+		}
 	}
 }
 
@@ -518,6 +661,14 @@ func testCredentials(t *testing.T) (ProjectRecoveryCredential, TrustedProjectCre
 	if err != nil {
 		t.Fatalf("derive generation key: %v", err)
 	}
+	pruneBootstrapKey, err := synccrypto.DerivePruneBootstrapKey(
+		root,
+		"project-1",
+		protocol.PruneBootstrapPurposeVersionV1,
+	)
+	if err != nil {
+		t.Fatalf("derive prune bootstrap key: %v", err)
+	}
 	newBearer := func(idStart, secretStart byte) RelayBearer {
 		var tokenID RelayTokenID
 		copy(tokenID[:], sequentialBytes(idStart, len(tokenID)))
@@ -565,6 +716,8 @@ func testCredentials(t *testing.T) (ProjectRecoveryCredential, TrustedProjectCre
 		EnvironmentSeed:               environmentSeed,
 		EnvironmentRelayAuthorization: newBearer(0xe1, 0xf1),
 		RelayTokenExpiresAtMillis:     1_999_999_999_000,
+		PruneBootstrapPurposeVersion:  protocol.PruneBootstrapPurposeVersionV1,
+		PruneBootstrapKey:             pruneBootstrapKey,
 		GenerationKeys:                []synccrypto.GenerationKey{generationKey},
 	}
 	return recovery, trusted, ephemeral

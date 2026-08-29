@@ -55,19 +55,21 @@ type trustedWireV1 struct {
 }
 
 type ephemeralWireV1 struct {
-	Version                   uint16                `json:"version"`
-	Kind                      string                `json:"kind"`
-	ProjectID                 continuity.ProjectID  `json:"project_id"`
-	RelayURL                  string                `json:"relay_url"`
-	RelayGeneration           string                `json:"relay_generation"`
-	ChannelID                 string                `json:"channel_id"`
-	AdminPublicKey            string                `json:"admin_public_key"`
-	Certificate               string                `json:"certificate"`
-	EnvironmentSeed           string                `json:"environment_seed"`
-	EnvironmentTokenID        string                `json:"environment_token_id"`
-	EnvironmentTokenSecret    string                `json:"environment_token_secret"`
-	RelayTokenExpiresAtMillis int64                 `json:"relay_token_expires_at_millis"`
-	GenerationKeys            []generationKeyWireV1 `json:"generation_keys"`
+	Version                      uint16                `json:"version"`
+	Kind                         string                `json:"kind"`
+	ProjectID                    continuity.ProjectID  `json:"project_id"`
+	RelayURL                     string                `json:"relay_url"`
+	RelayGeneration              string                `json:"relay_generation"`
+	ChannelID                    string                `json:"channel_id"`
+	AdminPublicKey               string                `json:"admin_public_key"`
+	Certificate                  string                `json:"certificate"`
+	EnvironmentSeed              string                `json:"environment_seed"`
+	EnvironmentTokenID           string                `json:"environment_token_id"`
+	EnvironmentTokenSecret       string                `json:"environment_token_secret"`
+	RelayTokenExpiresAtMillis    int64                 `json:"relay_token_expires_at_millis"`
+	PruneBootstrapPurposeVersion uint16                `json:"prune_bootstrap_purpose_version"`
+	PruneBootstrapKey            string                `json:"prune_bootstrap_key"`
+	GenerationKeys               []generationKeyWireV1 `json:"generation_keys"`
 }
 
 type generationKeyWireV1 struct {
@@ -261,8 +263,8 @@ func DecodeTrusted(encoded string) (TrustedProjectCredential, error) {
 	return credential, nil
 }
 
-// EncodeEphemeral emits a schema containing explicit generation keys and no
-// root, admin-private, or relay-owner field.
+// EncodeEphemeral emits a schema containing explicit generation and
+// prune-bootstrap keys with no root, admin-private, or relay-owner field.
 func EncodeEphemeral(credential EphemeralProjectCredential) (string, error) {
 	if err := credential.Validate(); err != nil {
 		return "", err
@@ -274,25 +276,28 @@ func EncodeEphemeral(credential EphemeralProjectCredential) (string, error) {
 	environmentSeed := credential.EnvironmentSeed.Bytes()
 	environmentTokenID := credential.EnvironmentRelayAuthorization.ID()
 	environmentTokenSecret := credential.EnvironmentRelayAuthorization.Secret()
+	pruneBootstrapKey := credential.PruneBootstrapKey.Bytes()
 	keys := make([]generationKeyWireV1, len(credential.GenerationKeys))
 	for index, key := range credential.GenerationKeys {
 		material := key.Bytes()
 		keys[index] = generationKeyWireV1{Generation: key.Generation(), Key: encodeBytes(material[:])}
 	}
 	body, err := encodeCanonicalJSON(ephemeralWireV1{
-		Version:                   CredentialVersionV1,
-		Kind:                      ephemeralKind,
-		ProjectID:                 credential.ProjectID,
-		RelayURL:                  credential.RelayURL,
-		RelayGeneration:           encodeBytes(credential.RelayGeneration[:]),
-		ChannelID:                 encodeBytes(credential.ChannelID[:]),
-		AdminPublicKey:            encodeBytes(credential.AdminPublicKey[:]),
-		Certificate:               encodeBytes(certificate),
-		EnvironmentSeed:           encodeBytes(environmentSeed[:]),
-		EnvironmentTokenID:        encodeBytes(environmentTokenID[:]),
-		EnvironmentTokenSecret:    encodeBytes(environmentTokenSecret[:]),
-		RelayTokenExpiresAtMillis: credential.RelayTokenExpiresAtMillis,
-		GenerationKeys:            keys,
+		Version:                      CredentialVersionV1,
+		Kind:                         ephemeralKind,
+		ProjectID:                    credential.ProjectID,
+		RelayURL:                     credential.RelayURL,
+		RelayGeneration:              encodeBytes(credential.RelayGeneration[:]),
+		ChannelID:                    encodeBytes(credential.ChannelID[:]),
+		AdminPublicKey:               encodeBytes(credential.AdminPublicKey[:]),
+		Certificate:                  encodeBytes(certificate),
+		EnvironmentSeed:              encodeBytes(environmentSeed[:]),
+		EnvironmentTokenID:           encodeBytes(environmentTokenID[:]),
+		EnvironmentTokenSecret:       encodeBytes(environmentTokenSecret[:]),
+		RelayTokenExpiresAtMillis:    credential.RelayTokenExpiresAtMillis,
+		PruneBootstrapPurposeVersion: credential.PruneBootstrapPurposeVersion,
+		PruneBootstrapKey:            encodeBytes(pruneBootstrapKey[:]),
+		GenerationKeys:               keys,
 	})
 	if err != nil {
 		return "", err
@@ -328,6 +333,20 @@ func DecodeEphemeral(encoded string) (EphemeralProjectCredential, error) {
 	if err != nil {
 		return EphemeralProjectCredential{}, err
 	}
+	pruneBootstrapBytes, err := decodeFixed(wire.PruneBootstrapKey, 32)
+	if err != nil {
+		return EphemeralProjectCredential{}, err
+	}
+	var pruneBootstrapMaterial [32]byte
+	copy(pruneBootstrapMaterial[:], pruneBootstrapBytes)
+	pruneBootstrapKey, err := synccrypto.NewPruneBootstrapKey(
+		wire.ProjectID,
+		wire.PruneBootstrapPurposeVersion,
+		pruneBootstrapMaterial,
+	)
+	if err != nil {
+		return EphemeralProjectCredential{}, ErrInvalidCredential
+	}
 	if len(wire.GenerationKeys) < 1 || len(wire.GenerationKeys) > protocol.MaxAllowedKeyGenerations {
 		return EphemeralProjectCredential{}, ErrInvalidCredential
 	}
@@ -355,6 +374,8 @@ func DecodeEphemeral(encoded string) (EphemeralProjectCredential, error) {
 		EnvironmentSeed:               environmentSeed,
 		EnvironmentRelayAuthorization: environmentAuthorization,
 		RelayTokenExpiresAtMillis:     wire.RelayTokenExpiresAtMillis,
+		PruneBootstrapPurposeVersion:  wire.PruneBootstrapPurposeVersion,
+		PruneBootstrapKey:             pruneBootstrapKey,
 		GenerationKeys:                keys,
 	}
 	if err := credential.Validate(); err != nil {

@@ -202,9 +202,9 @@ func (credential TrustedProjectCredential) Validate() error {
 	return nil
 }
 
-// EphemeralProjectCredential carries only explicit finite generation keys and
-// one expiring environment identity. It cannot derive a future generation or
-// mint/recover project authority.
+// EphemeralProjectCredential carries only explicit finite generation keys, one
+// typed deletion-anchor bootstrap key, and one expiring environment identity.
+// It cannot derive a future generation or mint/recover project authority.
 type EphemeralProjectCredential struct {
 	ProjectID                     continuity.ProjectID
 	RelayURL                      string
@@ -215,6 +215,8 @@ type EphemeralProjectCredential struct {
 	EnvironmentSeed               synccrypto.EnvironmentSeed
 	EnvironmentRelayAuthorization RelayBearer
 	RelayTokenExpiresAtMillis     int64
+	PruneBootstrapPurposeVersion  uint16
+	PruneBootstrapKey             synccrypto.PruneBootstrapKey
 	GenerationKeys                []synccrypto.GenerationKey
 }
 
@@ -246,6 +248,21 @@ func (credential EphemeralProjectCredential) Validate() error {
 	}
 	if err := validateCertificateAuthority(credential.ProjectID, credential.ChannelID, credential.AdminPublicKey, credential.Certificate, credential.EnvironmentSeed); err != nil {
 		return err
+	}
+	bootstrapMaterial := credential.PruneBootstrapKey.Bytes()
+	if credential.PruneBootstrapPurposeVersion != protocol.PruneBootstrapPurposeVersionV1 ||
+		credential.PruneBootstrapKey.ProjectID() != credential.ProjectID ||
+		credential.PruneBootstrapKey.ProtocolVersion() != credential.Certificate.ProtocolVersion ||
+		credential.PruneBootstrapKey.CipherSuite() != credential.Certificate.CipherSuite ||
+		credential.PruneBootstrapKey.PurposeVersion() != credential.PruneBootstrapPurposeVersion {
+		return ErrInvalidCredential
+	}
+	if _, err := synccrypto.NewPruneBootstrapKey(
+		credential.ProjectID,
+		credential.PruneBootstrapPurposeVersion,
+		bootstrapMaterial,
+	); err != nil {
+		return ErrInvalidCredential
 	}
 	if len(credential.GenerationKeys) != len(credential.Certificate.AllowedKeyGenerations) || len(credential.GenerationKeys) < 1 {
 		return ErrInvalidCredential
