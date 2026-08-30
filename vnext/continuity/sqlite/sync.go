@@ -755,6 +755,41 @@ LIMIT ?`, string(projectID), limit)
 // StageSyncPage atomically stages one contiguous opaque relay page and advances
 // only the downloaded cursor.
 func (store *Store) StageSyncPage(ctx context.Context, projectID continuity.ProjectID, channelID SyncChannelID, expectedAfter, relayHead int64, frames []OpaqueSyncFrame) (SyncProgress, error) {
+	return store.stageSyncPage(ctx, projectID, channelID, nil, expectedAfter, relayHead, frames)
+}
+
+// StageSyncPageUnderAuthority atomically stages one contiguous opaque relay
+// page only while the supplied authority remains the exact canonical snapshot
+// and its two-coordinate relay frontier remains known and exact.
+func (store *Store) StageSyncPageUnderAuthority(
+	ctx context.Context,
+	projectID continuity.ProjectID,
+	expectedAuthority SyncAuthorityBinding,
+	expectedAfter,
+	relayHead int64,
+	frames []OpaqueSyncFrame,
+) (SyncProgress, error) {
+	if err := validateSyncAuthorityBindingV2(expectedAuthority); err != nil {
+		return SyncProgress{}, err
+	}
+	if relayHead != expectedAuthority.InventoryArrivalHead {
+		return SyncProgress{}, syncProblem(SyncErrorCursor, "relay_head", "does not match the exact authority cutoff")
+	}
+	return store.stageSyncPage(
+		ctx, projectID, expectedAuthority.ChannelID, &expectedAuthority,
+		expectedAfter, relayHead, frames,
+	)
+}
+
+func (store *Store) stageSyncPage(
+	ctx context.Context,
+	projectID continuity.ProjectID,
+	channelID SyncChannelID,
+	expectedAuthority *SyncAuthorityBinding,
+	expectedAfter,
+	relayHead int64,
+	frames []OpaqueSyncFrame,
+) (SyncProgress, error) {
 	if err := validateStageSyncPage(projectID, channelID, expectedAfter, relayHead, frames); err != nil {
 		return SyncProgress{}, err
 	}
@@ -778,6 +813,17 @@ func (store *Store) StageSyncPage(ctx context.Context, projectID continuity.Proj
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if expectedAuthority != nil {
+		binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, *expectedAuthority)
+		if err != nil {
+			return SyncProgress{}, err
+		}
+		if err := requireKnownExactSyncRelayWatermarkV1(
+			ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+		); err != nil {
+			return SyncProgress{}, err
+		}
+	}
 
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
