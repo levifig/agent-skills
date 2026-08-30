@@ -195,10 +195,7 @@ func (store *Store) StageVerifiedSyncAuthorityCandidatePage(
 		return SyncAuthorityCandidate{}, err
 	}
 	if !prepared.More {
-		if err := validateCanonicalSyncAuthorityForCandidateV2(ctx, tx, projectID, canonicalBase); err != nil {
-			return SyncAuthorityCandidate{}, err
-		}
-		if err := validateFullSyncAuthorityCandidateAgainstCanonicalV2(ctx, tx, next, canonicalBase); err != nil {
+		if err := validateReadySyncAuthorityCandidateAgainstCanonicalV2(ctx, tx, next, canonicalBase); err != nil {
 			return SyncAuthorityCandidate{}, err
 		}
 	}

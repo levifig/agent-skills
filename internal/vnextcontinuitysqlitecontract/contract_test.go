@@ -76,6 +76,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"authority_candidate.go",
 		"authority_candidate_canonical.go",
 		"authority_candidate_codec.go",
+		"authority_candidate_promotion.go",
 		"authority_candidate_reader.go",
 		"authority_candidate_stage.go",
 		"codec_v1.go",
@@ -151,6 +152,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.PersistSealedOutbox",
 		"Store.PromoteIdeaToExternalReference",
 		"Store.PromoteSparkToIdea",
+		"Store.PromoteSyncAuthorityCandidate",
 		"Store.PromoteTerminalCandidate",
 		"Store.RecordCheckpoint",
 		"Store.RecordFinding",
@@ -212,6 +214,16 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"SyncAuthorityCandidateCheckpoint.Ready",
 		"SyncAuthorityCandidateCheckpoint.RollingEnvironmentDigest",
 		"SyncAuthorityCandidateCheckpoint.ThroughEnvironmentID",
+		"SyncAuthorityCandidateReceipt",
+		"SyncAuthorityCandidateReceipt.AuthorityDigest",
+		"SyncAuthorityCandidateReceipt.AuthorityDigestVersion",
+		"SyncAuthorityCandidateReceipt.CandidateID",
+		"SyncAuthorityCandidateReceipt.EnvironmentCount",
+		"SyncAuthorityCandidateReceipt.PageCount",
+		"SyncAuthorityCandidateReceipt.ProjectID",
+		"SyncAuthorityCandidateReceipt.RollingEnvironmentDigest",
+		"SyncAuthorityCandidateReceipt.Snapshot",
+		"SyncAuthorityCandidateReceipt.ThroughEnvironmentID",
 		"SyncAuthorityPage",
 		"SyncAuthorityPage.AfterEnvironmentID",
 		"SyncAuthorityPage.Environments",
@@ -399,6 +411,15 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 			"errors",
 			"fmt",
 			"github.com/levifig/loaf/vnext/continuity",
+			"math",
+		},
+		"authority_candidate_promotion.go": {
+			"context",
+			"crypto/sha256",
+			"database/sql",
+			"errors",
+			"github.com/levifig/loaf/vnext/continuity",
+			"github.com/levifig/loaf/vnext/internal/continuitywire",
 			"math",
 		},
 		"authority_candidate_reader.go": {
@@ -737,6 +758,32 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		t.Fatalf("SyncAuthorityBinding fields = %#v, want %#v", gotBindingFields, wantBindingFields)
 	}
 
+	receiptType := reflect.TypeOf(continuitysqlite.SyncAuthorityCandidateReceipt{})
+	gotReceiptFields := make([]fieldSpec, 0, receiptType.NumField())
+	for index := 0; index < receiptType.NumField(); index++ {
+		field := receiptType.Field(index)
+		gotReceiptFields = append(gotReceiptFields, fieldSpec{
+			name:      field.Name,
+			typeName:  field.Type.String(),
+			exported:  field.IsExported(),
+			anonymous: field.Anonymous,
+		})
+	}
+	wantReceiptFields := []fieldSpec{
+		{name: "ProjectID", typeName: "continuity.ProjectID", exported: true},
+		{name: "CandidateID", typeName: "[32]uint8", exported: true},
+		{name: "Snapshot", typeName: "sqlite.SyncAuthoritySnapshot", exported: true},
+		{name: "PageCount", typeName: "int64", exported: true},
+		{name: "EnvironmentCount", typeName: "int64", exported: true},
+		{name: "ThroughEnvironmentID", typeName: "string", exported: true},
+		{name: "RollingEnvironmentDigest", typeName: "[32]uint8", exported: true},
+		{name: "AuthorityDigestVersion", typeName: "uint16", exported: true},
+		{name: "AuthorityDigest", typeName: "[32]uint8", exported: true},
+	}
+	if !reflect.DeepEqual(gotReceiptFields, wantReceiptFields) {
+		t.Fatalf("SyncAuthorityCandidateReceipt fields = %#v, want %#v", gotReceiptFields, wantReceiptFields)
+	}
+
 	pointerType := reflect.TypeOf((*continuitysqlite.Store)(nil))
 	wantMethods := map[string]string{
 		"ActivateStagedSync":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncChannelID) (sqlite.SyncProgress, error)",
@@ -773,6 +820,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"PersistSealedOutbox":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncChannelID, sqlite.SealedOutboxFrame) error",
 		"PromoteIdeaToExternalReference":          "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaPromotionPayload) (continuity.AppendReceipt, error)",
 		"PromoteSparkToIdea":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkPromotionPayload) (continuity.AppendReceipt, error)",
+		"PromoteSyncAuthorityCandidate":           "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityCandidateCheckpoint) (sqlite.SyncAuthorityCandidateReceipt, error)",
 		"PromoteTerminalCandidate":                "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.TerminalCandidateCheckpoint) (sqlite.TerminalCandidateReceipt, error)",
 		"RecordCheckpoint":                        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.CheckpointRecordedPayload) (continuity.AppendReceipt, error)",
 		"RecordFinding":                           "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingRecordedPayload) (continuity.AppendReceipt, error)",
