@@ -121,6 +121,9 @@ func (store *Store) InstallVerifiedSyncAuthority(ctx context.Context, projectID 
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncProgress{}, err
+	}
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
 		return SyncProgress{}, err
@@ -273,6 +276,9 @@ func (store *Store) CurrentSyncAuthority(ctx context.Context, projectID continui
 		return SyncAuthority{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncAuthority{}, err
+	}
 	authority, _, _, found, err := readCanonicalSyncAuthorityForCandidateV2(ctx, tx, projectID)
 	if err != nil {
 		return SyncAuthority{}, err
@@ -312,6 +318,9 @@ func (store *Store) CurrentSyncAuthorityBinding(ctx context.Context, projectID c
 		return SyncAuthorityBinding{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncAuthorityBinding{}, err
+	}
 	binding, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SyncAuthorityBinding{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
