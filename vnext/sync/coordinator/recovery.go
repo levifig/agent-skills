@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math"
@@ -147,7 +148,10 @@ func (coordinator *Coordinator) readRecoveryInventory(
 		ownerAuthorization,
 		adminPublic,
 		writerEnvironmentID,
-		recoveryInventoryScanOptions{createdState: createdState},
+		recoveryInventoryScanOptions{
+			createdState:          createdState,
+			requireNextMembership: true,
+		},
 	)
 	if err != nil {
 		return 0, err
@@ -162,12 +166,25 @@ type verifiedRecoveryInventoryPage struct {
 	more               bool
 }
 
+// recoveryInventoryExpectedLocalWriter contains only the public certificate
+// identity needed to recognize the exact protected registration in a relay
+// inventory. It deliberately excludes relay token identifiers and hashes.
+type recoveryInventoryExpectedLocalWriter struct {
+	certificateID        relay.Digest
+	certificateBytes     []byte
+	membershipGeneration uint32
+}
+
 type recoveryInventoryScanOptions struct {
-	createdState         *relay.ChannelState
-	expectedMembership   *uint32
-	firstRequestSnapshot *relay.EnvironmentInventorySnapshot
-	minimumArrivalHead   int64
-	onPage               func(verifiedRecoveryInventoryPage) error
+	createdState                *relay.ChannelState
+	expectedMembership          *uint32
+	firstRequestSnapshot        *relay.EnvironmentInventorySnapshot
+	firstAfterEnvironmentID     relay.EnvironmentID
+	minimumMembershipGeneration uint32
+	minimumArrivalHead          int64
+	expectedLocalWriter         *recoveryInventoryExpectedLocalWriter
+	requireNextMembership       bool
+	onPage                      func(verifiedRecoveryInventoryPage) error
 }
 
 type recoveryInventoryScanResult struct {
@@ -186,12 +203,18 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 	writerEnvironmentID continuity.EnvironmentID,
 	options recoveryInventoryScanOptions,
 ) (recoveryInventoryScanResult, error) {
+	if options.firstAfterEnvironmentID != "" && options.firstRequestSnapshot == nil {
+		return recoveryInventoryScanResult{}, newProblem(CodeInvalid, PhaseEnvironmentInventory, ActionRestartRecovery)
+	}
 	var (
 		pinnedSnapshot relay.EnvironmentInventorySnapshot
 		haveSnapshot   bool
-		after          relay.EnvironmentID
+		after          = options.firstAfterEnvironmentID
 		eventCount     uint64
+		writerSeen     bool
 	)
+	fullMembershipHistory := after == ""
+	writerMustAppear := options.expectedLocalWriter != nil && relay.EnvironmentID(writerEnvironmentID) > after
 	verifier := relayverifier.New()
 	wantChannel := relay.ChannelAuthority{
 		ChannelID:       relay.ChannelID(recovery.ChannelID),
@@ -222,6 +245,7 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 			return recoveryInventoryScanResult{}, mapInventoryError(ctx, err)
 		}
 		if page.Channel != wantChannel || page.Snapshot.ArrivalHead < 0 || page.Snapshot.ArrivalHead < options.minimumArrivalHead ||
+			page.Snapshot.MembershipGeneration < options.minimumMembershipGeneration ||
 			len(page.Environments) > relay.MaxEnvironmentInventoryPage ||
 			(page.More && len(page.Environments) != relay.MaxEnvironmentInventoryPage) {
 			return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
@@ -233,7 +257,7 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 				pinnedSnapshot.ArrivalHead < options.createdState.Head) {
 				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
-			if pinnedSnapshot.MembershipGeneration == math.MaxUint32 {
+			if options.requireNextMembership && pinnedSnapshot.MembershipGeneration == math.MaxUint32 {
 				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			if options.expectedMembership != nil && pinnedSnapshot.MembershipGeneration != *options.expectedMembership {
@@ -249,6 +273,9 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 				if options.createdState == nil {
 					return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionAuthorizeEmptyChannel)
 				}
+				if options.expectedLocalWriter != nil {
+					return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionRestartRecovery)
+				}
 				return recoveryInventoryScanResult{snapshot: pinnedSnapshot}, nil
 			}
 		} else if page.Snapshot != pinnedSnapshot {
@@ -263,6 +290,9 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 		for _, record := range page.Environments {
 			if record.EnvironmentID <= after {
 				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+			}
+			if writerMustAppear && !writerSeen && continuity.EnvironmentID(record.EnvironmentID) > writerEnvironmentID {
+				return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			after = record.EnvironmentID
 			if record.ProducerHead < 0 || record.ProducerHead > pinnedSnapshot.ArrivalHead {
@@ -297,7 +327,17 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			if continuity.EnvironmentID(record.EnvironmentID) == writerEnvironmentID {
-				return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionUseExistingCredential)
+				if options.expectedLocalWriter == nil {
+					return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionUseExistingCredential)
+				}
+				expected := options.expectedLocalWriter
+				if record.CertificateID != expected.certificateID ||
+					!bytes.Equal(record.CertificateBytes, expected.certificateBytes) ||
+					record.Mode != relay.TrustedEnvironment || record.ExpiresAtMillis != 0 ||
+					record.MembershipGeneration != expected.membershipGeneration || record.Retirement != nil {
+					return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionRestartRecovery)
+				}
+				writerSeen = true
 			}
 			eventCount++
 
@@ -339,8 +379,11 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 		}
 
 		if !page.More {
-			if eventCount != uint64(pinnedSnapshot.MembershipGeneration) {
+			if fullMembershipHistory && eventCount != uint64(pinnedSnapshot.MembershipGeneration) {
 				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+			}
+			if writerMustAppear && !writerSeen {
+				return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 		}
 		if options.onPage != nil {
@@ -356,6 +399,14 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 		if !page.More {
 			return recoveryInventoryScanResult{snapshot: pinnedSnapshot}, nil
 		}
+	}
+}
+
+func recoveryInventoryWriterFromRegistration(registration preparedRecoveryRegistration) recoveryInventoryExpectedLocalWriter {
+	return recoveryInventoryExpectedLocalWriter{
+		certificateID:        registration.certificateID,
+		certificateBytes:     append([]byte(nil), registration.environment.CertificateBytes...),
+		membershipGeneration: registration.targetMembershipGeneration,
 	}
 }
 
