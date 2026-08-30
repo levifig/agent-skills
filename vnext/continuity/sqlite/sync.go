@@ -43,6 +43,7 @@ const (
 	SyncErrorNotAttached             SyncErrorCode = "not_attached"
 	SyncErrorActivation              SyncErrorCode = "activation_incomplete"
 	SyncErrorTerminalHistoryRequired SyncErrorCode = "terminal_history_required"
+	SyncErrorRecoveryRequired        SyncErrorCode = "recovery_required"
 	SyncErrorStore                   SyncErrorCode = "store_unavailable"
 )
 
@@ -337,6 +338,13 @@ func (store *Store) DiscardStagedSync(ctx context.Context, projectID continuity.
 	}
 	if progress.ActivationState != SyncActivationStaging {
 		return syncProblem(SyncErrorConflict, "activation_state", "attached channel binding is terminal")
+	}
+	activeCandidate, err := activeTerminalCandidateExistsV1(ctx, tx, projectID)
+	if err != nil {
+		return err
+	}
+	if activeCandidate {
+		return syncProblem(SyncErrorConflict, "terminal_candidate", "must be discarded first")
 	}
 	if progress.AppliedCursor != 0 {
 		return syncProblem(SyncErrorConflict, "applied_cursor", "canonical arrivals were already applied")
@@ -977,6 +985,27 @@ func (store *Store) ApplySyncBatch(ctx context.Context, projectID continuity.Pro
 	if err := ctx.Err(); err != nil {
 		return SyncProgress{}, err
 	}
+	if err := projectID.Validate(); err != nil {
+		return SyncProgress{}, syncProblem(SyncErrorInvalid, "project_id", "is invalid")
+	}
+	store.mu.RLock()
+	if store.closed || store.db == nil {
+		store.mu.RUnlock()
+		return SyncProgress{}, syncProblem(SyncErrorStore, "", "store is closed")
+	}
+	var activeCandidate int
+	err := store.db.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM continuity_sync_terminal_candidates
+  WHERE project_id = ? AND state = 'staging'
+)`, string(projectID)).Scan(&activeCandidate)
+	store.mu.RUnlock()
+	if err != nil {
+		return SyncProgress{}, syncTransactionProblem(ctx)
+	}
+	if activeCandidate != 0 {
+		return SyncProgress{}, syncProblem(SyncErrorTerminalHistoryRequired, "", "")
+	}
 	prepared, err := prepareVerifiedSyncFrames(projectID, frames, trustedNowMillis, maxFutureSkewMillis)
 	if err != nil {
 		return SyncProgress{}, err
@@ -997,6 +1026,13 @@ func (store *Store) ApplySyncBatch(ctx context.Context, projectID continuity.Pro
 	}
 	if !found {
 		return SyncProgress{}, syncProblem(SyncErrorNotFound, "project_id", "has no staged sync state")
+	}
+	active, err := activeTerminalCandidateExistsV1(ctx, tx, projectID)
+	if err != nil {
+		return SyncProgress{}, err
+	}
+	if active {
+		return SyncProgress{}, syncProblem(SyncErrorTerminalHistoryRequired, "", "")
 	}
 	authority, err := readSyncAuthorityV1(ctx, tx, projectID)
 	if err != nil {
