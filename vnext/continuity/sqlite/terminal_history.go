@@ -116,12 +116,12 @@ LIMIT ?`, string(projectID), afterArrivalSequence, downloadedCursor, limit)
 	return frames, nil
 }
 
-func validateOrdinarySyncFrameAuthorityV1(authority SyncAuthority, frames []preparedVerifiedSyncFrame, isFirstSeenEnvelope []bool, trustedNowMillis int64) error {
+func validateOrdinarySyncFrameAuthorityV2(authorityEnvironments map[continuity.EnvironmentID]SyncEnvironmentCertificate, frames []preparedVerifiedSyncFrame, isFirstSeenEnvelope []bool, trustedNowMillis int64) error {
 	if len(frames) != len(isFirstSeenEnvelope) {
 		return syncProblem(SyncErrorStore, "", "terminal-history classification is inconsistent")
 	}
 	for index, frame := range frames {
-		environment, found := pinnedOrdinarySyncEnvironmentV1(authority, frame.fact.environmentID)
+		environment, found := authorityEnvironments[frame.fact.environmentID]
 		if !found {
 			return syncProblem(SyncErrorCertificate, "certificate_id", "environment is not in pinned authority")
 		}
@@ -133,15 +133,6 @@ func validateOrdinarySyncFrameAuthorityV1(authority SyncAuthority, frames []prep
 		}
 	}
 	return nil
-}
-
-func pinnedOrdinarySyncEnvironmentV1(authority SyncAuthority, environmentID continuity.EnvironmentID) (SyncEnvironmentCertificate, bool) {
-	for _, environment := range authority.Environments {
-		if environment.EnvironmentID == string(environmentID) {
-			return environment, true
-		}
-	}
-	return SyncEnvironmentCertificate{}, false
 }
 
 func ordinarySyncEnvironmentRequiresTerminalHistoryV1(environment SyncEnvironmentCertificate, trustedNowMillis int64) bool {

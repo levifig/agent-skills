@@ -76,11 +76,12 @@ type terminalCandidateFrontierV1 struct {
 }
 
 // StageVerifiedTerminalCandidateChunk creates, resumes, or exactly replays one
-// bounded verified terminal-history chunk. It does not fold or promote facts.
+// bounded verified terminal-history chunk under the caller-verified authority
+// binding. It does not fold or promote facts.
 func (store *Store) StageVerifiedTerminalCandidateChunk(
 	ctx context.Context,
 	projectID continuity.ProjectID,
-	verifiedAuthority SyncAuthority,
+	verifiedAuthority SyncAuthorityBinding,
 	frames []VerifiedTerminalCandidateFrame,
 	trustedNowMillis,
 	maxFutureSkewMillis int64,
@@ -89,11 +90,7 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	if err != nil {
 		return TerminalCandidate{}, err
 	}
-	if err := validateSyncAuthority(verifiedAuthority); err != nil {
-		return TerminalCandidate{}, err
-	}
-	authority := cloneTerminalCandidateAuthorityV1(verifiedAuthority)
-	if err := validateSyncAuthority(authority); err != nil {
+	if err := validateSyncAuthorityBindingV2(verifiedAuthority); err != nil {
 		return TerminalCandidate{}, err
 	}
 	if store == nil {
@@ -124,15 +121,9 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	if !found {
 		return TerminalCandidate{}, syncProblem(SyncErrorNotFound, "project_id", "has no staged sync state")
 	}
-	pinnedAuthority, err := readSyncAuthorityV1(ctx, tx, projectID)
+	binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, verifiedAuthority)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return TerminalCandidate{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
-		}
 		return TerminalCandidate{}, err
-	}
-	if !terminalCandidateAuthorityEqualV1(authority, pinnedAuthority) {
-		return TerminalCandidate{}, syncProblem(SyncErrorConflict, "sync_authority", "does not match the pinned authority")
 	}
 
 	current, active, err := readActiveTerminalCandidateV1(ctx, tx, projectID)
@@ -143,12 +134,12 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	if active {
 		start = current.StartArrivalSequence
 	}
-	authorityDigest, candidateID, err := deriveTerminalCandidateIdentityV1(projectID, pinnedAuthority, start)
+	candidateID, err := deriveTerminalCandidateIDFromAuthorityBindingV1(projectID, binding, start)
 	if err != nil {
 		return TerminalCandidate{}, syncProblem(SyncErrorStore, "", "terminal candidate identity could not be derived")
 	}
 	if active {
-		if !terminalCandidateHeaderMatchesAuthorityV1(current, pinnedAuthority, authorityDigest, candidateID) {
+		if !terminalCandidateHeaderMatchesAuthorityBindingV2(current, binding, candidateID) {
 			return TerminalCandidate{}, syncProblem(SyncErrorConflict, "sync_authority", "active candidate is bound to another authority snapshot")
 		}
 		if current.StartArrivalSequence < 1 || current.StartArrivalSequence-1 != progress.AppliedCursor {
@@ -166,6 +157,24 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 			return TerminalCandidate{}, syncProblem(SyncErrorCursor, "arrival_sequence", "exceeds downloaded progress")
 		}
 		if err := requireExactTerminalCandidateInboxV1(ctx, tx, projectID, prepared[index]); err != nil {
+			return TerminalCandidate{}, err
+		}
+	}
+	environmentIDs := make([]continuity.EnvironmentID, len(prepared))
+	for index := range prepared {
+		environmentIDs[index] = prepared[index].normalized.environmentID
+	}
+	authorityEnvironments, err := readCanonicalSyncEnvironmentCertificatesV2(ctx, tx, projectID, binding, environmentIDs)
+	if err != nil {
+		return TerminalCandidate{}, err
+	}
+	for index := range prepared {
+		frame := &prepared[index]
+		environment, found := authorityEnvironments[frame.normalized.environmentID]
+		if !found || frame.normalized.certificateID != environment.CertificateID {
+			return TerminalCandidate{}, syncProblem(SyncErrorCertificate, "certificate_id", "does not match pinned authority")
+		}
+		if err := validateTerminalCandidateRetirementFenceV1(environment, frame.normalized); err != nil {
 			return TerminalCandidate{}, err
 		}
 	}
@@ -194,13 +203,7 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	frontiers := make(map[continuity.EnvironmentID]terminalCandidateFrontierV1)
 	for index := range prepared {
 		frame := &prepared[index]
-		environment, found := pinnedOrdinarySyncEnvironmentV1(pinnedAuthority, frame.normalized.environmentID)
-		if !found || frame.normalized.certificateID != environment.CertificateID {
-			return TerminalCandidate{}, syncProblem(SyncErrorCertificate, "certificate_id", "does not match pinned authority")
-		}
-		if err := validateTerminalCandidateRetirementFenceV1(environment, frame.normalized); err != nil {
-			return TerminalCandidate{}, err
-		}
+		environment := authorityEnvironments[frame.normalized.environmentID]
 		firstSeen, err := terminalCandidateFirstSeenSourceV1(ctx, tx, projectID, frame.normalized)
 		if err != nil {
 			return TerminalCandidate{}, err
@@ -266,10 +269,10 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	next := TerminalCandidate{
 		ProjectID:              projectID,
 		CandidateID:            candidateID,
-		ChannelID:              pinnedAuthority.ChannelID,
-		RelayGeneration:        pinnedAuthority.RelayGeneration,
-		MembershipGeneration:   pinnedAuthority.MembershipGeneration,
-		AuthorityDigest:        authorityDigest,
+		ChannelID:              binding.ChannelID,
+		RelayGeneration:        binding.RelayGeneration,
+		MembershipGeneration:   binding.MembershipGeneration,
+		AuthorityDigest:        binding.AuthorityDigest,
 		StartArrivalSequence:   start,
 		ThroughArrivalSequence: lastArrival,
 		FrameCount:             count,
@@ -549,40 +552,13 @@ func cloneOpaqueSyncFrameV1(frame OpaqueSyncFrame) OpaqueSyncFrame {
 	return frame
 }
 
-func cloneTerminalCandidateAuthorityV1(authority SyncAuthority) SyncAuthority {
-	clone := authority
-	clone.Environments = make([]SyncEnvironmentCertificate, len(authority.Environments))
-	for index, environment := range authority.Environments {
-		clone.Environments[index] = environment
-		clone.Environments[index].CertificateBytes = append([]byte(nil), environment.CertificateBytes...)
-		if environment.Retirement != nil {
-			retirement := *environment.Retirement
-			retirement.RetirementBytes = append([]byte(nil), environment.Retirement.RetirementBytes...)
-			clone.Environments[index].Retirement = &retirement
-		}
-	}
-	return clone
-}
-
-func terminalCandidateAuthorityEqualV1(left, right SyncAuthority) bool {
-	if left.ChannelID != right.ChannelID || left.RelayGeneration != right.RelayGeneration ||
-		left.AdminPublicKey != right.AdminPublicKey || left.MembershipGeneration != right.MembershipGeneration ||
-		left.InventoryArrivalHead != right.InventoryArrivalHead ||
-		len(left.Environments) != len(right.Environments) {
-		return false
-	}
-	for index := range left.Environments {
-		if !syncEnvironmentCertificateEqual(left.Environments[index], right.Environments[index]) {
-			return false
-		}
-	}
-	return true
-}
-
-func terminalCandidateHeaderMatchesAuthorityV1(candidate TerminalCandidate, authority SyncAuthority, authorityDigest, candidateID [32]byte) bool {
-	return candidate.CandidateID == candidateID && candidate.ChannelID == authority.ChannelID &&
-		candidate.RelayGeneration == authority.RelayGeneration &&
-		candidate.MembershipGeneration == authority.MembershipGeneration && candidate.AuthorityDigest == authorityDigest
+func terminalCandidateHeaderMatchesAuthorityBindingV2(candidate TerminalCandidate, binding SyncAuthorityBinding, candidateID [32]byte) bool {
+	// The frozen terminal identity treats AuthorityDigest as an opaque commitment.
+	// Every supported future authority digest must remain domain-separated and
+	// commit the complete epoch before it can be accepted here.
+	return candidate.CandidateID == candidateID && candidate.ChannelID == binding.ChannelID &&
+		candidate.RelayGeneration == binding.RelayGeneration &&
+		candidate.MembershipGeneration == binding.MembershipGeneration && candidate.AuthorityDigest == binding.AuthorityDigest
 }
 
 func readActiveTerminalCandidateV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (TerminalCandidate, bool, error) {

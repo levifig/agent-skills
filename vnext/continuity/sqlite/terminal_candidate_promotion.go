@@ -113,18 +113,18 @@ func (store *Store) PromoteTerminalCandidate(
 		progress.DownloadedCursor < candidate.ThroughArrivalSequence || progress.ChannelID != candidate.ChannelID {
 		return TerminalCandidateReceipt{}, syncProblem(SyncErrorConflict, "sync_progress", "does not match the staged candidate prefix")
 	}
-	authority, err := readSyncAuthorityV1(ctx, tx, projectID)
+	binding, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TerminalCandidateReceipt{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
 	}
 	if err != nil {
 		return TerminalCandidateReceipt{}, err
 	}
-	authorityDigest, candidateID, err := deriveTerminalCandidateIdentityV1(projectID, authority, candidate.StartArrivalSequence)
+	candidateID, err := deriveTerminalCandidateIDFromAuthorityBindingV1(projectID, binding, candidate.StartArrivalSequence)
 	if err != nil {
 		return TerminalCandidateReceipt{}, syncProblem(SyncErrorStore, "", "terminal candidate identity could not be rederived")
 	}
-	if !terminalCandidateHeaderMatchesAuthorityV1(candidate, authority, authorityDigest, candidateID) {
+	if !terminalCandidateHeaderMatchesAuthorityBindingV2(candidate, binding, candidateID) {
 		return TerminalCandidateReceipt{}, syncProblem(SyncErrorConflict, "sync_authority", "changed after terminal staging")
 	}
 
@@ -132,10 +132,18 @@ func (store *Store) PromoteTerminalCandidate(
 	if err != nil {
 		return TerminalCandidateReceipt{}, err
 	}
-	if err := validateTerminalCandidatePromotionFramesV1(ctx, tx, candidate, authority, frames); err != nil {
+	environmentIDs := make([]continuity.EnvironmentID, len(frames))
+	for index := range frames {
+		environmentIDs[index] = frames[index].normalized.environmentID
+	}
+	authorityEnvironments, err := readCanonicalSyncEnvironmentCertificatesV2(ctx, tx, projectID, binding, environmentIDs)
+	if err != nil {
 		return TerminalCandidateReceipt{}, err
 	}
-	resultingFacts, err := planTerminalCandidatePromotionV1(ctx, tx, projectID, authority, frames)
+	if err := validateTerminalCandidatePromotionFramesV1(ctx, tx, candidate, authorityEnvironments, frames); err != nil {
+		return TerminalCandidateReceipt{}, err
+	}
+	resultingFacts, err := planTerminalCandidatePromotionV1(ctx, tx, projectID, authorityEnvironments, frames)
 	if err != nil {
 		return TerminalCandidateReceipt{}, err
 	}
@@ -360,7 +368,7 @@ func scanTerminalCandidatePromotionFrameV1(scanner interface{ Scan(dest ...any) 
 	return prepared, nil
 }
 
-func validateTerminalCandidatePromotionFramesV1(ctx context.Context, tx *sql.Tx, candidate TerminalCandidate, authority SyncAuthority, frames []preparedTerminalCandidatePromotionFrameV1) error {
+func validateTerminalCandidatePromotionFramesV1(ctx context.Context, tx *sql.Tx, candidate TerminalCandidate, authorityEnvironments map[continuity.EnvironmentID]SyncEnvironmentCertificate, frames []preparedTerminalCandidatePromotionFrameV1) error {
 	if int64(len(frames)) != candidate.FrameCount || len(frames) == 0 {
 		return syncProblem(SyncErrorStore, "", "terminal candidate frame count is corrupt")
 	}
@@ -374,7 +382,7 @@ func validateTerminalCandidatePromotionFramesV1(ctx context.Context, tx *sql.Tx,
 		if frame.normalized.arrivalSequence != expectedArrival {
 			return syncProblem(SyncErrorStore, "", "terminal candidate arrivals are not contiguous")
 		}
-		environment, found := pinnedOrdinarySyncEnvironmentV1(authority, frame.normalized.environmentID)
+		environment, found := authorityEnvironments[frame.normalized.environmentID]
 		if !found || frame.normalized.certificateID != environment.CertificateID {
 			return syncProblem(SyncErrorCertificate, "certificate_id", "does not match pinned authority")
 		}
@@ -455,7 +463,7 @@ func terminalCandidatePruneReferenceV1(frame terminalCandidateFrameV1) VerifiedP
 	}
 }
 
-func planTerminalCandidatePromotionV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, authority SyncAuthority, frames []preparedTerminalCandidatePromotionFrameV1) ([]storedFactV1, error) {
+func planTerminalCandidatePromotionV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, authorityEnvironments map[continuity.EnvironmentID]SyncEnvironmentCertificate, frames []preparedTerminalCandidatePromotionFrameV1) ([]storedFactV1, error) {
 	existing, err := loadProjectFactsV1(ctx, tx, projectID)
 	if err != nil {
 		return nil, err
@@ -591,9 +599,12 @@ func planTerminalCandidatePromotionV1(ctx context.Context, tx *sql.Tx, projectID
 			touched[normalized.environmentID] = true
 		}
 	}
-	for _, environment := range authority.Environments {
-		environmentID := continuity.EnvironmentID(environment.EnvironmentID)
-		if !touched[environmentID] || environment.Retirement == nil {
+	for environmentID := range touched {
+		environment, found := authorityEnvironments[environmentID]
+		if !found {
+			return nil, syncProblem(SyncErrorStore, "sync_authority", "touched environment certificate was not retained")
+		}
+		if environment.Retirement == nil {
 			continue
 		}
 		frontier := frontiers[environmentID]

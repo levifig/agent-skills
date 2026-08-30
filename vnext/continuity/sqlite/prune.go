@@ -281,18 +281,36 @@ func validateVerifiedPruneReferenceV1(reference VerifiedPruneReference, field st
 }
 
 func requirePruneReadinessV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, plan VerifiedPrunePlan) error {
-	authority, err := readSyncAuthorityV1(ctx, tx, projectID)
+	binding, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
 	}
 	if err != nil {
 		return err
 	}
-	if authority.ChannelID != plan.ChannelID {
+	if binding.ChannelID != plan.ChannelID {
 		return syncProblem(SyncErrorConflict, "channel_id", "does not match the pinned authority")
 	}
-	if authority.MembershipGeneration != plan.MembershipGeneration {
+	if binding.MembershipGeneration != plan.MembershipGeneration {
 		return syncProblem(SyncErrorConflict, "membership_generation", "does not match the pinned authority")
+	}
+	environmentIDs := make([]continuity.EnvironmentID, 0, len(plan.Targets)+1)
+	environmentIDs = append(environmentIDs, plan.Closure.EnvironmentID)
+	for _, target := range plan.Targets {
+		environmentIDs = append(environmentIDs, target.EnvironmentID)
+	}
+	authorityEnvironments, err := readCanonicalSyncEnvironmentCertificatesV2(ctx, tx, projectID, binding, environmentIDs)
+	if err != nil {
+		return err
+	}
+	for index, reference := range append([]VerifiedPruneReference{plan.Closure}, plan.Targets...) {
+		if authorityEnvironments[reference.EnvironmentID].CertificateID != reference.CertificateID {
+			field := "closure"
+			if index > 0 {
+				field = fmt.Sprintf("targets[%d]", index-1)
+			}
+			return syncProblem(SyncErrorCertificate, field+".certificate_id", "does not match pinned authority")
+		}
 	}
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
