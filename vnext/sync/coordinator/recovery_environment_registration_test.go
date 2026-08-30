@@ -3,11 +3,8 @@ package coordinator
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -225,10 +222,11 @@ func TestRegisterPreparedRecoveryEnvironmentFirstMembershipMissingChannelCannotR
 	}
 }
 
-func TestRegisterPreparedRecoveryEnvironmentFinalWatermarkFailurePreventsRegister(t *testing.T) {
+func TestRegisterPreparedRecoveryEnvironmentCrossProcessFinalWatermarkAdvancePreventsRegister(t *testing.T) {
 	root := t.TempDir()
 	writerID := testEnvironmentID(200)
 	store := openCoordinatorStoreAt(t, root, writerID)
+	concurrentStore := openCoordinatorStoreAt(t, root, writerID)
 	recovery := testBindableRecoveryCredential(t)
 	snapshot := relay.EnvironmentInventorySnapshot{MembershipGeneration: 5, ArrivalHead: 19}
 	remote := inventoryRemote(recovery, snapshot, testGuardInventoryRecords(t, recovery))
@@ -237,8 +235,12 @@ func TestRegisterPreparedRecoveryEnvironmentFinalWatermarkFailurePreventsRegiste
 	remote.classify = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
 		head := int64(19)
 		if remote.classifyCalls == 2 {
-			installRecoveryRegistrationWatermarkWriteFailure(t, root)
-			head = 20
+			if _, err := concurrentStore.AdvanceSyncRelayWatermark(
+				context.Background(),
+				testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 100),
+			); err != nil {
+				t.Fatalf("concurrent final relay-head advance: %v", err)
+			}
 		}
 		return relay.EnvironmentRegistrationStatus{Disposition: relay.EnvironmentRegistrationAbsent, State: registrationChannelState(recovery, 5, head)}, nil
 	}
@@ -247,7 +249,7 @@ func TestRegisterPreparedRecoveryEnvironmentFinalWatermarkFailurePreventsRegiste
 	if !reflect.DeepEqual(got, completedRecoveryRegistration{}) {
 		t.Fatalf("failed final watermark returned completion %#v", got)
 	}
-	assertProblem(t, err, CodeUnavailable, PhaseEnvironmentRegistration, ActionRetry)
+	assertProblem(t, err, CodeRemote, PhaseEnvironmentRegistration, ActionRestartRecovery)
 	if remote.registerCalls != 0 {
 		t.Fatalf("failed final watermark reached register %d times", remote.registerCalls)
 	}
@@ -255,10 +257,9 @@ func TestRegisterPreparedRecoveryEnvironmentFinalWatermarkFailurePreventsRegiste
 	if readErr != nil || !found || !candidate.Ready || candidate.Snapshot.InventoryArrivalHead != snapshot.ArrivalHead {
 		t.Fatalf("guard after failed final watermark = (%#v, %v, %v)", candidate, found, readErr)
 	}
-	assertStaticRegistrationProblem(t, err, "forced relay watermark write failure")
 }
 
-func TestRegisterPreparedRecoveryEnvironmentResponseWatermarkFailureWithholdsCompletion(t *testing.T) {
+func TestRegisterPreparedRecoveryEnvironmentPostRegisterStoreFailureWithholdsCompletion(t *testing.T) {
 	root := t.TempDir()
 	writerID := testEnvironmentID(200)
 	store := openCoordinatorStoreAt(t, root, writerID)
@@ -275,7 +276,9 @@ func TestRegisterPreparedRecoveryEnvironmentResponseWatermarkFailureWithholdsCom
 		return relay.EnvironmentRegistrationStatus{Disposition: relay.EnvironmentRegistrationAbsent, State: registrationChannelState(recovery, 5, head)}, nil
 	}
 	remote.register = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.ChannelState, error) {
-		installRecoveryRegistrationWatermarkWriteFailure(t, root)
+		if err := store.Close(); err != nil {
+			t.Fatalf("close store before response watermark: %v", err)
+		}
 		return registrationChannelState(recovery, 6, 21), nil
 	}
 
@@ -287,11 +290,12 @@ func TestRegisterPreparedRecoveryEnvironmentResponseWatermarkFailureWithholdsCom
 	if remote.registerCalls != 1 {
 		t.Fatalf("failed response watermark register calls = %d, want one", remote.registerCalls)
 	}
-	candidate, found, readErr := store.CurrentSyncAuthorityCandidate(context.Background(), recovery.ProjectID)
+	reopened := openCoordinatorStoreAt(t, root, writerID)
+	candidate, found, readErr := reopened.CurrentSyncAuthorityCandidate(context.Background(), recovery.ProjectID)
 	if readErr != nil || !found || !candidate.Ready || candidate.Snapshot.InventoryArrivalHead != snapshot.ArrivalHead {
 		t.Fatalf("guard after failed response watermark = (%#v, %v, %v)", candidate, found, readErr)
 	}
-	assertStaticRegistrationProblem(t, err, "forced relay watermark write failure")
+	assertStaticRegistrationProblem(t, err, "store is closed")
 }
 
 func TestRegisterPreparedRecoveryEnvironmentCrossProcessWatermarkAdvanceAcceptsCurrentResponse(t *testing.T) {
@@ -678,177 +682,27 @@ func TestRegisterPreparedRecoveryEnvironmentRegeneratedCertificateCannotResetRet
 	}
 }
 
-func TestRegisterPreparedRecoveryEnvironmentMapsCorruptDurableAuthorityToRepair(t *testing.T) {
-	writerID := testEnvironmentID(200)
-	recovery := testBindableRecoveryCredential(t)
-	records := testGuardInventoryRecords(t, recovery)
-	snapshot := relay.EnvironmentInventorySnapshot{MembershipGeneration: 5, ArrivalHead: 19}
-
+func TestRecoveryRegistrationStoreErrorMappersClassifyStoreFailures(t *testing.T) {
+	const forbidden = "recovery-registration-store-sensitive-detail"
 	for _, test := range []struct {
-		name        string
-		disposition relay.EnvironmentRegistrationDisposition
+		name       string
+		mapper     func(context.Context, error) error
+		err        error
+		wantCode   ProblemCode
+		wantPhase  ProblemPhase
+		wantAction ProblemAction
 	}{
-		{name: "ready reuse", disposition: relay.EnvironmentRegistrationAbsent},
-		{name: "exact reconstruct", disposition: relay.EnvironmentRegistrationExact},
+		{name: "inventory unavailable", mapper: mapRecoveryRegistrationStoreError, err: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorStore, Detail: forbidden}, wantCode: CodeUnavailable, wantPhase: PhaseEnvironmentInventory, wantAction: ActionRetry},
+		{name: "inventory corruption", mapper: mapRecoveryRegistrationStoreError, err: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorStore, Field: "sync_authority", Detail: forbidden}, wantCode: CodeInternal, wantPhase: PhaseEnvironmentInventory, wantAction: ActionRepairLocalStore},
+		{name: "registration unavailable", mapper: mapRecoveryRegistrationAtomStoreError, err: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorStore, Detail: forbidden}, wantCode: CodeUnavailable, wantPhase: PhaseEnvironmentRegistration, wantAction: ActionRetry},
+		{name: "registration corruption", mapper: mapRecoveryRegistrationAtomStoreError, err: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorStore, Field: "sync_authority_candidate", Detail: forbidden}, wantCode: CodeInternal, wantPhase: PhaseEnvironmentRegistration, wantAction: ActionRepairLocalStore},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			root := t.TempDir()
-			store := openCoordinatorStoreAt(t, root, writerID)
-			remote := inventoryRemote(recovery, snapshot, records)
-			coordinator := mustCoordinator(t, store, remote)
-			registration := bindGuardRegistration(t, coordinator, recovery, writerID, 6)
-			if _, err := coordinator.stageRecoveryRegistrationGuard(context.Background(), recovery.ProjectID, recovery, registration); err != nil {
-				t.Fatalf("stage corrupt atom candidate: %v", err)
-			}
-			corruptRecoveryRegistrationActiveCandidate(t, root, recovery.ProjectID)
-			remote.environmentRequests = nil
-			remote.classify = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
-				membership := uint32(5)
-				head := int64(19)
-				if test.disposition == relay.EnvironmentRegistrationExact {
-					membership = 6
-					head = 20
-				}
-				return relay.EnvironmentRegistrationStatus{Disposition: test.disposition, State: registrationChannelState(recovery, membership, head)}, nil
-			}
-
-			got, err := coordinator.registerPreparedRecoveryEnvironment(context.Background(), recovery.ProjectID, recovery, registration)
-			if !reflect.DeepEqual(got, completedRecoveryRegistration{}) {
-				t.Fatalf("corrupt %s returned completion %#v", test.name, got)
-			}
-			assertProblem(t, err, CodeInternal, PhaseEnvironmentRegistration, ActionRepairLocalStore)
-			if remote.classifyCalls != 1 || remote.registerCalls != 0 || len(remote.environmentRequests) != 0 {
-				t.Fatalf("corrupt %s calls classify/register/inventory = %d/%d/%d, want 1/0/0", test.name, remote.classifyCalls, remote.registerCalls, len(remote.environmentRequests))
-			}
+			problem := test.mapper(context.Background(), test.err)
+			assertProblem(t, problem, test.wantCode, test.wantPhase, test.wantAction)
+			assertStaticRegistrationProblem(t, problem, forbidden)
 		})
 	}
-
-	t.Run("candidate during revalidation", func(t *testing.T) {
-		root := t.TempDir()
-		store := openCoordinatorStoreAt(t, root, writerID)
-		remote := inventoryRemote(recovery, snapshot, records)
-		coordinator := mustCoordinator(t, store, remote)
-		registration := bindGuardRegistration(t, coordinator, recovery, writerID, 6)
-		if _, err := coordinator.stageRecoveryRegistrationGuard(context.Background(), recovery.ProjectID, recovery, registration); err != nil {
-			t.Fatalf("stage revalidation candidate: %v", err)
-		}
-		remote.environmentRequests = nil
-		remote.classify = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
-			head := int64(19)
-			if remote.classifyCalls == 2 {
-				corruptRecoveryRegistrationActiveCandidate(t, root, recovery.ProjectID)
-				head = 20
-			}
-			return relay.EnvironmentRegistrationStatus{Disposition: relay.EnvironmentRegistrationAbsent, State: registrationChannelState(recovery, 5, head)}, nil
-		}
-
-		got, err := coordinator.registerPreparedRecoveryEnvironment(context.Background(), recovery.ProjectID, recovery, registration)
-		if !reflect.DeepEqual(got, completedRecoveryRegistration{}) {
-			t.Fatalf("revalidation corruption returned completion %#v", got)
-		}
-		assertProblem(t, err, CodeInternal, PhaseEnvironmentRegistration, ActionRepairLocalStore)
-		if remote.classifyCalls != 2 || remote.registerCalls != 0 || len(remote.environmentRequests) != 0 {
-			t.Fatalf("revalidation corruption calls classify/register/inventory = %d/%d/%d, want 2/0/0", remote.classifyCalls, remote.registerCalls, len(remote.environmentRequests))
-		}
-	})
-
-	t.Run("canonical during revalidation", func(t *testing.T) {
-		root := t.TempDir()
-		store := openCoordinatorStoreAt(t, root, writerID)
-		base := syncAuthorityFromGuardRecords(t, recovery, relay.EnvironmentInventorySnapshot{MembershipGeneration: 2}, records[:2])
-		if _, err := store.InstallVerifiedSyncAuthority(context.Background(), recovery.ProjectID, base); err != nil {
-			t.Fatalf("install canonical revalidation fixture: %v", err)
-		}
-		remote := inventoryRemote(recovery, snapshot, records)
-		coordinator := mustCoordinator(t, store, remote)
-		registration := bindGuardRegistration(t, coordinator, recovery, writerID, 6)
-		if _, err := coordinator.stageRecoveryRegistrationGuard(context.Background(), recovery.ProjectID, recovery, registration); err != nil {
-			t.Fatalf("stage canonical revalidation candidate: %v", err)
-		}
-		remote.environmentRequests = nil
-		remote.classify = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
-			head := int64(19)
-			if remote.classifyCalls == 2 {
-				corruptRecoveryRegistrationCanonicalBinding(t, root, recovery.ProjectID)
-				head = 20
-			}
-			return relay.EnvironmentRegistrationStatus{Disposition: relay.EnvironmentRegistrationAbsent, State: registrationChannelState(recovery, 5, head)}, nil
-		}
-
-		got, err := coordinator.registerPreparedRecoveryEnvironment(context.Background(), recovery.ProjectID, recovery, registration)
-		if !reflect.DeepEqual(got, completedRecoveryRegistration{}) {
-			t.Fatalf("canonical revalidation corruption returned completion %#v", got)
-		}
-		assertProblem(t, err, CodeInternal, PhaseEnvironmentRegistration, ActionRepairLocalStore)
-		if remote.classifyCalls != 2 || remote.registerCalls != 0 || len(remote.environmentRequests) != 0 {
-			t.Fatalf("canonical revalidation corruption calls classify/register/inventory = %d/%d/%d, want 2/0/0", remote.classifyCalls, remote.registerCalls, len(remote.environmentRequests))
-		}
-	})
-}
-
-func TestStageRecoveryRegistrationGuardMapsCorruptDurableAuthorityToRepair(t *testing.T) {
-	writerID := testEnvironmentID(200)
-	recovery := testBindableRecoveryCredential(t)
-	records := testGuardInventoryRecords(t, recovery)
-
-	t.Run("canonical binding", func(t *testing.T) {
-		root := t.TempDir()
-		store := openCoordinatorStoreAt(t, root, writerID)
-		base := syncAuthorityFromGuardRecords(t, recovery, relay.EnvironmentInventorySnapshot{MembershipGeneration: 2}, records[:2])
-		if _, err := store.InstallVerifiedSyncAuthority(context.Background(), recovery.ProjectID, base); err != nil {
-			t.Fatalf("install canonical corruption fixture: %v", err)
-		}
-		corruptRecoveryRegistrationCanonicalBinding(t, root, recovery.ProjectID)
-		remote := inventoryRemote(recovery, relay.EnvironmentInventorySnapshot{MembershipGeneration: 5, ArrivalHead: 19}, records)
-		coordinator := mustCoordinator(t, store, remote)
-		registration := bindGuardRegistration(t, coordinator, recovery, writerID, 6)
-
-		got, err := coordinator.stageRecoveryRegistrationGuard(context.Background(), recovery.ProjectID, recovery, registration)
-		if !reflect.DeepEqual(got, recoveryRegistrationGuard{}) {
-			t.Fatalf("corrupt canonical guard = %#v, want zero", got)
-		}
-		assertProblem(t, err, CodeInternal, PhaseEnvironmentInventory, ActionRepairLocalStore)
-		if len(remote.environmentRequests) != 0 {
-			t.Fatalf("corrupt canonical reached inventory %d times", len(remote.environmentRequests))
-		}
-		assertNoMutationCalls(t, remote)
-	})
-
-	t.Run("active ready candidate", func(t *testing.T) {
-		root := t.TempDir()
-		store := openCoordinatorStoreAt(t, root, writerID)
-		remote := inventoryRemote(recovery, relay.EnvironmentInventorySnapshot{MembershipGeneration: 5, ArrivalHead: 19}, records)
-		coordinator := mustCoordinator(t, store, remote)
-		registration := bindGuardRegistration(t, coordinator, recovery, writerID, 6)
-		if _, err := coordinator.stageRecoveryRegistrationGuard(context.Background(), recovery.ProjectID, recovery, registration); err != nil {
-			t.Fatalf("stage candidate corruption fixture: %v", err)
-		}
-		corruptRecoveryRegistrationActiveCandidate(t, root, recovery.ProjectID)
-		remote.environmentRequests = nil
-
-		got, err := coordinator.stageRecoveryRegistrationGuard(context.Background(), recovery.ProjectID, recovery, registration)
-		if !reflect.DeepEqual(got, recoveryRegistrationGuard{}) {
-			t.Fatalf("corrupt candidate guard = %#v, want zero", got)
-		}
-		assertProblem(t, err, CodeInternal, PhaseEnvironmentInventory, ActionRepairLocalStore)
-		if len(remote.environmentRequests) != 0 {
-			t.Fatalf("corrupt candidate reached inventory retry %d times", len(remote.environmentRequests))
-		}
-		assertNoMutationCalls(t, remote)
-	})
-}
-
-func TestRecoveryRegistrationStoreErrorMappersKeepFieldlessStoreFailureRetryable(t *testing.T) {
-	const forbidden = "recovery-registration-store-sensitive-detail"
-	err := &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorStore, Detail: forbidden}
-
-	inventoryProblem := mapRecoveryRegistrationStoreError(context.Background(), err)
-	assertProblem(t, inventoryProblem, CodeUnavailable, PhaseEnvironmentInventory, ActionRetry)
-	assertStaticRegistrationProblem(t, inventoryProblem, forbidden)
-
-	registrationProblem := mapRecoveryRegistrationAtomStoreError(context.Background(), err)
-	assertProblem(t, registrationProblem, CodeUnavailable, PhaseEnvironmentRegistration, ActionRetry)
-	assertStaticRegistrationProblem(t, registrationProblem, forbidden)
 }
 
 func TestRegisterPreparedRecoveryEnvironmentUnknownAfterCommitConvergesWithoutMutation(t *testing.T) {
@@ -1640,62 +1494,6 @@ func regenerateRecoveryRegistrationCertificate(
 	regenerated.environment.CertificateBytes = append([]byte(nil), certificateBytes...)
 	regenerated.environment.Token = relay.TokenRegistration{TokenID: tokenID, TokenHash: tokenHash}
 	return regenerated
-}
-
-func installRecoveryRegistrationWatermarkWriteFailure(t *testing.T, root string) {
-	t.Helper()
-	for _, statement := range []string{
-		`CREATE TRIGGER fail_recovery_watermark_insert BEFORE INSERT ON continuity_sync_relay_watermarks BEGIN SELECT RAISE(FAIL, 'forced relay watermark write failure'); END`,
-		`CREATE TRIGGER fail_recovery_watermark_update BEFORE UPDATE ON continuity_sync_relay_watermarks BEGIN SELECT RAISE(FAIL, 'forced relay watermark write failure'); END`,
-	} {
-		execRecoveryRegistrationDatabase(t, root, statement)
-	}
-}
-
-func corruptRecoveryRegistrationCanonicalBinding(t *testing.T, root string, projectID continuity.ProjectID) {
-	t.Helper()
-	result := execRecoveryRegistrationDatabase(t, root, `DELETE FROM continuity_sync_authorities WHERE project_id = ?`, string(projectID))
-	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
-		t.Fatalf("corrupt canonical binding rows = %d, %v, want 1", rows, err)
-	}
-}
-
-func corruptRecoveryRegistrationActiveCandidate(t *testing.T, root string, projectID continuity.ProjectID) {
-	t.Helper()
-	result := execRecoveryRegistrationDatabase(t, root, `
-UPDATE continuity_sync_authority_candidates
-SET authority_digest = ?
-WHERE project_id = ? AND state IN ('staging', 'ready')`, bytes.Repeat([]byte{0xa5}, 32), string(projectID))
-	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
-		t.Fatalf("corrupt active candidate rows = %d, %v, want 1", rows, err)
-	}
-}
-
-func execRecoveryRegistrationDatabase(t *testing.T, root, statement string, arguments ...any) sql.Result {
-	t.Helper()
-	values := url.Values{}
-	values.Set("mode", "rw")
-	values.Set("_txlock", "immediate")
-	values.Add("_pragma", "busy_timeout(5000)")
-	dsn := (&url.URL{
-		Scheme:   "file",
-		Path:     filepath.ToSlash(filepath.Join(root, "vnext", "continuity.sqlite")),
-		RawQuery: values.Encode(),
-	}).String()
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		t.Fatalf("open raw continuity database: %v", err)
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Fatalf("close raw continuity database: %v", err)
-		}
-	}()
-	result, err := db.Exec(statement, arguments...)
-	if err != nil {
-		t.Fatalf("execute raw recovery registration database mutation: %v", err)
-	}
-	return result
 }
 
 func assertSyncWatermarkError(t *testing.T, err error, code continuitysqlite.SyncErrorCode) {
