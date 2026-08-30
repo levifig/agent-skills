@@ -15,6 +15,8 @@ import (
 type preparedRecoveryRegistration struct {
 	targetMembershipGeneration uint32
 	certificateID              relay.Digest
+	environmentTokenID         relay.RelayTokenID
+	environmentTokenHash       relay.TokenHash
 	environment                relay.Environment
 }
 
@@ -89,6 +91,8 @@ func (coordinator *Coordinator) bindPreparedRecoveryRegistration(
 	return preparedRecoveryRegistration{
 		targetMembershipGeneration: environment.MembershipGeneration,
 		certificateID:              environment.CertificateID,
+		environmentTokenID:         environment.Token.TokenID,
+		environmentTokenHash:       environment.Token.TokenHash,
 		environment:                environment,
 	}, nil
 }

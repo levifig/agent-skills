@@ -166,6 +166,7 @@ type recoveryInventoryScanOptions struct {
 	createdState         *relay.ChannelState
 	expectedMembership   *uint32
 	firstRequestSnapshot *relay.EnvironmentInventorySnapshot
+	minimumArrivalHead   int64
 	onPage               func(verifiedRecoveryInventoryPage) error
 }
 
@@ -220,7 +221,7 @@ func (coordinator *Coordinator) scanRecoveryInventory(
 		if err != nil {
 			return recoveryInventoryScanResult{}, mapInventoryError(ctx, err)
 		}
-		if page.Channel != wantChannel || page.Snapshot.ArrivalHead < 0 ||
+		if page.Channel != wantChannel || page.Snapshot.ArrivalHead < 0 || page.Snapshot.ArrivalHead < options.minimumArrivalHead ||
 			len(page.Environments) > relay.MaxEnvironmentInventoryPage ||
 			(page.More && len(page.Environments) != relay.MaxEnvironmentInventoryPage) {
 			return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
