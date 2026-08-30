@@ -1663,7 +1663,7 @@ func assertSyncAuthorityPromotionCompositePlansV2(
 			name:  "canonical identity comparison",
 			query: syncAuthorityCandidateChangedCanonicalInventoryQueryV2,
 			args: []any{
-				string(projectID), candidate.CandidateID[:], 0, 0, candidate.Snapshot.MembershipGeneration,
+				string(projectID), candidate.CandidateID[:], 0, candidate.Snapshot.MembershipGeneration,
 			},
 			required: []string{"SEARCH candidate USING PRIMARY KEY", "SEARCH canonical USING PRIMARY KEY"},
 		},
