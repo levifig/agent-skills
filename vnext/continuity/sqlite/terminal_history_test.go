@@ -120,7 +120,7 @@ func TestApplySyncBatchAllowsExactRetainedSealedEnvelopeFromRetiredProducer(t *t
 	projectID := continuity.ProjectID("project-terminal-sealed-echo")
 	mustAppendV1(t)(store.RegisterProject(context.Background(), projectID, "fact-project", continuity.ProjectRegistrationPayload{Observation: appendObservationV1(), Label: "Local"}))
 	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
-	if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a")); err != nil {
+	if _, err := store.ActivateStagedSync(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID)); err != nil {
 		t.Fatalf("ActivateStagedSync() error = %v", err)
 	}
 	fact, err := store.ExportFact(context.Background(), "fact-project")

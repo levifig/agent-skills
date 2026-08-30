@@ -849,7 +849,7 @@ func TestTerminalCandidateAcceptsExactSealedDuplicateBelowCanonicalHead(t *testi
 	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 0, nil); err != nil {
 		t.Fatalf("StageSyncPage(empty) error = %v", err)
 	}
-	if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a")); err != nil {
+	if _, err := store.ActivateStagedSync(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID)); err != nil {
 		t.Fatalf("ActivateStagedSync() error = %v", err)
 	}
 

@@ -54,6 +54,13 @@ type SyncEnvironmentCertificate struct {
 	Retirement               *SyncEnvironmentRetirement
 }
 
+// SyncEnvironmentState is the bounded attach state for one requested
+// environment under an exact verified authority binding.
+type SyncEnvironmentState struct {
+	Certificate      SyncEnvironmentCertificate
+	ConsumedSequence int64
+}
+
 // SyncAuthority is the persistence-local, already-verified channel authority
 // snapshot. Environment certificates are required to be strictly sorted by
 // EnvironmentID and are installed as one complete inventory.
@@ -316,6 +323,150 @@ func (store *Store) CurrentSyncAuthorityBinding(ctx context.Context, projectID c
 		return SyncAuthorityBinding{}, syncTransactionProblem(ctx)
 	}
 	return binding, nil
+}
+
+const syncEnvironmentReceiptConsumedSequenceQueryV2 = `
+SELECT environment_sequence
+FROM continuity_sync_receipts
+WHERE project_id = ? AND environment_id = ?
+ORDER BY environment_sequence DESC
+LIMIT 1`
+
+const syncEnvironmentTombstoneConsumedSequenceQueryV2 = `
+SELECT environment_sequence
+FROM continuity_sync_tombstones
+WHERE project_id = ? AND environment_id = ?
+ORDER BY environment_sequence DESC
+LIMIT 1`
+
+// CurrentSyncEnvironmentStates returns exact point-read attach state for a
+// bounded list of environments under the supplied canonical authority binding.
+// Results preserve caller order and never materialize the complete authority or
+// protected-history inventories.
+func (store *Store) CurrentSyncEnvironmentStates(
+	ctx context.Context,
+	projectID continuity.ProjectID,
+	verifiedAuthority SyncAuthorityBinding,
+	environmentIDs []continuity.EnvironmentID,
+) ([]SyncEnvironmentState, error) {
+	if err := validateSyncProjectID(projectID); err != nil {
+		return nil, err
+	}
+	if err := validateSyncAuthorityBindingV2(verifiedAuthority); err != nil {
+		return nil, err
+	}
+	if len(environmentIDs) < 1 || len(environmentIDs) > maximumSyncAuthorityEnvironments {
+		return nil, syncProblem(SyncErrorInvalid, "environment_ids", "must contain between one and 256 identities")
+	}
+	seenEnvironmentIDs := make(map[continuity.EnvironmentID]struct{}, len(environmentIDs))
+	for _, environmentID := range environmentIDs {
+		if err := environmentID.Validate(); err != nil {
+			return nil, syncProblem(SyncErrorInvalid, "environment_ids", "contains an invalid environment identity")
+		}
+		if _, duplicate := seenEnvironmentIDs[environmentID]; duplicate {
+			return nil, syncProblem(SyncErrorInvalid, "environment_ids", "must not contain duplicates")
+		}
+		seenEnvironmentIDs[environmentID] = struct{}{}
+	}
+	if store == nil {
+		return nil, syncProblem(SyncErrorStore, "", "store is closed")
+	}
+	if ctx == nil {
+		return nil, syncProblem(SyncErrorInvalid, "context", "must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	if store.closed || store.db == nil {
+		return nil, syncProblem(SyncErrorStore, "", "store is closed")
+	}
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, syncTransactionProblem(ctx)
+	}
+	defer tx.Rollback()
+	binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, verifiedAuthority)
+	if err != nil {
+		return nil, err
+	}
+	activeCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if activeCandidate {
+		return nil, syncProblem(SyncErrorConflict, "sync_authority_candidate", "must be promoted or discarded before reading attach state")
+	}
+
+	states := make([]SyncEnvironmentState, 0, len(environmentIDs))
+	seenCertificateIDs := make(map[[32]byte]struct{}, len(environmentIDs))
+	seenMembershipEvents := make(map[uint32]struct{}, len(environmentIDs)*2)
+	for _, environmentID := range environmentIDs {
+		certificate, found, err := readCanonicalSyncEnvironmentCertificateV2(ctx, tx, projectID, binding, environmentID)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, syncProblem(SyncErrorCertificate, "environment_id", "is not in pinned authority")
+		}
+		if _, duplicate := seenCertificateIDs[certificate.CertificateID]; duplicate {
+			return nil, syncProblem(SyncErrorStore, "sync_authority", "requested environments share a certificate identity")
+		}
+		seenCertificateIDs[certificate.CertificateID] = struct{}{}
+		if _, duplicate := seenMembershipEvents[certificate.JoinMembershipGeneration]; duplicate {
+			return nil, syncProblem(SyncErrorStore, "sync_authority", "requested environments share a membership event")
+		}
+		seenMembershipEvents[certificate.JoinMembershipGeneration] = struct{}{}
+		if certificate.Retirement != nil {
+			if _, duplicate := seenMembershipEvents[certificate.Retirement.MembershipGeneration]; duplicate {
+				return nil, syncProblem(SyncErrorStore, "sync_authority", "requested environments share a membership event")
+			}
+			seenMembershipEvents[certificate.Retirement.MembershipGeneration] = struct{}{}
+		}
+		consumedSequence, err := readConsumedSyncEnvironmentSequenceV2(ctx, tx, projectID, environmentID)
+		if err != nil {
+			return nil, err
+		}
+		states = append(states, SyncEnvironmentState{
+			Certificate:      certificate,
+			ConsumedSequence: consumedSequence,
+		})
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, syncTransactionProblem(ctx)
+	}
+	return states, nil
+}
+
+func readConsumedSyncEnvironmentSequenceV2(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	environmentID continuity.EnvironmentID,
+) (int64, error) {
+	var consumedSequence int64
+	for _, query := range [...]string{
+		syncEnvironmentReceiptConsumedSequenceQueryV2,
+		syncEnvironmentTombstoneConsumedSequenceQueryV2,
+	} {
+		var sequence int64
+		err := tx.QueryRowContext(ctx, query, string(projectID), string(environmentID)).Scan(&sequence)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return 0, syncTransactionProblem(ctx)
+		}
+		if sequence < 1 {
+			return 0, syncProblem(SyncErrorStore, "sync_history", "consumed environment sequence is corrupt")
+		}
+		if sequence > consumedSequence {
+			consumedSequence = sequence
+		}
+	}
+	return consumedSequence, nil
 }
 
 func validateSyncProjectID(projectID continuity.ProjectID) error {
