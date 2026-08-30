@@ -116,6 +116,21 @@ type RegisterEnvironmentRequest struct {
 	Environment   Environment
 }
 
+type EnvironmentRegistrationDisposition uint8
+
+const (
+	EnvironmentRegistrationAbsent EnvironmentRegistrationDisposition = iota + 1
+	EnvironmentRegistrationExact
+)
+
+// EnvironmentRegistrationStatus reports only whether an exact immutable
+// registration exists and the channel state observed in the same read. It
+// intentionally excludes certificate and bearer-token material.
+type EnvironmentRegistrationStatus struct {
+	Disposition EnvironmentRegistrationDisposition
+	State       ChannelState
+}
+
 type RetireEnvironmentRequest struct {
 	Authorization OwnerAuthorization
 	Retirement    Retirement
@@ -367,6 +382,10 @@ type ChannelStore interface {
 	RetireEnvironment(context.Context, RetireEnvironmentRequest) (ChannelState, error)
 }
 
+type EnvironmentRegistrationReader interface {
+	ClassifyEnvironmentRegistration(context.Context, RegisterEnvironmentRequest) (EnvironmentRegistrationStatus, error)
+}
+
 type SyncStore interface {
 	Append(context.Context, AppendRequest) (AppendResult, error)
 	Page(context.Context, PageRequest) (Page, error)
@@ -384,6 +403,7 @@ type InventoryStore interface {
 
 type Store interface {
 	ChannelStore
+	EnvironmentRegistrationReader
 	SyncStore
 	PruneStore
 	InventoryStore
