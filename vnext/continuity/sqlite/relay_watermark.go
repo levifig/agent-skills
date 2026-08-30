@@ -143,7 +143,10 @@ func (record syncRelayWatermarkRecordV1) value() SyncRelayWatermark {
 	}
 }
 
-func auditSyncRelayWatermarkSourcesV1(ctx context.Context, tx *sql.Tx, watermark SyncRelayWatermark) (int64, error) {
+// auditBoundedSyncRelayWatermarkSourcesV1 audits the exact retained watermark
+// and the single current project/canonical source without scanning historical
+// authority-candidate headers.
+func auditBoundedSyncRelayWatermarkSourcesV1(ctx context.Context, tx *sql.Tx, watermark SyncRelayWatermark) (int64, error) {
 	key := syncRelayWatermarkKeyFromValueV1(watermark)
 	floor := int64(0)
 	observe := func(record syncRelayWatermarkRecordV1) error {
@@ -213,6 +216,27 @@ WHERE project.project_id = ?`, string(watermark.ProjectID)).Scan(
 				return 0, err
 			}
 		}
+	}
+	return floor, nil
+}
+
+func auditSyncRelayWatermarkSourcesV1(ctx context.Context, tx *sql.Tx, watermark SyncRelayWatermark) (int64, error) {
+	floor, err := auditBoundedSyncRelayWatermarkSourcesV1(ctx, tx, watermark)
+	if err != nil {
+		return 0, err
+	}
+	key := syncRelayWatermarkKeyFromValueV1(watermark)
+	observe := func(record syncRelayWatermarkRecordV1) error {
+		if record.key != key {
+			return nil
+		}
+		if record.adminPublicKey != watermark.AdminPublicKey {
+			return syncProblem(SyncErrorConflict, "admin_public_key", "does not match the retained relay identity")
+		}
+		if record.relayHead > floor {
+			floor = record.relayHead
+		}
+		return nil
 	}
 
 	rows, err := tx.QueryContext(ctx, `

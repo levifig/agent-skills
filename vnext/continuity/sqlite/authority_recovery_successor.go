@@ -19,9 +19,10 @@ type SyncAuthorityRecoveryTransitionStart struct {
 }
 
 // SyncAuthorityRecoveryState is the fixed-size current transition and its
-// fully audited recovery-successor checkpoint. The retained predecessor is
-// identified by Transition and is audited on every read without being copied
-// into the result.
+// authenticated recovery-successor checkpoint. Complete candidate-stream
+// audits are reserved for public reads, READY completion and replay,
+// replacement, abort, and promotion; the retained predecessor is identified by
+// Transition and is never copied into the result.
 type SyncAuthorityRecoveryState struct {
 	Transition SyncAuthorityRecoveryTransition
 	Successor  SyncAuthorityCandidate
@@ -228,7 +229,7 @@ func (store *Store) AppendVerifiedSyncAuthorityRecoverySuccessorPage(
 		return SyncAuthorityRecoveryState{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
-	current, found, err := readAndValidateSyncAuthorityRecoveryStateV1(ctx, tx, projectID, store.environmentID)
+	current, found, err := readAndValidateSyncAuthorityRecoveryAppendStateV1(ctx, tx, projectID, store.environmentID)
 	if err != nil {
 		return SyncAuthorityRecoveryState{}, err
 	}
@@ -245,6 +246,15 @@ func (store *Store) AppendVerifiedSyncAuthorityRecoverySuccessorPage(
 		if !exact {
 			return SyncAuthorityRecoveryState{}, syncProblem(SyncErrorConflict, "page", "changes an already staged recovery-successor page")
 		}
+		if current.value.Successor.Ready {
+			current, found, err = readAndValidateSyncAuthorityRecoveryStateV1(ctx, tx, projectID, store.environmentID)
+			if err != nil {
+				return SyncAuthorityRecoveryState{}, err
+			}
+			if !found || current.value.Transition != expectedTransition {
+				return SyncAuthorityRecoveryState{}, corruptSyncAuthorityRecoveryTransitionV1("ready recovery successor disappeared during replay")
+			}
+		}
 		if err := tx.Commit(); err != nil {
 			return SyncAuthorityRecoveryState{}, syncTransactionProblem(ctx)
 		}
@@ -259,8 +269,23 @@ func (store *Store) AppendVerifiedSyncAuthorityRecoverySuccessorPage(
 	if prepared.AfterEnvironmentID != current.value.Successor.ThroughEnvironmentID {
 		return SyncAuthorityRecoveryState{}, syncProblem(SyncErrorConflict, "after_environment_id", "is not the recovery-successor cursor")
 	}
-	if err := requireSyncAuthorityRecoveryWatermarkFloorV1(ctx, tx, projectID, snapshot); err != nil {
+	if prepared.More {
+		err = requireRetainedSyncAuthorityRecoveryWatermarkFloorV1(ctx, tx, projectID, snapshot)
+	} else {
+		err = requireSyncAuthorityRecoveryWatermarkFloorV1(ctx, tx, projectID, snapshot)
+	}
+	if err != nil {
 		return SyncAuthorityRecoveryState{}, err
+	}
+	expectedPageCount, err := checkedSyncAuthorityCandidateAdvanceV2(current.value.Successor.PageCount, 1)
+	if err != nil {
+		return SyncAuthorityRecoveryState{}, corruptSyncAuthorityRecoveryTransitionV1("recovery successor page count cannot advance")
+	}
+	expectedEnvironmentCount, err := checkedSyncAuthorityCandidateAdvanceV2(
+		current.value.Successor.EnvironmentCount, int64(len(prepared.Environments)),
+	)
+	if err != nil {
+		return SyncAuthorityRecoveryState{}, corruptSyncAuthorityRecoveryTransitionV1("recovery successor environment count cannot advance")
 	}
 	if err := appendSyncAuthorityCandidatePageV2(ctx, tx, current.successor, prepared, current.successor.headerDigest); err != nil {
 		return SyncAuthorityRecoveryState{}, err
@@ -270,12 +295,23 @@ func (store *Store) AppendVerifiedSyncAuthorityRecoverySuccessorPage(
 			return SyncAuthorityRecoveryState{}, err
 		}
 	}
-	next, found, err := readAndValidateSyncAuthorityRecoveryStateV1(ctx, tx, projectID, store.environmentID)
+	var next persistedSyncAuthorityRecoveryStateV1
+	if prepared.More {
+		next, found, err = readAndValidateSyncAuthorityRecoveryAppendStateV1(ctx, tx, projectID, store.environmentID)
+	} else {
+		next, found, err = readAndValidateSyncAuthorityRecoveryStateV1(ctx, tx, projectID, store.environmentID)
+	}
 	if err != nil {
 		return SyncAuthorityRecoveryState{}, err
 	}
-	if !found || next.value.Transition != expectedTransition {
-		return SyncAuthorityRecoveryState{}, corruptSyncAuthorityRecoveryTransitionV1("recovery successor disappeared during append")
+	if !found || next.value.Transition != expectedTransition ||
+		next.value.Successor.CandidateID != current.value.Successor.CandidateID ||
+		next.value.Successor.Snapshot != current.value.Successor.Snapshot ||
+		next.value.Successor.PageCount != expectedPageCount ||
+		next.value.Successor.EnvironmentCount != expectedEnvironmentCount ||
+		next.value.Successor.ThroughEnvironmentID != prepared.ThroughEnvironmentID ||
+		next.value.Successor.Ready == prepared.More {
+		return SyncAuthorityRecoveryState{}, corruptSyncAuthorityRecoveryTransitionV1("recovery successor checkpoint changed unexpectedly during append")
 	}
 	if err := tx.Commit(); err != nil {
 		return SyncAuthorityRecoveryState{}, syncProblem(SyncErrorStore, "", "recovery-successor page outcome is unknown; retry the exact transition, checkpoint, snapshot, and page")
@@ -756,18 +792,49 @@ func requireRetainedSyncAuthorityRecoveryWatermarkV1(
 	if _, err := syncAuthorityRecoveryWatermarkFloorV1(ctx, tx, projectID, snapshot); err != nil {
 		return err
 	}
-	want := syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot)
-	retained, found, err := readSyncRelayWatermarkV1(ctx, tx, syncRelayWatermarkKeyFromValueV1(want))
+	_, err := readAndValidateRetainedSyncAuthorityRecoveryWatermarkV1(ctx, tx, projectID, snapshot)
+	return err
+}
+
+func requireRetainedSyncAuthorityRecoveryWatermarkFloorV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	snapshot SyncAuthoritySnapshot,
+) error {
+	if _, err := readAndValidateRetainedSyncAuthorityRecoveryWatermarkV1(ctx, tx, projectID, snapshot); err != nil {
+		return err
+	}
+	floor, err := auditBoundedSyncRelayWatermarkSourcesV1(
+		ctx, tx, syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot),
+	)
 	if err != nil {
 		return err
 	}
-	if !found || retained.relayHead < snapshot.InventoryArrivalHead {
-		return corruptSyncRelayWatermarkProblemV1()
-	}
-	if retained.adminPublicKey != snapshot.AdminPublicKey {
-		return syncProblem(SyncErrorConflict, "admin_public_key", "does not match the retained relay identity")
+	if snapshot.InventoryArrivalHead < floor {
+		return syncProblem(SyncErrorCursor, "inventory_arrival_head", "regressed below the retained relay watermark")
 	}
 	return nil
+}
+
+func readAndValidateRetainedSyncAuthorityRecoveryWatermarkV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	snapshot SyncAuthoritySnapshot,
+) (syncRelayWatermarkRecordV1, error) {
+	want := syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot)
+	retained, found, err := readSyncRelayWatermarkV1(ctx, tx, syncRelayWatermarkKeyFromValueV1(want))
+	if err != nil {
+		return syncRelayWatermarkRecordV1{}, err
+	}
+	if !found || retained.relayHead < snapshot.InventoryArrivalHead {
+		return syncRelayWatermarkRecordV1{}, corruptSyncRelayWatermarkProblemV1()
+	}
+	if retained.adminPublicKey != snapshot.AdminPublicKey {
+		return syncRelayWatermarkRecordV1{}, syncProblem(SyncErrorConflict, "admin_public_key", "does not match the retained relay identity")
+	}
+	return retained, nil
 }
 
 func advanceSyncAuthorityRecoveryWatermarkV1(

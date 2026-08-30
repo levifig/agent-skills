@@ -16,11 +16,41 @@ type persistedSyncAuthorityRecoveryStateV1 struct {
 	successor   persistedSyncAuthorityCandidateV2
 }
 
+// readAndValidateSyncAuthorityRecoveryAppendStateV1 audits only the fixed-size
+// transition, candidate headers, exact last pages, relay watermark, and
+// canonical base needed to authorize one bounded STAGING append. It
+// deliberately does not stream either complete candidate graph. The append
+// path runs the complete recovery-state audit before READY can become durable;
+// public reads, replacement, abort, and promotion also retain their complete
+// audits.
+func readAndValidateSyncAuthorityRecoveryAppendStateV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	localWriterEnvironmentID continuity.EnvironmentID,
+) (persistedSyncAuthorityRecoveryStateV1, bool, error) {
+	return readAndValidateSyncAuthorityRecoveryStateWithAuditV1(
+		ctx, tx, projectID, localWriterEnvironmentID, false,
+	)
+}
+
 func readAndValidateSyncAuthorityRecoveryStateV1(
 	ctx context.Context,
 	tx *sql.Tx,
 	projectID continuity.ProjectID,
 	localWriterEnvironmentID continuity.EnvironmentID,
+) (persistedSyncAuthorityRecoveryStateV1, bool, error) {
+	return readAndValidateSyncAuthorityRecoveryStateWithAuditV1(
+		ctx, tx, projectID, localWriterEnvironmentID, true,
+	)
+}
+
+func readAndValidateSyncAuthorityRecoveryStateWithAuditV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	localWriterEnvironmentID continuity.EnvironmentID,
+	fullAudit bool,
 ) (persistedSyncAuthorityRecoveryStateV1, bool, error) {
 	transition, found, err := readAndAuditSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID)
 	if err != nil || !found {
@@ -39,11 +69,19 @@ func readAndValidateSyncAuthorityRecoveryStateV1(
 	if !found {
 		return persistedSyncAuthorityRecoveryStateV1{}, false, corruptSyncAuthorityRecoveryTransitionV1("successor candidate is missing")
 	}
-	if err := streamAndValidateSyncAuthorityCandidateV2(ctx, tx, successor); err != nil {
-		return persistedSyncAuthorityRecoveryStateV1{}, false, err
+	if fullAudit {
+		if err := streamAndValidateSyncAuthorityCandidateV2(ctx, tx, successor); err != nil {
+			return persistedSyncAuthorityRecoveryStateV1{}, false, err
+		}
 	}
-	if err := requireRetainedSyncAuthorityRecoveryWatermarkV1(ctx, tx, projectID, successor.candidate.Snapshot); err != nil {
-		return persistedSyncAuthorityRecoveryStateV1{}, false, err
+	var watermarkErr error
+	if fullAudit {
+		watermarkErr = requireRetainedSyncAuthorityRecoveryWatermarkV1(ctx, tx, projectID, successor.candidate.Snapshot)
+	} else {
+		_, watermarkErr = readAndValidateRetainedSyncAuthorityRecoveryWatermarkV1(ctx, tx, projectID, successor.candidate.Snapshot)
+	}
+	if watermarkErr != nil {
+		return persistedSyncAuthorityRecoveryStateV1{}, false, watermarkErr
 	}
 
 	state := persistedSyncAuthorityRecoveryStateV1{
@@ -80,8 +118,10 @@ func readAndValidateSyncAuthorityRecoveryStateV1(
 		if !predecessorFound || !predecessor.candidate.Ready {
 			return persistedSyncAuthorityRecoveryStateV1{}, false, corruptSyncAuthorityRecoveryTransitionV1("predecessor candidate is missing or not ready")
 		}
-		if err := streamAndValidateSyncAuthorityCandidateV2(ctx, tx, predecessor); err != nil {
-			return persistedSyncAuthorityRecoveryStateV1{}, false, err
+		if fullAudit {
+			if err := streamAndValidateSyncAuthorityCandidateV2(ctx, tx, predecessor); err != nil {
+				return persistedSyncAuthorityRecoveryStateV1{}, false, err
+			}
 		}
 		if err := validateSyncAuthorityCandidateBaseV2(
 			predecessor.candidate.Snapshot, canonicalBase.digestVersion, canonicalBase.digest, canonicalBase.found,
@@ -91,8 +131,10 @@ func readAndValidateSyncAuthorityRecoveryStateV1(
 		if err := validateSyncAuthorityCandidateHeaderAgainstCanonicalV2(predecessor.candidate.Snapshot, canonicalBase); err != nil {
 			return persistedSyncAuthorityRecoveryStateV1{}, false, err
 		}
-		if err := validateReadySyncAuthorityCandidateAgainstCanonicalV2(ctx, tx, predecessor, canonicalBase); err != nil {
-			return persistedSyncAuthorityRecoveryStateV1{}, false, err
+		if fullAudit {
+			if err := validateReadySyncAuthorityCandidateAgainstCanonicalV2(ctx, tx, predecessor, canonicalBase); err != nil {
+				return persistedSyncAuthorityRecoveryStateV1{}, false, err
+			}
 		}
 		if predecessor.candidate.Snapshot.MembershipGeneration != transition.TargetMembershipGeneration-1 ||
 			successor.candidate.Snapshot.ChannelID != predecessor.candidate.Snapshot.ChannelID ||
@@ -109,7 +151,7 @@ func readAndValidateSyncAuthorityRecoveryStateV1(
 	if successor.candidate.Snapshot.MembershipGeneration < transition.TargetMembershipGeneration {
 		return persistedSyncAuthorityRecoveryStateV1{}, false, corruptSyncAuthorityRecoveryTransitionV1("successor membership is below the recovery target")
 	}
-	if successor.candidate.Ready {
+	if fullAudit && successor.candidate.Ready {
 		if state.predecessor != nil {
 			if err := validateReadySyncAuthorityRecoverySuccessorExtensionV1(ctx, tx, state); err != nil {
 				return persistedSyncAuthorityRecoveryStateV1{}, false, err
