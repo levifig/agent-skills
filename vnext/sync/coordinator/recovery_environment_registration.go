@@ -75,7 +75,10 @@ func (coordinator *Coordinator) registerPreparedRecoveryEnvironment(
 			return completedRecoveryRegistration{}, err
 		}
 		observedHead = initialStatus.State.Head
-		if err := coordinator.advanceRecoveryRegistrationWatermark(ctx, expectedProjectID, recovery, observedHead); err != nil {
+		if err := coordinator.advanceRecoveryRegistrationWatermark(
+			ctx, expectedProjectID, recovery,
+			initialStatus.State.MembershipGeneration, observedHead,
+		); err != nil {
 			return completedRecoveryRegistration{}, err
 		}
 	}
@@ -104,8 +107,17 @@ func (coordinator *Coordinator) registerPreparedRecoveryEnvironment(
 		if !firstMembershipMissingChannel {
 			return completedRecoveryRegistration{}, mapEnvironmentRegistrationRelayError(ctx, initialErr)
 		}
-		if err := coordinator.advanceRecoveryRegistrationWatermark(ctx, expectedProjectID, recovery, 0); err != nil {
-			return completedRecoveryRegistration{}, err
+		// An explicit NotFound is the relay's empty-channel observation. An
+		// unauthenticated response carries no state and cannot establish G0/H0;
+		// the later authenticated CreateChannel/inventory result must do that.
+		explicitMissingChannel := errors.Is(initialErr, relay.ErrNotFound) &&
+			!errors.Is(initialErr, relay.ErrUnauthenticated)
+		if explicitMissingChannel {
+			if err := coordinator.advanceRecoveryRegistrationWatermark(
+				ctx, expectedProjectID, recovery, 0, 0,
+			); err != nil {
+				return completedRecoveryRegistration{}, err
+			}
 		}
 	}
 
@@ -131,7 +143,10 @@ func (coordinator *Coordinator) registerPreparedRecoveryEnvironment(
 		return completedRecoveryRegistration{}, err
 	}
 	observedHead = maximumRecoveryRegistrationHead(observedHead, guard.inventorySnapshot.ArrivalHead, localHead)
-	if err := coordinator.advanceRecoveryRegistrationWatermark(ctx, expectedProjectID, recovery, observedHead); err != nil {
+	if err := coordinator.advanceRecoveryRegistrationWatermark(
+		ctx, expectedProjectID, recovery,
+		guard.inventorySnapshot.MembershipGeneration, observedHead,
+	); err != nil {
 		return completedRecoveryRegistration{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -169,7 +184,10 @@ func (coordinator *Coordinator) registerPreparedRecoveryEnvironment(
 		return completedRecoveryRegistration{}, malformedRecoveryRegistrationResponse()
 	}
 	observedHead = finalStatus.State.Head
-	if err := coordinator.advanceRecoveryRegistrationWatermark(ctx, expectedProjectID, recovery, observedHead); err != nil {
+	if err := coordinator.advanceRecoveryRegistrationWatermark(
+		ctx, expectedProjectID, recovery,
+		finalStatus.State.MembershipGeneration, observedHead,
+	); err != nil {
 		return completedRecoveryRegistration{}, err
 	}
 	// The watermark transaction is another local boundary. Make the exact
@@ -219,7 +237,9 @@ func (coordinator *Coordinator) registerPreparedRecoveryEnvironment(
 	if state.Head < localHead {
 		return completedRecoveryRegistration{}, malformedRecoveryRegistrationResponse()
 	}
-	if err := coordinator.advanceRecoveryRegistrationWatermark(ctx, expectedProjectID, recovery, state.Head); err != nil {
+	if err := coordinator.advanceRecoveryRegistrationWatermark(
+		ctx, expectedProjectID, recovery, state.MembershipGeneration, state.Head,
+	); err != nil {
 		return completedRecoveryRegistration{}, err
 	}
 	if err := coordinator.validateRecoveryRegistrationBinding(ctx, expectedProjectID, recovery, registration); err != nil {
@@ -250,14 +270,16 @@ func freshRecoveryRegistrationRequest(
 func recoveryRegistrationWatermark(
 	expectedProjectID continuity.ProjectID,
 	recovery credential.ProjectRecoveryCredential,
+	membershipGeneration uint32,
 	head int64,
 ) continuitysqlite.SyncRelayWatermark {
 	return continuitysqlite.SyncRelayWatermark{
-		ProjectID:       expectedProjectID,
-		ChannelID:       continuitysqlite.SyncChannelID(recovery.ChannelID),
-		RelayGeneration: [32]byte(recovery.RelayGeneration),
-		AdminPublicKey:  [32]byte(crypto.AdminPublicKey(recovery.AdminSeed)),
-		RelayHead:       head,
+		ProjectID:            expectedProjectID,
+		ChannelID:            continuitysqlite.SyncChannelID(recovery.ChannelID),
+		RelayGeneration:      [32]byte(recovery.RelayGeneration),
+		AdminPublicKey:       [32]byte(crypto.AdminPublicKey(recovery.AdminSeed)),
+		MembershipGeneration: membershipGeneration,
+		RelayHead:            head,
 	}
 }
 
@@ -265,18 +287,19 @@ func (coordinator *Coordinator) advanceRecoveryRegistrationWatermark(
 	ctx context.Context,
 	expectedProjectID continuity.ProjectID,
 	recovery credential.ProjectRecoveryCredential,
+	membershipGeneration uint32,
 	head int64,
 ) error {
-	want := recoveryRegistrationWatermark(expectedProjectID, recovery, head)
+	want := recoveryRegistrationWatermark(expectedProjectID, recovery, membershipGeneration, head)
 	retained, err := coordinator.store.AdvanceSyncRelayWatermark(ctx, want)
 	if err != nil {
 		return mapRecoveryRegistrationWatermarkError(ctx, err)
 	}
-	// The persistence API refuses lower observations. Requiring the exact input
-	// here prevents a future implementation from treating a returned maximum as
-	// acceptance of a regressed remote head.
+	// The persistence API retains the componentwise join. Only the exact input
+	// may drive routing; a crossed or stale observation requires a fresh relay
+	// classification instead of local repair.
 	if retained != want {
-		return newProblem(CodeInternal, PhaseEnvironmentRegistration, ActionRepairLocalStore)
+		return newProblem(CodeRemote, PhaseEnvironmentRegistration, ActionRestartRecovery)
 	}
 	return nil
 }

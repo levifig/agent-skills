@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -218,7 +219,7 @@ func TestSyncAuthorityRecoveryTransitionAllowsSuccessorAheadOfTargetMembership(t
 	}
 }
 
-func TestContinuitySQLiteV5ToV6MigrationPreservesAuthorityCandidateAndWatermarkBytes(t *testing.T) {
+func TestContinuitySQLiteV5ToV8MigrationPreservesAuthorityCandidatesAndSeedsRelayFrontiers(t *testing.T) {
 	t.Parallel()
 	stateRoot := filepath.Join(testTempDir(t), "state")
 	databasePath := createV5ContinuityDatabase(t, stateRoot)
@@ -227,7 +228,7 @@ func TestContinuitySQLiteV5ToV6MigrationPreservesAuthorityCandidateAndWatermarkB
 		t.Fatalf("open v5 database: %v", err)
 	}
 	seedV5RecoveryMigrationRowsV1(t, db)
-	before := snapshotV5RecoveryMigrationRowsV1(t, db)
+	before := snapshotV5AuthorityCandidateRowsV1(t, db)
 	if err := db.Close(); err != nil {
 		t.Fatalf("close seeded v5 database: %v", err)
 	}
@@ -237,9 +238,9 @@ func TestContinuitySQLiteV5ToV6MigrationPreservesAuthorityCandidateAndWatermarkB
 		t.Fatalf("Open(v5) error = %v", err)
 	}
 	defer store.Close()
-	after := snapshotV5RecoveryMigrationRowsV1(t, store.db)
+	after := snapshotV5AuthorityCandidateRowsV1(t, store.db)
 	if after != before {
-		t.Fatalf("migrated candidate or watermark bytes changed:\nbefore=%s\nafter=%s", before, after)
+		t.Fatalf("migrated authority candidate bytes changed:\nbefore=%s\nafter=%s", before, after)
 	}
 	var ordinary, nonOrdinary, transitions int64
 	if err := store.db.QueryRow(`
@@ -254,6 +255,46 @@ FROM continuity_sync_authority_candidates`).Scan(&ordinary, &nonOrdinary); err !
 	}
 	if ordinary != 3 || nonOrdinary != 0 || transitions != 0 {
 		t.Fatalf("migrated transition state: ordinary=%d non-ordinary=%d transitions=%d", ordinary, nonOrdinary, transitions)
+	}
+
+	type relayFrontier struct {
+		membershipGeneration uint32
+		relayHead            int64
+		membershipKnown      int
+	}
+	wantFrontiers := map[string]relayFrontier{
+		"project-v5-promoted":  {membershipGeneration: 1, relayHead: 17, membershipKnown: 1},
+		"project-v5-ready":     {membershipGeneration: 1, relayHead: 17, membershipKnown: 1},
+		"project-v5-staging":   {membershipGeneration: 1, relayHead: 17, membershipKnown: 1},
+		"project-v5-watermark": {membershipGeneration: 0, relayHead: 987654321, membershipKnown: 0},
+	}
+	rows, err := store.db.Query(`
+SELECT project_id, membership_generation, relay_head, membership_floor_known
+FROM continuity_sync_relay_watermarks
+ORDER BY project_id`)
+	if err != nil {
+		t.Fatalf("list migrated relay frontiers: %v", err)
+	}
+	defer rows.Close()
+	gotFrontiers := make(map[string]relayFrontier, len(wantFrontiers))
+	for rows.Next() {
+		var projectID string
+		var frontier relayFrontier
+		if err := rows.Scan(
+			&projectID,
+			&frontier.membershipGeneration,
+			&frontier.relayHead,
+			&frontier.membershipKnown,
+		); err != nil {
+			t.Fatalf("scan migrated relay frontier: %v", err)
+		}
+		gotFrontiers[projectID] = frontier
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate migrated relay frontiers: %v", err)
+	}
+	if !reflect.DeepEqual(gotFrontiers, wantFrontiers) {
+		t.Fatalf("migrated relay frontiers = %#v, want %#v", gotFrontiers, wantFrontiers)
 	}
 }
 
@@ -496,7 +537,7 @@ INSERT INTO continuity_sync_relay_watermarks(
 	}
 }
 
-func snapshotV5RecoveryMigrationRowsV1(t *testing.T, db *sql.DB) string {
+func snapshotV5AuthorityCandidateRowsV1(t *testing.T, db *sql.DB) string {
 	t.Helper()
 	queries := []string{
 		`SELECT COALESCE(group_concat(row_value, '|'), '') FROM (
@@ -525,11 +566,6 @@ func snapshotV5RecoveryMigrationRowsV1(t *testing.T, db *sql.DB) string {
   SELECT project_id || ':' || hex(candidate_id) || ':' || membership_generation || ':' ||
     event_kind || ':' || environment_id AS row_value
   FROM continuity_sync_authority_candidate_membership_events ORDER BY project_id, candidate_id, membership_generation
-)`,
-		`SELECT COALESCE(group_concat(row_value, '|'), '') FROM (
-  SELECT project_id || ':' || hex(channel_id) || ':' || hex(relay_generation) || ':' ||
-    hex(admin_public_key) || ':' || relay_head AS row_value
-  FROM continuity_sync_relay_watermarks ORDER BY project_id, channel_id, relay_generation
 )`,
 	}
 	parts := make([]string, 0, len(queries))

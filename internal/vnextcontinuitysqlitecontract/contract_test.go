@@ -334,6 +334,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"SyncRelayWatermark",
 		"SyncRelayWatermark.AdminPublicKey",
 		"SyncRelayWatermark.ChannelID",
+		"SyncRelayWatermark.MembershipGeneration",
 		"SyncRelayWatermark.ProjectID",
 		"SyncRelayWatermark.RelayGeneration",
 		"SyncRelayWatermark.RelayHead",
@@ -704,7 +705,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		t.Fatalf("read user version: %v", err)
 	}
-	if applicationID != 1280267825 || userVersion != 7 {
+	if applicationID != 1280267825 || userVersion != 8 {
 		t.Fatalf("schema pragmas = application_id %d, user_version %d", applicationID, userVersion)
 	}
 
@@ -713,7 +714,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`SELECT schema_line, schema_version, schema_checksum FROM continuity_schema WHERE singleton = 1`).Scan(&line, &version, &checksum); err != nil {
 		t.Fatalf("read schema identity: %v", err)
 	}
-	if line != "vnext" || version != 7 || checksum != "cc8885f15ec98c010752282222ece44fcd9e8378a212aa177d762112fca1e930" {
+	if line != "vnext" || version != 8 || checksum != "c65fb57b1fe6e50c71246b4b654aff767dd8ef7236c483070a634b033c6e67e9" {
 		t.Fatalf("schema identity = %q, %d, %q", line, version, checksum)
 	}
 
@@ -726,7 +727,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 		{kind: "index", name: "ux_continuity_sync_authority_candidates_recovery_predecessor_project", table: "continuity_sync_authority_candidates", digest: "096d5adf6044c5135cfd37ef10137b3a1f20d45583a514db5df0b2b5b4cc1007"},
 		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", digest: "b0aa78a63d19c8503b7df73fb9ddecb2c4bc15ef9789c3577d3ecc6eb5aec495"},
 		{kind: "table", name: "continuity_facts", table: "continuity_facts", digest: "cc2165e3ec85a50478f7ee550bf4a25db6b3282b56de7b1332a007961c75555f"},
-		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "1a9ea7085e82e2becba390cb1609f3aa26a4cff017c721fece2331da60df8ca9"},
+		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "c495a8ccf407680b0acc21a9ef1320cab1b4cb6e4b86633be2034b65281a13c5"},
 		{kind: "table", name: "continuity_sync_authorities", table: "continuity_sync_authorities", digest: "a8506a59db4d2cb96fa1ac8c30dbeb271c1e2b0dd5182370994a478865d35746"},
 		{kind: "table", name: "continuity_sync_authority_candidate_environments", table: "continuity_sync_authority_candidate_environments", digest: "6f5f5d4d8f0a97657ec116b57ababf2f84e1588608e9447c671dca8b056caa89"},
 		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", digest: "9df1d2916a6fc809a41620f24e3e04edf74efcd7771b045d64ed39969c6a7c4e"},
@@ -740,7 +741,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", digest: "2702a3d8ce8bd29fc5556db6065e053b26f1263fb534ecb3dd22c94bdf5cd1e5"},
 		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", digest: "94841daff839eb50034602cd7aa59c5804152f2501a517a91a4ec81801f1fbb2"},
 		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", digest: "46460af061b8950c529da755f66f2d4d05fb24f0a1df5c95dee9f97ef6ebe35b"},
-		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", digest: "02504d3ab3298ae5ee177778e7d6dd72d8dc9dc9daa6eb4a7e30c5050f53ccab"},
+		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", digest: "7c89163ca98f804b110eab7b0bbcdc0c4efde8081ae73b6d5102794e19941790"},
 		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", digest: "5306f8ef4814ab7f8be7cd65fba1c0d93d81caf41ce489d3dd9aa37e219fa52d"},
 		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", digest: "96c0e64f67ea269bf4d618dcc0fb45316be718e8f7af95ed995dedf0760608d3"},
 		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", digest: "f9cd6d9cfba708fbdfab1a5447cc7395762bcb0ec85c36d29cda2aea84a8fb4b"},
@@ -776,7 +777,9 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 			{name: "channel_id", dataType: "BLOB", notNull: 1, primaryKey: 2},
 			{name: "relay_generation", dataType: "BLOB", notNull: 1, primaryKey: 3},
 			{name: "admin_public_key", dataType: "BLOB", notNull: 1},
+			{name: "membership_generation", dataType: "INTEGER", notNull: 1},
 			{name: "relay_head", dataType: "INTEGER", notNull: 1},
+			{name: "membership_floor_known", dataType: "INTEGER", notNull: 1},
 		},
 	}
 	for tableName, want := range wantColumns {
@@ -890,6 +893,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		{name: "ChannelID", typeName: "sqlite.SyncChannelID", exported: true},
 		{name: "RelayGeneration", typeName: "[32]uint8", exported: true},
 		{name: "AdminPublicKey", typeName: "[32]uint8", exported: true},
+		{name: "MembershipGeneration", typeName: "uint32", exported: true},
 		{name: "RelayHead", typeName: "int64", exported: true},
 	}
 	if !reflect.DeepEqual(gotWatermarkFields, wantWatermarkFields) {
@@ -1539,7 +1543,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"filesystem_attributes_windows.go": "1e3b5f12e4debbc5432f2153818862cdc39ec617409e526b750e6db093dcb0a0",
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
-		"schema.go":                        "b1352f44d7ddf28201a95cb09449640aa10ca77471908054d3edc2813ee144bc",
+		"schema.go":                        "a879135f6491482bdde30aa9863f24d0468c615d9ec4d209e3db2b565ecf849a",
 		"store.go":                         "d43c65b22cefe1cf8be9c6cb7e85137a3c59c155240a0f74922b3fc26ca59bb2",
 	}
 	for fileName, wantDigest := range wantSourceDigests {
@@ -1586,26 +1590,29 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 			"checksumSchemaV4":                 "5176b451d75708fefa4bd826e97ff903f456ebff677b55caa83fd33bdad9375b",
 			"checksumSchemaV5":                 "e90fa69963e4c728f1d9946db744730c4f283259b1abb6937a8e5d7c64914236",
 			"checksumSchemaV6":                 "dd48c09eb553648e01cf2aeab09afed9d93a7c7b779795a99bc509f812a5efb3",
+			"checksumSchemaV7":                 "0d5ba8349dd40e288341ba2ae5dbfb1226bd6fd57de6532a09923196352f6781",
 			"closeMigrationRows":               "1a1b6a77c23eef79fb5730df7674519c954e253ec51fd8f9a1c60ac793d1861f",
 			"expectedSchemaObjects":            "ccb123a2558b477bf88a6a82dc858fad6314e353772e500062a29fa7e32c5ef2",
 			"expectedSchemaV1Objects":          "690fbda019e83a41451abc381d9d1c10f56f9597c2b55a0809bf977abd4b6da1",
 			"expectedSchemaV2Objects":          "f8a369c7a168ff5a4a5228fbc0888af213e0d18b36dcc996334eb4ec3a936e9d",
 			"expectedSchemaV3Objects":          "e0ed9b1701a662c2d23dc02f338b8bc42799b477b215841ab696cf2c0a4ea3f1",
 			"expectedSchemaV4Objects":          "e8df660eae06e4c145ab67c6b2e6addf1fbf77d1f6f2b5b2f80a0a9ba4cd9dfd",
-			"expectedSchemaV5Objects":          "db923ec759ecc2593d85f912502edc5d18c8492362cc8099ac452c705e46b9f8",
-			"expectedSchemaV6Objects":          "e30f161e054722cd4b2e1883c459ce2355a38d4544b6e2ec775364c174b0ac9d",
-			"initializeSchemaIfEmpty":          "24b033f56f35ea4b2ab28cc08a0d7debbc388ae3d85109f41efbb82c15ee61b2",
-			"migrateSchema":                    "9c3c4d8aae316f7f2c43688df9e0ecf7c4f6e88e770f6a48a27a01863fea2b06",
+			"expectedSchemaV5Objects":          "5c6aa07e5e4015dd119f68988b2dbf8bfd2400969511f126a590665fb52913a1",
+			"expectedSchemaV6Objects":          "7a005bf2b7e88456317004d4630112f1819bf9bddcefa4540a7d0a49c31ac220",
+			"expectedSchemaV7Objects":          "696f4e67fd0c499e2c8a82e65432d4d285f5554c83d4b4f097020ae9e4bae734",
+			"initializeSchemaIfEmpty":          "a5a4045638fc2986b84ef9404b2714e4faf1e0f4db672b0d5c65508124aa241d",
+			"migrateSchema":                    "eb126b9b9232d22e05bd56e985edb32784f98012cf5766d186dba89816016d48",
 			"migrateSchemaV1ToV2":              "3f1ee78cc1b2a56a036b03a390207ea7d27a911867efdad1fc4f162623925293",
 			"migrateSchemaV2ToV3":              "3b640231ba853caec59017133ddcc87d3e20d0c3419abb6027b3b447f450fef9",
 			"migrateSchemaV3ToV4":              "2aeec568d4050ac14c323ed444c9a6acdc70123b1414aa0421e107df5d6b7447",
-			"migrateSchemaV4ToV5":              "c97c6ef213c3a24e9a8756d2cf74f0bde3b0c61ebb3ba6c785e12f95027369af",
+			"migrateSchemaV4ToV5":              "7ba49fdb3a74b4d9be76725a33d9c82e4bf5719b43efad2b211dfe01065a8a21",
 			"migrateSchemaV5ToV6":              "1d6a3d75d231790159fd27352aef150018b5f503457686b2d417b0b0f9ca49f4",
-			"migrateSchemaV6ToV7":              "308bdf4905132ab3aaf7291f2cf7b19ca3ebcd9c606c91dfe6cfd4766ef641fb",
+			"migrateSchemaV6ToV7":              "fa664ce8415291c3bfac0be06f82a9621efb027d7bb89727d4a13d1301f7f54a",
+			"migrateSchemaV7ToV8":              "93df4ffded8c8fc5da15e756a85039cf096da4398f01df6b29a1af8c202131f2",
 			"normalizeSQL":                     "ba395a0d4dddb73b4b9669ad5a6cd12d28494ba464560910074abbddd0d96e98",
 			"seedV3SyncAuthorityMetadata":      "61d5a908b0fee56af16bd14bba221c70ffe1f100259b3335beae1a43452e9e55",
 			"validateForeignKeys":              "5d789c539f43fdb2be215784eeb7074c290023cc6ef12dbe92511c1d335163f1",
-			"validateKnownSchemaVersion":       "86f879de57f32e91135ce6c44bdede20d33e90ed783add8de5d5b1fd2aea0ce2",
+			"validateKnownSchemaVersion":       "0aaad2b654bddbe217531336ed46516bcd6ff0c2587c5f2bb294ee76184931c7",
 			"validateMigrationPreflight":       "70843e4fedff7b293fc588c53ea29d8a20e0598dc0b2a5fb3dfd6f8a44e74026",
 			"validateSchema":                   "03e687e88be737459ecbdde22172fd82222a45c8b6c6bd9942fb83a1da1c1e93",
 			"validateSchemaVersion":            "56b5625f087b8809fd6abc6e9e67326dac4e35d71ba77e32cf6cad00c5ec41f4",

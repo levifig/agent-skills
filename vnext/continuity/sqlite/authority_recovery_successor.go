@@ -569,10 +569,14 @@ func (store *Store) ReplaceSyncAuthorityRecoverySuccessor(
 	if err != nil {
 		return SyncAuthorityRecoveryState{}, err
 	}
-	if floor <= current.value.Successor.Snapshot.InventoryArrivalHead {
+	if floor.membershipGeneration <= current.value.Successor.Snapshot.MembershipGeneration &&
+		floor.relayHead <= current.value.Successor.Snapshot.InventoryArrivalHead {
 		return SyncAuthorityRecoveryState{}, syncProblem(SyncErrorConflict, "inventory_arrival_head", "active recovery successor is not stale")
 	}
-	if snapshot.InventoryArrivalHead < floor {
+	if snapshot.MembershipGeneration < floor.membershipGeneration {
+		return SyncAuthorityRecoveryState{}, syncProblem(SyncErrorCursor, "membership_generation", "regressed below the retained authority watermark")
+	}
+	if snapshot.InventoryArrivalHead < floor.relayHead {
 		return SyncAuthorityRecoveryState{}, syncProblem(SyncErrorCursor, "inventory_arrival_head", "regressed below the retained relay watermark")
 	}
 	if err := advanceSyncAuthorityRecoveryWatermarkV1(ctx, tx, projectID, snapshot); err != nil {
@@ -750,11 +754,12 @@ func syncAuthorityRecoveryTransitionIsReplacementV1(
 
 func syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID continuity.ProjectID, snapshot SyncAuthoritySnapshot) SyncRelayWatermark {
 	return SyncRelayWatermark{
-		ProjectID:       projectID,
-		ChannelID:       snapshot.ChannelID,
-		RelayGeneration: snapshot.RelayGeneration,
-		AdminPublicKey:  snapshot.AdminPublicKey,
-		RelayHead:       snapshot.InventoryArrivalHead,
+		ProjectID:            projectID,
+		ChannelID:            snapshot.ChannelID,
+		RelayGeneration:      snapshot.RelayGeneration,
+		AdminPublicKey:       snapshot.AdminPublicKey,
+		MembershipGeneration: snapshot.MembershipGeneration,
+		RelayHead:            snapshot.InventoryArrivalHead,
 	}
 }
 
@@ -763,7 +768,7 @@ func syncAuthorityRecoveryWatermarkFloorV1(
 	tx *sql.Tx,
 	projectID continuity.ProjectID,
 	snapshot SyncAuthoritySnapshot,
-) (int64, error) {
+) (syncRelayWatermarkRecordV1, error) {
 	return auditSyncRelayWatermarkSourcesV1(ctx, tx, syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot))
 }
 
@@ -777,10 +782,7 @@ func requireSyncAuthorityRecoveryWatermarkFloorV1(
 	if err != nil {
 		return err
 	}
-	if snapshot.InventoryArrivalHead < floor {
-		return syncProblem(SyncErrorCursor, "inventory_arrival_head", "regressed below the retained relay watermark")
-	}
-	return nil
+	return requireSyncAuthoritySnapshotAtExactWatermarkV1(snapshot, floor)
 }
 
 func requireRetainedSyncAuthorityRecoveryWatermarkV1(
@@ -811,10 +813,7 @@ func requireRetainedSyncAuthorityRecoveryWatermarkFloorV1(
 	if err != nil {
 		return err
 	}
-	if snapshot.InventoryArrivalHead < floor {
-		return syncProblem(SyncErrorCursor, "inventory_arrival_head", "regressed below the retained relay watermark")
-	}
-	return nil
+	return requireSyncAuthoritySnapshotAtExactWatermarkV1(snapshot, floor)
 }
 
 func readAndValidateRetainedSyncAuthorityRecoveryWatermarkV1(
@@ -828,11 +827,15 @@ func readAndValidateRetainedSyncAuthorityRecoveryWatermarkV1(
 	if err != nil {
 		return syncRelayWatermarkRecordV1{}, err
 	}
-	if !found || retained.relayHead < snapshot.InventoryArrivalHead {
+	if !found {
 		return syncRelayWatermarkRecordV1{}, corruptSyncRelayWatermarkProblemV1()
 	}
 	if retained.adminPublicKey != snapshot.AdminPublicKey {
 		return syncRelayWatermarkRecordV1{}, syncProblem(SyncErrorConflict, "admin_public_key", "does not match the retained relay identity")
+	}
+	if retained.membershipGeneration < snapshot.MembershipGeneration ||
+		retained.relayHead < snapshot.InventoryArrivalHead {
+		return syncRelayWatermarkRecordV1{}, corruptSyncRelayWatermarkProblemV1()
 	}
 	return retained, nil
 }
@@ -843,39 +846,22 @@ func advanceSyncAuthorityRecoveryWatermarkV1(
 	projectID continuity.ProjectID,
 	snapshot SyncAuthoritySnapshot,
 ) error {
-	want := syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot)
-	if err := requireSyncAuthorityRecoveryWatermarkFloorV1(ctx, tx, projectID, snapshot); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO continuity_sync_relay_watermarks(
-  project_id, channel_id, relay_generation, admin_public_key, relay_head
-) VALUES(?, ?, ?, ?, ?)
-ON CONFLICT(project_id, channel_id, relay_generation) DO UPDATE SET
-  relay_head = excluded.relay_head
-WHERE continuity_sync_relay_watermarks.admin_public_key = excluded.admin_public_key
-  AND continuity_sync_relay_watermarks.relay_head < excluded.relay_head`,
-		string(projectID), snapshot.ChannelID[:], snapshot.RelayGeneration[:], snapshot.AdminPublicKey[:], snapshot.InventoryArrivalHead,
-	); err != nil {
-		return syncTransactionProblem(ctx)
-	}
-	retained, found, err := readSyncRelayWatermarkV1(ctx, tx, syncRelayWatermarkKeyFromValueV1(want))
-	if err != nil {
-		return err
-	}
-	if !found {
-		return corruptSyncRelayWatermarkProblemV1()
-	}
-	if retained.adminPublicKey != want.AdminPublicKey {
-		return syncProblem(SyncErrorConflict, "admin_public_key", "does not match the retained relay identity")
-	}
-	if retained.relayHead > want.RelayHead {
-		return syncProblem(SyncErrorCursor, "inventory_arrival_head", "regressed below the retained relay watermark")
-	}
-	if retained.relayHead != want.RelayHead {
-		return corruptSyncRelayWatermarkProblemV1()
-	}
-	return nil
+	return advanceVerifiedSyncRelayWatermarkObservationV1(
+		ctx, tx, syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot),
+	)
+}
+
+func requireSyncAuthoritySnapshotAtExactWatermarkV1(
+	snapshot SyncAuthoritySnapshot,
+	floor syncRelayWatermarkRecordV1,
+) error {
+	return requireSyncRelayObservationAtExactWatermarkV1(
+		SyncRelayWatermark{
+			MembershipGeneration: snapshot.MembershipGeneration,
+			RelayHead:            snapshot.InventoryArrivalHead,
+		},
+		floor,
+	)
 }
 
 func changeSyncAuthorityRecoveryPredecessorRoleV1(

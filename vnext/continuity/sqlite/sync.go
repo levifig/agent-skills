@@ -241,6 +241,11 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 	if err != nil {
 		return SyncProgress{}, err
 	}
+	if err := requireKnownExactSyncRelayWatermarkV1(
+		ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+	); err != nil {
+		return SyncProgress{}, err
+	}
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
 		return SyncProgress{}, err

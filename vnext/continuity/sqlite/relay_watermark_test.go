@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"github.com/levifig/loaf/vnext/continuity"
 )
 
-func TestAdvanceSyncRelayWatermarkInsertsReplaysAdvancesReopensAndRejectsLower(t *testing.T) {
+func TestAdvanceSyncRelayWatermarkInsertsReplaysAdvancesReopensAndRetainsJoin(t *testing.T) {
 	root := filepath.Join(testTempDir(t), "relay-watermark-lifecycle")
 	store, err := Open(root, "environment-local")
 	if err != nil {
@@ -50,10 +51,8 @@ func TestAdvanceSyncRelayWatermarkInsertsReplaysAdvancesReopensAndRejectsLower(t
 	}
 	lower := advanced
 	lower.RelayHead--
-	if got, err := store.AdvanceSyncRelayWatermark(context.Background(), lower); !reflect.DeepEqual(got, SyncRelayWatermark{}) || err == nil {
-		t.Fatalf("AdvanceSyncRelayWatermark(lower) = (%#v, %v), want cursor refusal", got, err)
-	} else {
-		assertSyncErrorCode(t, err, SyncErrorCursor)
+	if got, err := store.AdvanceSyncRelayWatermark(context.Background(), lower); err != nil || got != advanced {
+		t.Fatalf("AdvanceSyncRelayWatermark(lower) = (%#v, %v), want retained join (%#v, nil)", got, err, advanced)
 	}
 	assertSyncRelayWatermarkRow(t, store, advanced)
 }
@@ -166,12 +165,8 @@ func TestAdvanceSyncRelayWatermarkConcurrentCallsRetainMaximum(t *testing.T) {
 	}
 	wait.Wait()
 	for index, err := range errorsByHead {
-		if err == nil {
-			continue
-		}
-		var syncErr *SyncError
-		if !errors.As(err, &syncErr) || syncErr.Code != SyncErrorCursor {
-			t.Fatalf("concurrent head %d error = %v, want nil or cursor refusal", index+1, err)
+		if err != nil {
+			t.Fatalf("concurrent head %d error = %v", index+1, err)
 		}
 	}
 	want := base
@@ -191,10 +186,10 @@ func TestAdvanceSyncRelayWatermarkInheritsDurableSourceMaximumAndAdmin(t *testin
 		environments := syncAuthorityCandidateManyEnvironmentsV2(5)
 		stageReadySyncAuthorityCandidateFromSnapshot(t, store, projectID, snapshot, environments)
 		watermark := syncRelayWatermarkFromSnapshot(projectID, snapshot, 12)
-		if _, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err == nil {
-			t.Fatal("AdvanceSyncRelayWatermark(below candidate) error = nil")
-		} else {
-			assertSyncErrorCode(t, err, SyncErrorCursor)
+		want := watermark
+		want.RelayHead = snapshot.InventoryArrivalHead
+		if got, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil || got != want {
+			t.Fatalf("AdvanceSyncRelayWatermark(below candidate) = (%#v, %v), want (%#v, nil)", got, err, want)
 		}
 		watermark.RelayHead = 13
 		if got, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil || got != watermark {
@@ -218,12 +213,15 @@ func TestAdvanceSyncRelayWatermarkInheritsDurableSourceMaximumAndAdmin(t *testin
 		if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_relay_watermarks`).Scan(&rows); err != nil {
 			t.Fatalf("count watermarks after admin equivocation: %v", err)
 		}
-		if rows != 0 {
+		if rows != 1 {
 			t.Fatalf("admin equivocation retained %d watermark rows", rows)
 		}
+		assertSyncRelayWatermarkRow(
+			t, store, syncRelayWatermarkFromSnapshot(projectID, snapshot, snapshot.InventoryArrivalHead),
+		)
 	})
 
-	t.Run("canonical and sync progress", func(t *testing.T) {
+	t.Run("canonical ignores data-plane progress", func(t *testing.T) {
 		store := openSyncStore(t, "relay-watermark-canonical-source")
 		projectID := continuity.ProjectID("project-relay-watermark-canonical-source")
 		snapshot := syncAuthorityCandidateBootstrapSnapshotV2(5)
@@ -237,10 +235,8 @@ func TestAdvanceSyncRelayWatermarkInheritsDurableSourceMaximumAndAdmin(t *testin
 			t.Fatalf("advance sync progress source: %v", err)
 		}
 		watermark := syncRelayWatermarkFromSnapshot(projectID, snapshot, 8)
-		if _, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err == nil {
-			t.Fatal("AdvanceSyncRelayWatermark(below progress) error = nil")
-		} else {
-			assertSyncErrorCode(t, err, SyncErrorCursor)
+		if got, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil || got != watermark {
+			t.Fatalf("AdvanceSyncRelayWatermark(above canonical) = (%#v, %v), want (%#v, nil)", got, err, watermark)
 		}
 		watermark.RelayHead = 9
 		if got, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil || got != watermark {
@@ -255,7 +251,7 @@ func TestSyncRelayWatermarkSurvivesAuthorityCandidateLifecycle(t *testing.T) {
 			store := openSyncStore(t, "relay-watermark-lifecycle-"+lifecycle)
 			projectID := continuity.ProjectID("project-relay-watermark-lifecycle-" + lifecycle)
 			snapshot := syncAuthorityCandidateBootstrapSnapshotV2(5)
-			snapshot.InventoryArrivalHead = 11
+			snapshot.InventoryArrivalHead = 17
 			ready := stageReadySyncAuthorityCandidateFromSnapshot(t, store, projectID, snapshot, syncAuthorityCandidateManyEnvironmentsV2(5))
 			watermark := syncRelayWatermarkFromSnapshot(projectID, snapshot, 17)
 			if _, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil {
@@ -312,7 +308,7 @@ func TestSyncRelayWatermarkSchemaIsStrictCredentialFreeAndConstrained(t *testing
 	for index := 0; index < valueType.NumField(); index++ {
 		valueFields = append(valueFields, valueType.Field(index).Name)
 	}
-	wantValueFields := []string{"ProjectID", "ChannelID", "RelayGeneration", "AdminPublicKey", "RelayHead"}
+	wantValueFields := []string{"ProjectID", "ChannelID", "RelayGeneration", "AdminPublicKey", "MembershipGeneration", "RelayHead"}
 	if !reflect.DeepEqual(valueFields, wantValueFields) {
 		t.Fatalf("watermark value fields = %v, want public identity only %v", valueFields, wantValueFields)
 	}
@@ -334,7 +330,10 @@ func TestSyncRelayWatermarkSchemaIsStrictCredentialFreeAndConstrained(t *testing
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate watermark columns: %v", err)
 	}
-	wantColumns := []string{"project_id", "channel_id", "relay_generation", "admin_public_key", "relay_head"}
+	wantColumns := []string{
+		"project_id", "channel_id", "relay_generation", "admin_public_key",
+		"membership_generation", "relay_head", "membership_floor_known",
+	}
 	if !reflect.DeepEqual(columns, wantColumns) {
 		t.Fatalf("watermark columns = %v, want credential-free %v", columns, wantColumns)
 	}
@@ -342,7 +341,7 @@ func TestSyncRelayWatermarkSchemaIsStrictCredentialFreeAndConstrained(t *testing
 	if err := store.db.QueryRow(`SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'continuity_sync_relay_watermarks'`).Scan(&tableSQL); err != nil {
 		t.Fatalf("read watermark DDL: %v", err)
 	}
-	for _, forbidden := range []string{"token", "secret", "certificate", "environment", "membership", "candidate"} {
+	for _, forbidden := range []string{"token", "secret", "certificate", "environment", "candidate"} {
 		if strings.Contains(strings.ToLower(tableSQL), forbidden) {
 			t.Fatalf("watermark DDL contains credential/attempt field %q: %s", forbidden, tableSQL)
 		}
@@ -368,20 +367,28 @@ func TestSyncRelayWatermarkSchemaIsStrictCredentialFreeAndConstrained(t *testing
 		channel    []byte
 		generation []byte
 		admin      []byte
+		membership int64
 		head       int64
+		known      int64
 	}{
-		{name: "project", projectID: "invalid project", channel: validDigest[:], generation: validDigest[:], admin: validDigest[:], head: 0},
-		{name: "channel length", projectID: "project-bad-channel-length", channel: []byte{1}, generation: validDigest[:], admin: validDigest[:], head: 0},
-		{name: "channel zero", projectID: "project-bad-channel-zero", channel: make([]byte, 32), generation: validDigest[:], admin: validDigest[:], head: 0},
-		{name: "generation", projectID: "project-bad-generation", channel: validDigest[:], generation: make([]byte, 32), admin: validDigest[:], head: 0},
-		{name: "admin", projectID: "project-bad-admin", channel: validDigest[:], generation: validDigest[:], admin: make([]byte, 32), head: 0},
-		{name: "head", projectID: "project-bad-head", channel: validDigest[:], generation: validDigest[:], admin: validDigest[:], head: -1},
+		{name: "project", projectID: "invalid project", channel: validDigest[:], generation: validDigest[:], admin: validDigest[:], membership: 1, known: 1},
+		{name: "channel length", projectID: "project-bad-channel-length", channel: []byte{1}, generation: validDigest[:], admin: validDigest[:], membership: 1, known: 1},
+		{name: "channel zero", projectID: "project-bad-channel-zero", channel: make([]byte, 32), generation: validDigest[:], admin: validDigest[:], membership: 1, known: 1},
+		{name: "generation", projectID: "project-bad-generation", channel: validDigest[:], generation: make([]byte, 32), admin: validDigest[:], membership: 1, known: 1},
+		{name: "admin", projectID: "project-bad-admin", channel: validDigest[:], generation: validDigest[:], admin: make([]byte, 32), membership: 1, known: 1},
+		{name: "membership below", projectID: "project-bad-membership-below", channel: validDigest[:], generation: validDigest[:], admin: validDigest[:], membership: -1, known: 1},
+		{name: "membership above", projectID: "project-bad-membership-above", channel: validDigest[:], generation: validDigest[:], admin: validDigest[:], membership: 4294967296, known: 1},
+		{name: "head", projectID: "project-bad-head", channel: validDigest[:], generation: validDigest[:], admin: validDigest[:], membership: 1, head: -1, known: 1},
+		{name: "known", projectID: "project-bad-known", channel: validDigest[:], generation: validDigest[:], admin: validDigest[:], membership: 1, known: 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := store.db.Exec(`
 INSERT INTO continuity_sync_relay_watermarks(
-  project_id, channel_id, relay_generation, admin_public_key, relay_head
-) VALUES(?, ?, ?, ?, ?)`, test.projectID, test.channel, test.generation, test.admin, test.head); err == nil {
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, relay_head, membership_floor_known
+) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+				test.projectID, test.channel, test.generation, test.admin, test.membership, test.head, test.known,
+			); err == nil {
 				t.Fatal("watermark constraints accepted malformed row")
 			}
 		})
@@ -404,8 +411,8 @@ INSERT INTO continuity_sync_projects(
   project_id, channel_id, relay_generation, admin_public_key,
   membership_generation, activation_state, downloaded_cursor,
   applied_cursor, relay_head
-) VALUES(?, ?, ?, ?, 1, 'staging', 0, 0, 10)`,
-		string(projectID), channelID[:], relayGeneration[:], adminPublicKey[:],
+) VALUES(?, ?, ?, ?, 1, 'staging', 0, 0, ?)`,
+		string(projectID), channelID[:], relayGeneration[:], adminPublicKey[:], int64(math.MaxInt64),
 	); err != nil {
 		db.Close()
 		t.Fatalf("seed v4 sync progress source: %v", err)
@@ -434,21 +441,37 @@ INSERT INTO continuity_sync_authorities(
 	if err != nil {
 		t.Fatalf("Open(v4) error = %v", err)
 	}
+	migrated := SyncRelayWatermark{
+		ProjectID:            projectID,
+		ChannelID:            channelID,
+		RelayGeneration:      relayGeneration,
+		AdminPublicKey:       adminPublicKey,
+		MembershipGeneration: 1,
+		RelayHead:            15,
+	}
+	assertSyncRelayWatermarkRowWithKnown(t, store, migrated, false)
+	assertSyncRelayWatermarkRowWithKnown(t, store, SyncRelayWatermark{
+		ProjectID:            candidateOnlyProjectID,
+		ChannelID:            candidateOnlyChannelID,
+		RelayGeneration:      candidateOnlyRelayGeneration,
+		AdminPublicKey:       candidateOnlyAdminPublicKey,
+		MembershipGeneration: 1,
+		RelayHead:            8,
+	}, false)
+	if got, err := store.AdvanceSyncRelayWatermark(context.Background(), migrated); err != nil || got != migrated {
+		t.Fatalf("AdvanceSyncRelayWatermark(migrated frontier) = (%#v, %v), want (%#v, nil)", got, err, migrated)
+	}
+	assertSyncRelayWatermarkRowWithKnown(t, store, migrated, true)
+	if err := store.Close(); err != nil {
+		t.Fatalf("close healed migrated store: %v", err)
+	}
+
+	store, err = Open(stateRoot, "environment-local")
+	if err != nil {
+		t.Fatalf("reopen healed v4 migration: %v", err)
+	}
 	defer store.Close()
-	assertSyncRelayWatermarkRow(t, store, SyncRelayWatermark{
-		ProjectID:       projectID,
-		ChannelID:       channelID,
-		RelayGeneration: relayGeneration,
-		AdminPublicKey:  adminPublicKey,
-		RelayHead:       15,
-	})
-	assertSyncRelayWatermarkRow(t, store, SyncRelayWatermark{
-		ProjectID:       candidateOnlyProjectID,
-		ChannelID:       candidateOnlyChannelID,
-		RelayGeneration: candidateOnlyRelayGeneration,
-		AdminPublicKey:  candidateOnlyAdminPublicKey,
-		RelayHead:       8,
-	})
+	assertSyncRelayWatermarkRowWithKnown(t, store, migrated, true)
 }
 
 func TestContinuitySQLiteV4RelayWatermarkMigrationRejectsAdminEquivocationWithoutMutation(t *testing.T) {
@@ -505,21 +528,23 @@ INSERT INTO continuity_sync_projects(
 
 func testSyncRelayWatermark(projectID continuity.ProjectID, head int64) SyncRelayWatermark {
 	return SyncRelayWatermark{
-		ProjectID:       projectID,
-		ChannelID:       testSyncChannelID("relay-watermark-channel"),
-		RelayGeneration: testAuthorityDigest(0x81),
-		AdminPublicKey:  testAuthorityDigest(0x82),
-		RelayHead:       head,
+		ProjectID:            projectID,
+		ChannelID:            testSyncChannelID("relay-watermark-channel"),
+		RelayGeneration:      testAuthorityDigest(0x81),
+		AdminPublicKey:       testAuthorityDigest(0x82),
+		MembershipGeneration: 1,
+		RelayHead:            head,
 	}
 }
 
 func syncRelayWatermarkFromSnapshot(projectID continuity.ProjectID, snapshot SyncAuthoritySnapshot, head int64) SyncRelayWatermark {
 	return SyncRelayWatermark{
-		ProjectID:       projectID,
-		ChannelID:       snapshot.ChannelID,
-		RelayGeneration: snapshot.RelayGeneration,
-		AdminPublicKey:  snapshot.AdminPublicKey,
-		RelayHead:       head,
+		ProjectID:            projectID,
+		ChannelID:            snapshot.ChannelID,
+		RelayGeneration:      snapshot.RelayGeneration,
+		AdminPublicKey:       snapshot.AdminPublicKey,
+		MembershipGeneration: snapshot.MembershipGeneration,
+		RelayHead:            head,
 	}
 }
 
@@ -548,14 +573,24 @@ func stageReadySyncAuthorityCandidateFromSnapshot(t *testing.T, store *Store, pr
 
 func assertSyncRelayWatermarkRow(t *testing.T, store *Store, want SyncRelayWatermark) {
 	t.Helper()
+	assertSyncRelayWatermarkRowWithKnown(t, store, want, true)
+}
+
+func assertSyncRelayWatermarkRowWithKnown(t *testing.T, store *Store, want SyncRelayWatermark, wantKnown bool) {
+	t.Helper()
 	var got SyncRelayWatermark
 	var channel, generation, admin []byte
+	var known int64
 	if err := store.db.QueryRow(`
-SELECT project_id, channel_id, relay_generation, admin_public_key, relay_head
+SELECT project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, relay_head, membership_floor_known
 FROM continuity_sync_relay_watermarks
 WHERE project_id = ? AND channel_id = ? AND relay_generation = ?`,
 		string(want.ProjectID), want.ChannelID[:], want.RelayGeneration[:],
-	).Scan(&got.ProjectID, &channel, &generation, &admin, &got.RelayHead); err != nil {
+	).Scan(
+		&got.ProjectID, &channel, &generation, &admin,
+		&got.MembershipGeneration, &got.RelayHead, &known,
+	); err != nil {
 		t.Fatalf("read relay watermark: %v", err)
 	}
 	copy(got.ChannelID[:], channel)
@@ -563,6 +598,9 @@ WHERE project_id = ? AND channel_id = ? AND relay_generation = ?`,
 	copy(got.AdminPublicKey[:], admin)
 	if got != want {
 		t.Fatalf("relay watermark row = %#v, want %#v", got, want)
+	}
+	if known != int64(boolIntV2(wantKnown)) {
+		t.Fatalf("relay watermark membership floor known = %d, want %t", known, wantKnown)
 	}
 }
 

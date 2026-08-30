@@ -147,6 +147,9 @@ func (store *Store) InstallVerifiedSyncAuthority(ctx context.Context, projectID 
 		if err := validateSyncAuthority(authority); err != nil {
 			return SyncProgress{}, err
 		}
+		if err := advanceVerifiedCompatibilityAuthorityWatermarkV1(ctx, tx, projectID, authority); err != nil {
+			return SyncProgress{}, err
+		}
 		authorityDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
 		if err != nil {
 			return SyncProgress{}, syncProblem(SyncErrorInvalid, "sync_authority", "cannot be encoded by the frozen authority codec")
@@ -201,6 +204,12 @@ INSERT INTO continuity_sync_authorities(
 			if activeCandidate {
 				return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority_candidate", "must be promoted or discarded before compatibility install")
 			}
+			if authority.MembershipGeneration < persisted.MembershipGeneration {
+				return SyncProgress{}, syncProblem(SyncErrorConflict, "membership_generation", "regressed below the pinned authority")
+			}
+			if err := advanceVerifiedCompatibilityAuthorityWatermarkV1(ctx, tx, projectID, authority); err != nil {
+				return SyncProgress{}, err
+			}
 			if err := reconcileSyncAuthorityV1(ctx, tx, projectID, persisted, authority); err != nil {
 				return SyncProgress{}, err
 			}
@@ -227,6 +236,10 @@ WHERE project_id = ?
 			if err := requireOneAffectedV1(result, ctx); err != nil {
 				return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata changed during reconciliation")
 			}
+		} else if err := requireKnownExactSyncRelayWatermarkV1(
+			ctx, tx, syncRelayWatermarkFromAuthorityV1(projectID, authority),
+		); err != nil {
+			return SyncProgress{}, err
 		}
 	}
 
@@ -399,6 +412,11 @@ func (store *Store) CurrentSyncEnvironmentStates(
 	defer tx.Rollback()
 	binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, verifiedAuthority)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireKnownExactSyncRelayWatermarkV1(
+		ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+	); err != nil {
 		return nil, err
 	}
 	activeCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)

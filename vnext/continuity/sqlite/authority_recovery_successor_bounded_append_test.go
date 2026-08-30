@@ -164,7 +164,7 @@ func TestRecoverySuccessorIntermediateAppendDefersHistoricalWatermarkSourceAudit
 	}
 }
 
-func TestRecoverySuccessorIntermediateAppendUsesBoundedProjectWatermarkFloor(t *testing.T) {
+func TestRecoverySuccessorIntermediateAppendIgnoresDataPlaneHeadAndHonorsAuthorityFrontier(t *testing.T) {
 	fixture := stageCanonicalBoundedRecoverySuccessorV1(t, "project-watermark-floor")
 	firstCheckpoint := fixture.state.Successor.Checkpoint()
 	secondPage := syncAuthorityCandidatePageV2(
@@ -196,15 +196,37 @@ func TestRecoverySuccessorIntermediateAppendUsesBoundedProjectWatermarkFloor(t *
 	}
 
 	thirdPage := syncAuthorityCandidatePageV2(secondPage.ThroughEnvironmentID, fixture.environments[8:12], true)
-	if _, err := fixture.store.AppendVerifiedSyncAuthorityRecoverySuccessorPage(
+	advanced, err := fixture.store.AppendVerifiedSyncAuthorityRecoverySuccessorPage(
 		context.Background(), fixture.projectID, state.Transition, state.Successor.Checkpoint(),
 		fixture.start.SuccessorSnapshot, thirdPage,
+	)
+	if err != nil {
+		t.Fatalf("new append after data-plane head advance error = %v", err)
+	}
+
+	authorityFrontier := syncRelayWatermarkFromSnapshot(
+		fixture.projectID, fixture.start.SuccessorSnapshot, 9,
+	)
+	if got, err := fixture.store.AdvanceSyncRelayWatermark(context.Background(), authorityFrontier); err != nil || got != authorityFrontier {
+		t.Fatalf("AdvanceSyncRelayWatermark(authority frontier) = (%#v, %v), want (%#v, nil)", got, err, authorityFrontier)
+	}
+	replayed, err = fixture.store.AppendVerifiedSyncAuthorityRecoverySuccessorPage(
+		context.Background(), fixture.projectID, advanced.Transition, state.Successor.Checkpoint(),
+		fixture.start.SuccessorSnapshot, thirdPage,
+	)
+	if err != nil || replayed != advanced {
+		t.Fatalf("exact replay after authority-frontier advance = (%#v, %v), want (%#v, nil)", replayed, err, advanced)
+	}
+	finalPage := syncAuthorityCandidatePageV2(thirdPage.ThroughEnvironmentID, fixture.environments[12:], false)
+	if _, err := fixture.store.AppendVerifiedSyncAuthorityRecoverySuccessorPage(
+		context.Background(), fixture.projectID, advanced.Transition, advanced.Successor.Checkpoint(),
+		fixture.start.SuccessorSnapshot, finalPage,
 	); err == nil {
-		t.Fatal("new append below project relay head error = nil")
+		t.Fatal("new append below authority frontier error = nil")
 	} else {
 		assertSyncAuthorityRecoveryProblemCodeV1(t, err, SyncErrorCursor)
 	}
-	assertRawRecoverySuccessorCheckpointV1(t, fixture.store, fixture.projectID, state.Successor)
+	assertRawRecoverySuccessorCheckpointV1(t, fixture.store, fixture.projectID, advanced.Successor)
 }
 
 type boundedRecoverySuccessorFixtureV1 struct {

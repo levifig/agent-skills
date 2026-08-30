@@ -305,7 +305,8 @@ func TestContinuitySQLiteSchemaDDLGoldenChecksums(t *testing.T) {
 		{name: "v4", ddl: schemaV4DDL, checksum: "150cc2b8dfcaecda0fefcfbdff02aa924644984ae7bdef4480f884dc63fe95ca", bytes: 28556},
 		{name: "v5", ddl: schemaV5DDL, checksum: "4f81496ceac409a49ddd980fed0fe3f037cc7bff8e45f7b4f0a4e3a1aba985e4", bytes: 29204},
 		{name: "v6", ddl: schemaV6DDL, checksum: "1aa97f7f4f453f8bf0a659a346949e8865900dbc9675b8737c481238bf69843e", bytes: 31313},
-		{name: "v7", ddl: schemaDDL, checksum: "cc8885f15ec98c010752282222ece44fcd9e8378a212aa177d762112fca1e930", bytes: 34272},
+		{name: "v7", ddl: schemaV7DDL, checksum: "cc8885f15ec98c010752282222ece44fcd9e8378a212aa177d762112fca1e930", bytes: 34272},
+		{name: "v8", ddl: schemaDDL, checksum: "c65fb57b1fe6e50c71246b4b654aff767dd8ef7236c483070a634b033c6e67e9", bytes: 34469},
 	}
 	for _, test := range tests {
 		test := test
@@ -539,7 +540,7 @@ func TestContinuitySQLiteRefusesDriftedOrFutureV5IdentityWithoutMigrationMutatio
 		{
 			name: "future user version",
 			mutate: func(t *testing.T, db *sql.DB) {
-				if _, err := db.Exec(`PRAGMA user_version = 8`); err != nil {
+				if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion+1)); err != nil {
 					t.Fatalf("set future user version: %v", err)
 				}
 			},
@@ -987,6 +988,25 @@ func TestContinuitySQLiteFrozenV5ValidatorRejectsV6WithoutMutation(t *testing.T)
 	}
 }
 
+func TestContinuitySQLiteFrozenV7ValidatorRejectsV8WithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	before := schemaIdentitySnapshot(t, store.db)
+	if err := validateSchemaVersion(store.db, 7, checksumSchemaV7(), expectedSchemaV7Objects()); err == nil {
+		t.Fatal("frozen v7 validation of v8 error = nil, want refusal")
+	}
+	after := schemaIdentitySnapshot(t, store.db)
+	if before != after {
+		t.Fatalf("frozen v7 validation mutated v8: before=%#v after=%#v", before, after)
+	}
+}
+
 func TestContinuitySQLiteConcurrentOpenMigratesExactSchemas(t *testing.T) {
 	t.Parallel()
 
@@ -1000,6 +1020,8 @@ func TestContinuitySQLiteConcurrentOpenMigratesExactSchemas(t *testing.T) {
 		{name: "v3", create: createV3ContinuityDatabase, seedAuthority: true},
 		{name: "v4", create: createV4ContinuityDatabase},
 		{name: "v5", create: createV5ContinuityDatabase},
+		{name: "v6", create: createV6ContinuityDatabase},
+		{name: "v7", create: createV7ContinuityDatabase},
 	}
 	for _, test := range tests {
 		test := test
@@ -1225,6 +1247,44 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 
 	t.Run("v5 preflight observes exact v7", func(t *testing.T) {
 		t.Parallel()
+		stateRoot := filepath.Join(testTempDir(t), "state")
+		databasePath := createV7ContinuityDatabase(t, stateRoot)
+		db, err := openDatabase(databasePath)
+		if err != nil {
+			t.Fatalf("open exact v7 database: %v", err)
+		}
+		defer db.Close()
+		before := schemaIdentitySnapshot(t, db)
+		if err := migrateSchemaV5ToV6(db); err != nil {
+			t.Fatalf("migrateSchemaV5ToV6(exact v7) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, db)
+		if before != after {
+			t.Fatalf("v5 migration preflight mutated exact v7: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v6 preflight observes exact v7", func(t *testing.T) {
+		t.Parallel()
+		stateRoot := filepath.Join(testTempDir(t), "state")
+		databasePath := createV7ContinuityDatabase(t, stateRoot)
+		db, err := openDatabase(databasePath)
+		if err != nil {
+			t.Fatalf("open exact v7 database: %v", err)
+		}
+		defer db.Close()
+		before := schemaIdentitySnapshot(t, db)
+		if err := migrateSchemaV6ToV7(db); err != nil {
+			t.Fatalf("migrateSchemaV6ToV7(exact v7) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, db)
+		if before != after {
+			t.Fatalf("v6 migration preflight mutated exact v7: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v5 preflight observes exact v8", func(t *testing.T) {
+		t.Parallel()
 		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
 		if err != nil {
 			t.Fatalf("Open() error = %v", err)
@@ -1232,15 +1292,15 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		defer store.Close()
 		before := schemaIdentitySnapshot(t, store.db)
 		if err := migrateSchemaV5ToV6(store.db); err != nil {
-			t.Fatalf("migrateSchemaV5ToV6(exact v7) error = %v", err)
+			t.Fatalf("migrateSchemaV5ToV6(exact v8) error = %v", err)
 		}
 		after := schemaIdentitySnapshot(t, store.db)
 		if before != after {
-			t.Fatalf("v5 migration preflight mutated exact v7: before=%#v after=%#v", before, after)
+			t.Fatalf("v5 migration preflight mutated exact v8: before=%#v after=%#v", before, after)
 		}
 	})
 
-	t.Run("v6 preflight observes exact v7", func(t *testing.T) {
+	t.Run("v6 preflight observes exact v8", func(t *testing.T) {
 		t.Parallel()
 		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
 		if err != nil {
@@ -1249,11 +1309,28 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		defer store.Close()
 		before := schemaIdentitySnapshot(t, store.db)
 		if err := migrateSchemaV6ToV7(store.db); err != nil {
-			t.Fatalf("migrateSchemaV6ToV7(exact v7) error = %v", err)
+			t.Fatalf("migrateSchemaV6ToV7(exact v8) error = %v", err)
 		}
 		after := schemaIdentitySnapshot(t, store.db)
 		if before != after {
-			t.Fatalf("v6 migration preflight mutated exact v7: before=%#v after=%#v", before, after)
+			t.Fatalf("v6 migration preflight mutated exact v8: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v7 preflight observes exact v8", func(t *testing.T) {
+		t.Parallel()
+		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+		if err != nil {
+			t.Fatalf("Open() error = %v", err)
+		}
+		defer store.Close()
+		before := schemaIdentitySnapshot(t, store.db)
+		if err := migrateSchemaV7ToV8(store.db); err != nil {
+			t.Fatalf("migrateSchemaV7ToV8(exact v8) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, store.db)
+		if before != after {
+			t.Fatalf("v7 migration preflight mutated exact v8: before=%#v after=%#v", before, after)
 		}
 	})
 }
@@ -2058,6 +2135,60 @@ func createV6ContinuityDatabase(t *testing.T, stateRoot string) string {
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close v6 database: %v", err)
+	}
+	return databasePath
+}
+
+func createV7ContinuityDatabase(t *testing.T, stateRoot string) string {
+	t.Helper()
+
+	privateDirectory := filepath.Join(stateRoot, "vnext")
+	if err := os.MkdirAll(privateDirectory, 0o700); err != nil {
+		t.Fatalf("create v7 private directory: %v", err)
+	}
+	databasePath := filepath.Join(privateDirectory, databaseFileName)
+	file, err := os.OpenFile(databasePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("create v7 database: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close v7 database file: %v", err)
+	}
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v7 database: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		db.Close()
+		t.Fatalf("begin v7 schema: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schemaV7DDL); err != nil {
+		db.Close()
+		t.Fatalf("create v7 schema: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
+		db.Close()
+		t.Fatalf("set v7 application id: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 7`); err != nil {
+		db.Close()
+		t.Fatalf("set v7 user version: %v", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, 'vnext', 7, ?)`,
+		checksumSchemaV7(),
+	); err != nil {
+		db.Close()
+		t.Fatalf("record v7 schema identity: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		db.Close()
+		t.Fatalf("commit v7 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v7 database: %v", err)
 	}
 	return databasePath
 }
