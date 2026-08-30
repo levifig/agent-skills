@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -71,6 +72,13 @@ func TestSyncAuthorityCandidateStagesReplaysReopensReadiesAndDiscards(t *testing
 	}
 	if !ready.Ready || ready.PageCount != 3 || ready.EnvironmentCount != 5 || ready.AuthorityDigestVersion != 2 || ready.AuthorityDigest == ([32]byte{}) {
 		t.Fatalf("ready candidate = %#v", ready)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close(ready) error = %v", err)
+	}
+	store, err = Open(stateRoot, "environment-local")
+	if err != nil {
+		t.Fatalf("Open(ready replay) error = %v", err)
 	}
 	for name, page := range map[string]SyncAuthorityPage{"first": firstPage, "second": secondPage, "final": finalPage} {
 		replayed, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, page)
@@ -164,6 +172,14 @@ func TestSyncAuthorityCandidateSubsequentPageQueriesUseBoundedIndexes(t *testing
 		want  []string
 	}{
 		{
+			name:  "candidate first cursor",
+			query: syncAuthorityCandidateFirstPageByCursorQueryV2,
+			args:  []any{string(projectID), candidateID[:]},
+			want: []string{
+				"SEARCH continuity_sync_authority_candidate_pages USING INDEX sqlite_autoindex_continuity_sync_authority_candidate_pages_2 (project_id=? AND candidate_id=? AND after_environment_id=?)",
+			},
+		},
+		{
 			name:  "candidate cursor equality",
 			query: syncAuthorityCandidateSubsequentPageByCursorQueryV2,
 			args:  []any{string(projectID), candidateID[:], "environment:0150"},
@@ -172,11 +188,51 @@ func TestSyncAuthorityCandidateSubsequentPageQueriesUseBoundedIndexes(t *testing
 			},
 		},
 		{
+			name:  "canonical first bounded range",
+			query: canonicalSyncAuthorityFirstPageRangeQueryV2,
+			args:  []any{string(projectID), "environment:0004", maximumSyncAuthorityCandidateBoundedReadRowsV2},
+			want: []string{
+				"SEARCH continuity_sync_environment_certificates USING PRIMARY KEY (project_id=? AND environment_id<?)",
+			},
+		},
+		{
 			name:  "canonical bounded range",
 			query: canonicalSyncAuthoritySubsequentPageRangeQueryV2,
-			args:  []any{string(projectID), "environment:0150", "environment:0154"},
+			args:  []any{string(projectID), "environment:0150", "environment:0154", maximumSyncAuthorityCandidateBoundedReadRowsV2},
 			want: []string{
 				"SEARCH continuity_sync_environment_certificates USING PRIMARY KEY (project_id=? AND environment_id>? AND environment_id<?)",
+			},
+		},
+		{
+			name:  "canonical first final range",
+			query: canonicalSyncAuthorityFirstFinalPageRangeQueryV2,
+			args:  []any{string(projectID), maximumSyncAuthorityCandidateBoundedReadRowsV2},
+			want: []string{
+				"SEARCH continuity_sync_environment_certificates USING PRIMARY KEY (project_id=?)",
+			},
+		},
+		{
+			name:  "canonical final suffix",
+			query: canonicalSyncAuthoritySubsequentFinalPageRangeQueryV2,
+			args:  []any{string(projectID), "environment:0150", maximumSyncAuthorityCandidateBoundedReadRowsV2},
+			want: []string{
+				"SEARCH continuity_sync_environment_certificates USING PRIMARY KEY (project_id=? AND environment_id>?)",
+			},
+		},
+		{
+			name:  "candidate ordinal interval",
+			query: syncAuthorityCandidatePageEnvironmentsByOrdinalRangeQueryV2,
+			args:  []any{string(projectID), candidateID[:], 150, 154, maximumSyncAuthorityCandidateBoundedReadRowsV2},
+			want: []string{
+				"SEARCH continuity_sync_authority_candidate_environments USING INDEX sqlite_autoindex_continuity_sync_authority_candidate_environments_2 (project_id=? AND candidate_id=? AND environment_ordinal>? AND environment_ordinal<?)",
+			},
+		},
+		{
+			name:  "membership event equality",
+			query: syncAuthorityCandidateMembershipEventsByEnvironmentQueryV2,
+			args:  []any{string(projectID), candidateID[:], "environment:0150", "join"},
+			want: []string{
+				"SEARCH continuity_sync_authority_candidate_membership_events USING INDEX sqlite_autoindex_continuity_sync_authority_candidate_membership_events_2 (project_id=? AND candidate_id=? AND environment_id=? AND event_kind=?)",
 			},
 		},
 	}
@@ -185,6 +241,65 @@ func TestSyncAuthorityCandidateSubsequentPageQueriesUseBoundedIndexes(t *testing
 			got := syncAuthorityCandidateQueryPlanV2(t, store, test.query, test.args...)
 			if !reflect.DeepEqual(got, test.want) {
 				t.Fatalf("query plan = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+	for name, query := range map[string]string{
+		"first":             canonicalSyncAuthorityFirstPageRangeQueryV2,
+		"subsequent":        canonicalSyncAuthoritySubsequentPageRangeQueryV2,
+		"first final":       canonicalSyncAuthorityFirstFinalPageRangeQueryV2,
+		"subsequent final":  canonicalSyncAuthoritySubsequentFinalPageRangeQueryV2,
+		"candidate ordinal": syncAuthorityCandidatePageEnvironmentsByOrdinalRangeQueryV2,
+	} {
+		if !strings.Contains(query, "LIMIT ?") {
+			t.Errorf("%s canonical authority range query has no fixed row limit", name)
+		}
+	}
+}
+
+func TestSyncAuthorityCandidateCanonicalRangeUsesOneOmissionSentinel(t *testing.T) {
+	tests := []struct {
+		name           string
+		canonicalCount int
+		candidateCount int
+		wantConflict   bool
+	}{
+		{name: "exact four", canonicalCount: 4, candidateCount: 4},
+		{name: "omitted fifth", canonicalCount: 5, candidateCount: 4, wantConflict: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := openSyncStore(t, "authority-candidate-canonical-sentinel-"+syncSlug(test.name))
+			projectID := continuity.ProjectID("project-authority-candidate-canonical-sentinel-" + syncSlug(test.name))
+			environments := syncAuthorityCandidateManyEnvironmentsV2(test.canonicalCount)
+			authority := SyncAuthority{
+				ChannelID:            testSyncChannelID("authority-candidate-sentinel-channel"),
+				RelayGeneration:      sha256.Sum256([]byte("authority-candidate-sentinel-relay")),
+				AdminPublicKey:       sha256.Sum256([]byte("authority-candidate-sentinel-admin")),
+				MembershipGeneration: uint32(test.canonicalCount),
+				Environments:         environments,
+			}
+			if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, authority); err != nil {
+				t.Fatalf("InstallVerifiedSyncAuthority() error = %v", err)
+			}
+			baseDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
+			if err != nil {
+				t.Fatalf("frozenSyncAuthorityDigestV1() error = %v", err)
+			}
+			snapshot := syncAuthoritySnapshotFromAuthorityV2(authority, 1, baseDigest)
+			candidate, err := store.StageVerifiedSyncAuthorityCandidatePage(
+				context.Background(), projectID, snapshot,
+				syncAuthorityCandidatePageV2("", environments[:test.candidateCount], false),
+			)
+			if test.wantConflict {
+				assertSyncAuthorityCandidateConflictV2(t, err)
+				if candidate != (SyncAuthorityCandidate{}) {
+					t.Fatalf("omitted canonical environment returned candidate %#v", candidate)
+				}
+				return
+			}
+			if err != nil || !candidate.Ready || candidate.EnvironmentCount != int64(test.candidateCount) {
+				t.Fatalf("exact canonical range = (%#v, %v)", candidate, err)
 			}
 		})
 	}
@@ -457,6 +572,11 @@ func TestCurrentAndDiscardSyncAuthorityCandidateRecoverAfterCanonicalAdvance(t *
 	if err != nil || !found || current != first {
 		t.Fatalf("CurrentSyncAuthorityCandidate(stale base) = (%#v, %v, %v), want (%#v, true, nil)", current, found, err, first)
 	}
+	if _, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, firstPage); err == nil {
+		t.Fatal("exact replay against stale base error = nil")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorConflict)
+	}
 	if _, err := store.StageVerifiedSyncAuthorityCandidatePage(
 		context.Background(), projectID, snapshot, syncAuthorityCandidatePageV2(first.ThroughEnvironmentID, target[1:], false),
 	); err == nil {
@@ -534,7 +654,7 @@ func TestSyncAuthorityCandidateFinalPageProofFailuresRollBack(t *testing.T) {
 	}
 }
 
-func TestSyncAuthorityCandidateFailsClosedOnExtraUnjoinedRows(t *testing.T) {
+func TestSyncAuthorityCandidateFullAuditsFailClosedOnExtraUnjoinedRows(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*testing.T, *Store, continuity.ProjectID, SyncAuthorityCandidate)
@@ -597,10 +717,9 @@ INSERT INTO continuity_sync_authority_candidate_environments(
 			} else {
 				assertSyncErrorCode(t, err, SyncErrorStore)
 			}
-			if _, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, page); err == nil {
-				t.Fatal("ready replay with extra row error = nil")
-			} else {
-				assertSyncErrorCode(t, err, SyncErrorStore)
+			replayed, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, page)
+			if err != nil || replayed != ready {
+				t.Fatalf("bounded ready replay with unrelated extra row = (%#v, %v), want (%#v, nil)", replayed, err, ready)
 			}
 			if err := store.DiscardSyncAuthorityCandidate(context.Background(), projectID, ready.Checkpoint()); err == nil {
 				t.Fatal("discard with extra row error = nil")
@@ -794,36 +913,204 @@ func TestSyncAuthorityCandidateReadersFailClosedOnPersistedCorruption(t *testing
 	}
 }
 
-func TestSyncAuthorityCandidateReadyReplayValidatesEveryPersistedPage(t *testing.T) {
-	store := openSyncStore(t, "authority-candidate-ready-replay-corruption")
-	projectID := continuity.ProjectID("project-authority-candidate-ready-replay-corruption")
-	snapshot := syncAuthorityCandidateBootstrapSnapshotV2(5)
-	environments := syncAuthorityCandidateManyEnvironmentsV2(5)
-	firstPage := syncAuthorityCandidatePageV2("", environments[:2], true)
-	first, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, firstPage)
-	if err != nil {
-		t.Fatalf("stage first page: %v", err)
+func TestSyncAuthorityCandidateReadyReplayAuditsOnlyBoundedPageNeighborhood(t *testing.T) {
+	tests := []struct {
+		name            string
+		corruptIndex    int
+		replayPageIndex int
+		wantReplayStore bool
+	}{
+		{name: "unrelated later middle page", corruptIndex: 160, replayPageIndex: 0},
+		{name: "unrelated earlier middle page", corruptIndex: 4, replayPageIndex: 50},
+		{name: "last checkpoint page", corruptIndex: 299, replayPageIndex: 0, wantReplayStore: true},
 	}
-	secondPage := syncAuthorityCandidatePageV2(first.ThroughEnvironmentID, environments[2:4], true)
-	second, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, secondPage)
-	if err != nil {
-		t.Fatalf("stage second page: %v", err)
-	}
-	if _, err := store.StageVerifiedSyncAuthorityCandidatePage(
-		context.Background(), projectID, snapshot, syncAuthorityCandidatePageV2(second.ThroughEnvironmentID, environments[4:], false),
-	); err != nil {
-		t.Fatalf("stage final page: %v", err)
-	}
-	if _, err := store.db.Exec(`
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := openSyncStore(t, "authority-candidate-ready-lazy-"+syncSlug(test.name))
+			projectID := continuity.ProjectID("project-authority-candidate-ready-lazy-" + syncSlug(test.name))
+			snapshot, environments, pages, ready := stageReadySyncAuthorityCandidateV2(t, store, projectID, 300)
+			if _, err := store.db.Exec(`
 UPDATE continuity_sync_authority_candidate_environments
-SET certificate_bytes = X'01'
-WHERE project_id = ? AND environment_id = ?`, string(projectID), environments[2].EnvironmentID); err != nil {
-		t.Fatalf("corrupt non-replayed ready page: %v", err)
+SET certificate_bytes = ?
+WHERE project_id = ? AND environment_id = ?`, []byte("valid bounded but digest-conflicting certificate"), string(projectID), environments[test.corruptIndex].EnvironmentID); err != nil {
+				t.Fatalf("corrupt unrelated candidate environment: %v", err)
+			}
+			beforeRows := syncAuthorityCandidatePersistedRowsV2(t, store, projectID)
+			beforeProtected := syncAuthorityCandidateProtectedCountsV2(t, store)
+			replayed, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, pages[test.replayPageIndex])
+			if test.wantReplayStore {
+				assertSyncErrorCode(t, err, SyncErrorStore)
+				if replayed != (SyncAuthorityCandidate{}) {
+					t.Fatalf("replay across corrupt last checkpoint = %#v, want zero", replayed)
+				}
+			} else if err != nil || replayed != ready {
+				t.Fatalf("bounded exact replay = (%#v, %v), want (%#v, nil)", replayed, err, ready)
+			}
+			assertSyncAuthorityCandidatePersistedStateV2(t, store, projectID, beforeRows, beforeProtected)
+			if _, found, err := store.CurrentSyncAuthorityCandidate(context.Background(), projectID); err == nil || found {
+				t.Fatalf("CurrentSyncAuthorityCandidate(corrupt unrelated page) = (_, %v, %v), want full-audit store error", found, err)
+			} else {
+				assertSyncErrorCode(t, err, SyncErrorStore)
+			}
+		})
 	}
-	if _, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, firstPage); err == nil {
-		t.Fatal("ready replay with corruption in another page error = nil")
-	} else {
-		assertSyncErrorCode(t, err, SyncErrorStore)
+}
+
+func TestSyncAuthorityCandidateReadyReplayRejectsRequestedAndHeaderCorruptionWithoutMutation(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*testing.T, *Store, continuity.ProjectID, SyncAuthorityCandidate, []SyncEnvironmentCertificate, []SyncAuthorityPage)
+	}{
+		{
+			name: "requested page header",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID, candidate SyncAuthorityCandidate, _ []SyncEnvironmentCertificate, _ []SyncAuthorityPage) {
+				digest := sha256.Sum256([]byte("different valid requested page digest"))
+				if _, err := store.db.Exec(`
+UPDATE continuity_sync_authority_candidate_pages
+SET page_digest = ?
+WHERE project_id = ? AND candidate_id = ? AND page_number = 2`, digest[:], string(projectID), candidate.CandidateID[:]); err != nil {
+					t.Fatalf("corrupt requested page header: %v", err)
+				}
+			},
+		},
+		{
+			name: "requested environment child",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID, _ SyncAuthorityCandidate, environments []SyncEnvironmentCertificate, _ []SyncAuthorityPage) {
+				if _, err := store.db.Exec(`
+UPDATE continuity_sync_authority_candidate_environments
+SET certificate_bytes = ?
+WHERE project_id = ? AND environment_id = ?`, []byte("different valid requested certificate bytes"), string(projectID), environments[4].EnvironmentID); err != nil {
+					t.Fatalf("corrupt requested environment child: %v", err)
+				}
+			},
+		},
+		{
+			name: "requested membership event",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID, candidate SyncAuthorityCandidate, _ []SyncEnvironmentCertificate, _ []SyncAuthorityPage) {
+				if _, err := store.db.Exec(`
+UPDATE continuity_sync_authority_candidate_membership_events
+SET event_kind = 'retirement'
+WHERE project_id = ? AND candidate_id = ? AND membership_generation = 5`, string(projectID), candidate.CandidateID[:]); err != nil {
+					t.Fatalf("corrupt requested membership event: %v", err)
+				}
+			},
+		},
+		{
+			name: "previous checkpoint",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID, candidate SyncAuthorityCandidate, _ []SyncEnvironmentCertificate, _ []SyncAuthorityPage) {
+				digest := sha256.Sum256([]byte("different valid previous rolling digest"))
+				if _, err := store.db.Exec(`
+UPDATE continuity_sync_authority_candidate_pages
+SET resulting_rolling_digest = ?
+WHERE project_id = ? AND candidate_id = ? AND page_number = 1`, digest[:], string(projectID), candidate.CandidateID[:]); err != nil {
+					t.Fatalf("corrupt previous checkpoint: %v", err)
+				}
+			},
+		},
+		{
+			name: "ready header final digest",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID, candidate SyncAuthorityCandidate, _ []SyncEnvironmentCertificate, _ []SyncAuthorityPage) {
+				digest := sha256.Sum256([]byte("different valid ready authority digest"))
+				if digest == candidate.AuthorityDigest {
+					t.Fatal("corruption digest unexpectedly equals ready authority digest")
+				}
+				if _, err := store.db.Exec(`
+UPDATE continuity_sync_authority_candidates
+SET authority_digest = ?
+WHERE project_id = ? AND candidate_id = ?`, digest[:], string(projectID), candidate.CandidateID[:]); err != nil {
+					t.Fatalf("corrupt ready header authority digest: %v", err)
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := openSyncStore(t, "authority-candidate-ready-requested-corruption-"+syncSlug(test.name))
+			projectID := continuity.ProjectID("project-authority-candidate-ready-requested-corruption-" + syncSlug(test.name))
+			snapshot, environments, pages, ready := stageReadySyncAuthorityCandidateV2(t, store, projectID, 12)
+			test.mutate(t, store, projectID, ready, environments, pages)
+			beforeRows := syncAuthorityCandidatePersistedRowsV2(t, store, projectID)
+			beforeProtected := syncAuthorityCandidateProtectedCountsV2(t, store)
+			replayed, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, pages[1])
+			assertSyncErrorCode(t, err, SyncErrorStore)
+			if replayed != (SyncAuthorityCandidate{}) {
+				t.Fatalf("corrupt requested replay = %#v, want zero", replayed)
+			}
+			assertSyncAuthorityCandidatePersistedStateV2(t, store, projectID, beforeRows, beforeProtected)
+		})
+	}
+}
+
+func TestSyncAuthorityCandidateReadyReplayReadsOnlyRequestedCanonicalRange(t *testing.T) {
+	tests := []struct {
+		name         string
+		corruptIndex int
+		replayIndex  int
+		wantConflict bool
+	}{
+		{name: "unrelated canonical range", corruptIndex: 8, replayIndex: 0},
+		{name: "requested canonical range", corruptIndex: 4, replayIndex: 1, wantConflict: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := openSyncStore(t, "authority-candidate-ready-canonical-range-"+syncSlug(test.name))
+			projectID := continuity.ProjectID("project-authority-candidate-ready-canonical-range-" + syncSlug(test.name))
+			environments := syncAuthorityCandidateManyEnvironmentsV2(12)
+			authority := SyncAuthority{
+				ChannelID:            testSyncChannelID("authority-candidate-ready-canonical-range-channel"),
+				RelayGeneration:      sha256.Sum256([]byte("authority-candidate-ready-canonical-range-relay")),
+				AdminPublicKey:       sha256.Sum256([]byte("authority-candidate-ready-canonical-range-admin")),
+				MembershipGeneration: 12,
+				Environments:         environments,
+			}
+			if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, authority); err != nil {
+				t.Fatalf("InstallVerifiedSyncAuthority() error = %v", err)
+			}
+			baseDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
+			if err != nil {
+				t.Fatalf("frozenSyncAuthorityDigestV1() error = %v", err)
+			}
+			snapshot := syncAuthoritySnapshotFromAuthorityV2(authority, 1, baseDigest)
+			pages := make([]SyncAuthorityPage, 0, 3)
+			after := ""
+			var ready SyncAuthorityCandidate
+			for offset := 0; offset < len(environments); offset += maximumSyncAuthorityCandidatePageEnvironments {
+				end := offset + maximumSyncAuthorityCandidatePageEnvironments
+				page := syncAuthorityCandidatePageV2(after, environments[offset:end], end < len(environments))
+				ready, err = store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, page)
+				if err != nil {
+					t.Fatalf("stage canonical range page %d: %v", len(pages)+1, err)
+				}
+				pages = append(pages, page)
+				after = page.ThroughEnvironmentID
+			}
+			if !ready.Ready {
+				t.Fatalf("canonical range candidate = %#v, want ready", ready)
+			}
+			if _, err := store.db.Exec(`
+UPDATE continuity_sync_environment_certificates
+SET certificate_bytes = ?
+WHERE project_id = ? AND environment_id = ?`, []byte("valid but authority-digest-conflicting certificate"), string(projectID), environments[test.corruptIndex].EnvironmentID); err != nil {
+				t.Fatalf("corrupt canonical range: %v", err)
+			}
+			beforeRows := syncAuthorityCandidatePersistedRowsV2(t, store, projectID)
+			beforeProtected := syncAuthorityCandidateProtectedCountsV2(t, store)
+			replayed, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, pages[test.replayIndex])
+			if test.wantConflict {
+				assertSyncErrorCode(t, err, SyncErrorConflict)
+				if replayed != (SyncAuthorityCandidate{}) {
+					t.Fatalf("requested corrupt canonical replay = %#v, want zero", replayed)
+				}
+			} else if err != nil || replayed != ready {
+				t.Fatalf("unrelated corrupt canonical replay = (%#v, %v), want (%#v, nil)", replayed, err, ready)
+			}
+			assertSyncAuthorityCandidatePersistedStateV2(t, store, projectID, beforeRows, beforeProtected)
+			if _, err := store.CurrentSyncAuthority(context.Background(), projectID); err == nil {
+				t.Fatal("CurrentSyncAuthority(corrupt canonical range) error = nil")
+			} else {
+				assertSyncErrorCode(t, err, SyncErrorStore)
+			}
+		})
 	}
 }
 
@@ -1055,6 +1342,115 @@ func syncAuthorityCandidateProtectedCountsV2(t *testing.T, store *Store) map[str
 		counts[table] = count
 	}
 	return counts
+}
+
+func stageReadySyncAuthorityCandidateV2(
+	t *testing.T,
+	store *Store,
+	projectID continuity.ProjectID,
+	environmentCount int,
+) (SyncAuthoritySnapshot, []SyncEnvironmentCertificate, []SyncAuthorityPage, SyncAuthorityCandidate) {
+	t.Helper()
+	snapshot := syncAuthorityCandidateBootstrapSnapshotV2(environmentCount)
+	environments := syncAuthorityCandidateManyEnvironmentsV2(environmentCount)
+	pages := make([]SyncAuthorityPage, 0, (environmentCount+maximumSyncAuthorityCandidatePageEnvironments-1)/maximumSyncAuthorityCandidatePageEnvironments)
+	after := ""
+	var candidate SyncAuthorityCandidate
+	for offset := 0; offset < len(environments); offset += maximumSyncAuthorityCandidatePageEnvironments {
+		end := offset + maximumSyncAuthorityCandidatePageEnvironments
+		if end > len(environments) {
+			end = len(environments)
+		}
+		page := syncAuthorityCandidatePageV2(after, environments[offset:end], end < len(environments))
+		var err error
+		candidate, err = store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, page)
+		if err != nil {
+			t.Fatalf("stage ready authority candidate page %d: %v", len(pages)+1, err)
+		}
+		pages = append(pages, page)
+		after = page.ThroughEnvironmentID
+	}
+	if !candidate.Ready || candidate.EnvironmentCount != int64(environmentCount) || candidate.PageCount != int64(len(pages)) {
+		t.Fatalf("ready authority candidate = %#v, pages=%d environments=%d", candidate, len(pages), environmentCount)
+	}
+	return snapshot, environments, pages, candidate
+}
+
+func syncAuthorityCandidatePersistedRowsV2(t *testing.T, store *Store, projectID continuity.ProjectID) []string {
+	t.Helper()
+	queries := []struct {
+		table string
+		order string
+	}{
+		{table: "continuity_sync_authority_candidates", order: "candidate_id"},
+		{table: "continuity_sync_authority_candidate_pages", order: "candidate_id, page_number"},
+		{table: "continuity_sync_authority_candidate_environments", order: "candidate_id, environment_ordinal"},
+		{table: "continuity_sync_authority_candidate_membership_events", order: "candidate_id, membership_generation"},
+	}
+	var result []string
+	for _, query := range queries {
+		rows, err := store.db.Query("SELECT * FROM "+query.table+" WHERE project_id = ? ORDER BY "+query.order, string(projectID))
+		if err != nil {
+			t.Fatalf("read exact %s rows: %v", query.table, err)
+		}
+		columns, err := rows.Columns()
+		if err != nil {
+			rows.Close()
+			t.Fatalf("read %s columns: %v", query.table, err)
+		}
+		for rows.Next() {
+			values := make([]any, len(columns))
+			pointers := make([]any, len(columns))
+			for index := range values {
+				pointers[index] = &values[index]
+			}
+			if err := rows.Scan(pointers...); err != nil {
+				rows.Close()
+				t.Fatalf("scan exact %s row: %v", query.table, err)
+			}
+			row := query.table
+			for index, value := range values {
+				switch value := value.(type) {
+				case []byte:
+					row += fmt.Sprintf("|%s=bytes:%x", columns[index], value)
+				case string:
+					row += fmt.Sprintf("|%s=string:%q", columns[index], value)
+				case int64:
+					row += fmt.Sprintf("|%s=int64:%d", columns[index], value)
+				case nil:
+					row += "|" + columns[index] + "=nil"
+				default:
+					rows.Close()
+					t.Fatalf("unexpected %s.%s type %T", query.table, columns[index], value)
+				}
+			}
+			result = append(result, row)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			t.Fatalf("iterate exact %s rows: %v", query.table, err)
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatalf("close exact %s rows: %v", query.table, err)
+		}
+	}
+	return result
+}
+
+func assertSyncAuthorityCandidatePersistedStateV2(
+	t *testing.T,
+	store *Store,
+	projectID continuity.ProjectID,
+	wantRows []string,
+	wantProtected map[string]int64,
+) {
+	t.Helper()
+	if got := syncAuthorityCandidatePersistedRowsV2(t, store, projectID); !reflect.DeepEqual(got, wantRows) {
+		t.Fatalf("authority candidate rows changed:\n got %#v\nwant %#v", got, wantRows)
+	}
+	if got := syncAuthorityCandidateProtectedCountsV2(t, store); !reflect.DeepEqual(got, wantProtected) {
+		t.Fatalf("protected row counts changed: got %#v, want %#v", got, wantProtected)
+	}
 }
 
 func syncAuthorityCandidateQueryPlanV2(t *testing.T, store *Store, query string, arguments ...any) []string {

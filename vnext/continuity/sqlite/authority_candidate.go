@@ -128,21 +128,6 @@ func (store *Store) StageVerifiedSyncAuthorityCandidatePage(
 		if current.candidate.CandidateID != candidateID || current.candidate.Snapshot != snapshot || current.headerDigest != headerDigest {
 			return SyncAuthorityCandidate{}, syncProblem(SyncErrorConflict, "snapshot", "does not match the active authority candidate")
 		}
-		if current.candidate.Ready {
-			current, active, err = readAndValidateActiveSyncAuthorityCandidateV2(ctx, tx, projectID)
-			if err != nil {
-				return SyncAuthorityCandidate{}, err
-			}
-			if !active {
-				return SyncAuthorityCandidate{}, corruptSyncAuthorityCandidateV2("ready candidate disappeared during validation")
-			}
-			if err := validateCanonicalSyncAuthorityForCandidateV2(ctx, tx, projectID, canonicalBase); err != nil {
-				return SyncAuthorityCandidate{}, err
-			}
-			if err := validateFullSyncAuthorityCandidateAgainstCanonicalV2(ctx, tx, current, canonicalBase); err != nil {
-				return SyncAuthorityCandidate{}, err
-			}
-		}
 		replayed, exact, err := exactSyncAuthorityCandidatePageReplayV2(ctx, tx, current, prepared)
 		if err != nil {
 			return SyncAuthorityCandidate{}, err

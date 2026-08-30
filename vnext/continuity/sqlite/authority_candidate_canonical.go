@@ -29,11 +29,22 @@ WHERE project_id = ?`
 
 const canonicalSyncAuthorityFirstPageRangeQueryV2 = canonicalSyncAuthorityPageRangeSelectV2 + `
   AND environment_id <= ?
-ORDER BY environment_id`
+ORDER BY environment_id
+LIMIT ?`
 
 const canonicalSyncAuthoritySubsequentPageRangeQueryV2 = canonicalSyncAuthorityPageRangeSelectV2 + `
   AND environment_id > ? AND environment_id <= ?
-ORDER BY environment_id`
+ORDER BY environment_id
+LIMIT ?`
+
+const canonicalSyncAuthorityFirstFinalPageRangeQueryV2 = canonicalSyncAuthorityPageRangeSelectV2 + `
+ORDER BY environment_id
+LIMIT ?`
+
+const canonicalSyncAuthoritySubsequentFinalPageRangeQueryV2 = canonicalSyncAuthorityPageRangeSelectV2 + `
+  AND environment_id > ?
+ORDER BY environment_id
+LIMIT ?`
 
 func readCanonicalSyncAuthorityBaseV2(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (canonicalSyncAuthorityBaseV2, error) {
 	var base canonicalSyncAuthorityBaseV2
@@ -136,12 +147,25 @@ func validateSyncAuthorityCandidatePageAgainstCanonicalV2(
 	canonicalInPage := make(map[string]struct{}, len(page.Environments))
 	var rows *sql.Rows
 	var err error
-	if page.AfterEnvironmentID == "" {
-		rows, err = tx.QueryContext(ctx, canonicalSyncAuthorityFirstPageRangeQueryV2, string(projectID), page.ThroughEnvironmentID)
+	if page.AfterEnvironmentID == "" && final {
+		rows, err = tx.QueryContext(
+			ctx, canonicalSyncAuthorityFirstFinalPageRangeQueryV2,
+			string(projectID), maximumSyncAuthorityCandidateBoundedReadRowsV2,
+		)
+	} else if page.AfterEnvironmentID == "" {
+		rows, err = tx.QueryContext(
+			ctx, canonicalSyncAuthorityFirstPageRangeQueryV2,
+			string(projectID), page.ThroughEnvironmentID, maximumSyncAuthorityCandidateBoundedReadRowsV2,
+		)
+	} else if final {
+		rows, err = tx.QueryContext(
+			ctx, canonicalSyncAuthoritySubsequentFinalPageRangeQueryV2,
+			string(projectID), page.AfterEnvironmentID, maximumSyncAuthorityCandidateBoundedReadRowsV2,
+		)
 	} else {
 		rows, err = tx.QueryContext(
 			ctx, canonicalSyncAuthoritySubsequentPageRangeQueryV2,
-			string(projectID), page.AfterEnvironmentID, page.ThroughEnvironmentID,
+			string(projectID), page.AfterEnvironmentID, page.ThroughEnvironmentID, maximumSyncAuthorityCandidateBoundedReadRowsV2,
 		)
 	}
 	if err != nil {
@@ -192,20 +216,6 @@ func validateSyncAuthorityCandidatePageAgainstCanonicalV2(
 		}
 		if environment.JoinMembershipGeneration <= base.authority.MembershipGeneration {
 			return syncProblem(SyncErrorConflict, "join_membership_generation", "new environment does not follow canonical membership")
-		}
-	}
-	if final {
-		var omitted int
-		if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1
-  FROM continuity_sync_environment_certificates
-  WHERE project_id = ? AND environment_id > ?
-)`, string(projectID), page.ThroughEnvironmentID).Scan(&omitted); err != nil {
-			return syncTransactionProblem(ctx)
-		}
-		if omitted != 0 {
-			return syncProblem(SyncErrorConflict, "environments", "omits a canonical environment from the final inventory")
 		}
 	}
 	return nil
