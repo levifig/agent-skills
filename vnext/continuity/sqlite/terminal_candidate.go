@@ -886,10 +886,10 @@ FROM continuity_sync_outbox WHERE project_id = ? AND fact_id = ?
 UNION ALL
 SELECT project_id, environment_id, environment_sequence, previous_envelope_digest,
        envelope_digest, certificate_id, key_generation, nonce
-FROM continuity_sync_tombstones WHERE project_id = ? AND fact_id = ?`,
+FROM continuity_sync_tombstones WHERE fact_id = ?`,
 		string(projectID), string(frame.factID),
 		string(projectID), string(frame.factID),
-		string(projectID), string(frame.factID))
+		string(frame.factID))
 	if err != nil {
 		return syncTransactionProblem(ctx)
 	}

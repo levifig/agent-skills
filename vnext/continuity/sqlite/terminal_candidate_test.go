@@ -75,6 +75,36 @@ func TestTerminalCandidateLifecycleCreatesReadsReplaysAndDiscards(t *testing.T) 
 	}
 }
 
+func TestTerminalCandidateRejectsSealedFactTombstonedForAnotherProject(t *testing.T) {
+	t.Parallel()
+
+	_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-cross-project-tombstone", 2)
+	insertTerminalCandidateOtherProjectTombstoneV1(
+		t,
+		store,
+		"project-terminal-candidate-tombstone-owner",
+		*frames[0].Sealed,
+	)
+
+	_, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames[:1], 1_000, 100)
+	assertSyncErrorCode(t, err, SyncErrorConflict)
+	assertNoActiveTerminalCandidateV1(t, store, projectID)
+
+	var applied, inbox, children int64
+	if err := store.db.QueryRow(`SELECT applied_cursor FROM continuity_sync_projects WHERE project_id = ?`, string(projectID)).Scan(&applied); err != nil {
+		t.Fatalf("read applied cursor: %v", err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_inbox WHERE project_id = ?`, string(projectID)).Scan(&inbox); err != nil {
+		t.Fatalf("count retained inbox: %v", err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_terminal_candidate_frames WHERE project_id = ?`, string(projectID)).Scan(&children); err != nil {
+		t.Fatalf("count retained candidate children: %v", err)
+	}
+	if applied != 0 || inbox != 2 || children != 0 {
+		t.Fatalf("failed staging mutated project state: applied=%d inbox=%d children=%d", applied, inbox, children)
+	}
+}
+
 func TestTerminalCandidateReplayOverlapAndAppendRollback(t *testing.T) {
 	t.Parallel()
 
@@ -936,6 +966,28 @@ func terminalCandidateCheckpointV1(candidate TerminalCandidate) TerminalCandidat
 		ThroughArrivalSequence: candidate.ThroughArrivalSequence,
 		FrameCount:             candidate.FrameCount,
 		RollingCandidateDigest: candidate.RollingCandidateDigest,
+	}
+}
+
+func insertTerminalCandidateOtherProjectTombstoneV1(
+	t *testing.T,
+	store *Store,
+	ownerProjectID continuity.ProjectID,
+	sealed VerifiedSyncFrame,
+) {
+	t.Helper()
+	installTestSyncAuthority(t, store, ownerProjectID, testSyncChannelID("channel-other"))
+	pruneCertificateID := sha256.Sum256([]byte("cross-project-prune:" + string(sealed.Fact.FactID)))
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_tombstones(
+  fact_id, project_id, environment_id, environment_sequence, arrival_sequence,
+  previous_envelope_digest, envelope_digest, certificate_id, key_generation,
+  nonce, prune_certificate_id
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		string(sealed.Fact.FactID), string(ownerProjectID), string(sealed.Fact.EnvironmentID), sealed.Fact.EnvironmentSequence,
+		sealed.ArrivalSequence, sealed.PreviousEnvelopeDigest[:], sealed.EnvelopeDigest[:], sealed.CertificateID[:],
+		sealed.KeyGeneration, sealed.Nonce[:], pruneCertificateID[:]); err != nil {
+		t.Fatalf("insert cross-project tombstone: %v", err)
 	}
 }
 
