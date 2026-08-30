@@ -891,10 +891,12 @@ type remoteFixture struct {
 	environmentRequests []relay.EnvironmentInventoryRequest
 	classifyRequests    []relay.RegisterEnvironmentRequest
 	registerRequests    []relay.RegisterEnvironmentRequest
+	pageRequests        []relay.PageRequest
 
 	create           func(context.Context, relay.Channel) (relay.ChannelState, error)
 	classify         func(context.Context, relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error)
 	register         func(context.Context, relay.RegisterEnvironmentRequest) (relay.ChannelState, error)
+	page             func(context.Context, relay.PageRequest) (relay.Page, error)
 	inventory        func(context.Context, relay.EnvironmentInventoryRequest) (relay.EnvironmentInventoryPage, error)
 	inventoryErr     error
 	environmentPages map[relay.EnvironmentID]relay.EnvironmentInventoryPage
@@ -938,8 +940,12 @@ func cloneRegisterEnvironmentRequest(request relay.RegisterEnvironmentRequest) r
 	return cloned
 }
 
-func (remote *remoteFixture) Page(_ context.Context, _ relay.PageRequest) (relay.Page, error) {
+func (remote *remoteFixture) Page(ctx context.Context, request relay.PageRequest) (relay.Page, error) {
 	remote.pageCalls++
+	remote.pageRequests = append(remote.pageRequests, request)
+	if remote.page != nil {
+		return remote.page(ctx, request)
+	}
 	return relay.Page{}, relay.ErrInvalidArgument
 }
 
