@@ -42,6 +42,16 @@ func (coordinator *Coordinator) stageRecoveryRegistrationGuard(
 	recovery credential.ProjectRecoveryCredential,
 	registration preparedRecoveryRegistration,
 ) (recoveryRegistrationGuard, error) {
+	return coordinator.stageRecoveryRegistrationGuardAtOrAbove(ctx, expectedProjectID, recovery, registration, 0)
+}
+
+func (coordinator *Coordinator) stageRecoveryRegistrationGuardAtOrAbove(
+	ctx context.Context,
+	expectedProjectID continuity.ProjectID,
+	recovery credential.ProjectRecoveryCredential,
+	registration preparedRecoveryRegistration,
+	minimumArrivalHead int64,
+) (recoveryRegistrationGuard, error) {
 	if err := validatePreparationContext(ctx); err != nil {
 		return recoveryRegistrationGuard{}, err
 	}
@@ -50,6 +60,9 @@ func (coordinator *Coordinator) stageRecoveryRegistrationGuard(
 	}
 	if err := coordinator.validateRecoveryRegistrationBinding(ctx, expectedProjectID, recovery, registration); err != nil {
 		return recoveryRegistrationGuard{}, err
+	}
+	if minimumArrivalHead < 0 {
+		return recoveryRegistrationGuard{}, newProblem(CodeInvalid, PhaseEnvironmentInventory, ActionRestartRecovery)
 	}
 
 	previousMembership := registration.targetMembershipGeneration - 1
@@ -84,6 +97,7 @@ func (coordinator *Coordinator) stageRecoveryRegistrationGuard(
 			recoveryInventoryScanOptions{
 				createdState:       &createdState,
 				expectedMembership: &expectedEmptyMembership,
+				minimumArrivalHead: minimumArrivalHead,
 			},
 		)
 		if err != nil {
@@ -131,6 +145,7 @@ func (coordinator *Coordinator) stageRecoveryRegistrationGuard(
 		recoveryInventoryScanOptions{
 			expectedMembership:   &previousMembership,
 			firstRequestSnapshot: firstRequestSnapshot,
+			minimumArrivalHead:   minimumArrivalHead,
 			onPage: func(page verifiedRecoveryInventoryPage) error {
 				environments := make([]continuitysqlite.SyncEnvironmentCertificate, 0, len(page.environments))
 				for _, record := range page.environments {
@@ -205,6 +220,8 @@ func (coordinator *Coordinator) validateRecoveryRegistrationBinding(
 	if registration.targetMembershipGeneration == 0 ||
 		registration.targetMembershipGeneration != environment.MembershipGeneration ||
 		registration.certificateID != environment.CertificateID ||
+		registration.environmentTokenID != environment.Token.TokenID ||
+		registration.environmentTokenHash != environment.Token.TokenHash ||
 		environment.ChannelID != relay.ChannelID(recovery.ChannelID) ||
 		environment.EnvironmentID != relay.EnvironmentID(writerEnvironmentID) ||
 		environment.Mode != relay.TrustedEnvironment || environment.ExpiresAtMillis != 0 ||
@@ -320,6 +337,9 @@ func mapRecoveryRegistrationStoreError(ctx context.Context, err error) error {
 	case continuitysqlite.SyncErrorConflict:
 		return newProblem(CodeConflict, PhaseEnvironmentInventory, ActionRestartRecovery)
 	case continuitysqlite.SyncErrorStore:
+		if syncErr.Field != "" {
+			return newProblem(CodeInternal, PhaseEnvironmentInventory, ActionRepairLocalStore)
+		}
 		return newProblem(CodeUnavailable, PhaseEnvironmentInventory, ActionRetry)
 	default:
 		return newProblem(CodeInternal, PhaseEnvironmentInventory, ActionRepairLocalStore)

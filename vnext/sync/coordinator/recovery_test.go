@@ -882,15 +882,19 @@ type remoteFixture struct {
 
 	endpointCalls int
 	createCalls   int
+	classifyCalls int
 	registerCalls int
 	pageCalls     int
 	pruneCalls    int
 
 	createRequests      []relay.Channel
 	environmentRequests []relay.EnvironmentInventoryRequest
+	classifyRequests    []relay.RegisterEnvironmentRequest
 	registerRequests    []relay.RegisterEnvironmentRequest
 
 	create           func(context.Context, relay.Channel) (relay.ChannelState, error)
+	classify         func(context.Context, relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error)
+	register         func(context.Context, relay.RegisterEnvironmentRequest) (relay.ChannelState, error)
 	inventory        func(context.Context, relay.EnvironmentInventoryRequest) (relay.EnvironmentInventoryPage, error)
 	inventoryErr     error
 	environmentPages map[relay.EnvironmentID]relay.EnvironmentInventoryPage
@@ -910,14 +914,28 @@ func (remote *remoteFixture) CreateChannel(ctx context.Context, channel relay.Ch
 	return relay.ChannelState{ChannelID: channel.ChannelID, RelayGeneration: channel.RelayGeneration}, nil
 }
 
-func (remote *remoteFixture) RegisterEnvironment(_ context.Context, request relay.RegisterEnvironmentRequest) (relay.ChannelState, error) {
+func (remote *remoteFixture) RegisterEnvironment(ctx context.Context, request relay.RegisterEnvironmentRequest) (relay.ChannelState, error) {
 	remote.registerCalls++
-	remote.registerRequests = append(remote.registerRequests, request)
+	remote.registerRequests = append(remote.registerRequests, cloneRegisterEnvironmentRequest(request))
+	if remote.register != nil {
+		return remote.register(ctx, request)
+	}
 	return relay.ChannelState{}, relay.ErrInvalidArgument
 }
 
-func (remote *remoteFixture) ClassifyEnvironmentRegistration(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
+func (remote *remoteFixture) ClassifyEnvironmentRegistration(ctx context.Context, request relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
+	remote.classifyCalls++
+	remote.classifyRequests = append(remote.classifyRequests, cloneRegisterEnvironmentRequest(request))
+	if remote.classify != nil {
+		return remote.classify(ctx, request)
+	}
 	return relay.EnvironmentRegistrationStatus{}, relay.ErrInvalidArgument
+}
+
+func cloneRegisterEnvironmentRequest(request relay.RegisterEnvironmentRequest) relay.RegisterEnvironmentRequest {
+	cloned := request
+	cloned.Environment.CertificateBytes = append([]byte(nil), request.Environment.CertificateBytes...)
+	return cloned
 }
 
 func (remote *remoteFixture) Page(_ context.Context, _ relay.PageRequest) (relay.Page, error) {

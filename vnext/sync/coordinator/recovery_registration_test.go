@@ -420,9 +420,9 @@ func testPreparedRecoveryCredential(
 
 func assertNoRecoveryRegistrationWorkflowCalls(t *testing.T, remote *remoteFixture) {
 	t.Helper()
-	if remote.createCalls != 0 || remote.registerCalls != 0 || remote.pageCalls != 0 || remote.pruneCalls != 0 || len(remote.environmentRequests) != 0 {
-		t.Fatalf("pure binding called remote workflow: create=%d register=%d page=%d prune=%d inventory=%d",
-			remote.createCalls, remote.registerCalls, remote.pageCalls, remote.pruneCalls, len(remote.environmentRequests))
+	if remote.createCalls != 0 || remote.classifyCalls != 0 || remote.registerCalls != 0 || remote.pageCalls != 0 || remote.pruneCalls != 0 || len(remote.environmentRequests) != 0 {
+		t.Fatalf("pure binding called remote workflow: create=%d classify=%d register=%d page=%d prune=%d inventory=%d",
+			remote.createCalls, remote.classifyCalls, remote.registerCalls, remote.pageCalls, remote.pruneCalls, len(remote.environmentRequests))
 	}
 }
 
@@ -435,6 +435,8 @@ func assertPreparedRegistrationCarriesNoBearerSecretType(t *testing.T, registrat
 	}{
 		{name: "targetMembershipGeneration", typeOf: reflect.TypeOf(uint32(0))},
 		{name: "certificateID", typeOf: reflect.TypeOf(relay.Digest{})},
+		{name: "environmentTokenID", typeOf: reflect.TypeOf(relay.RelayTokenID{})},
+		{name: "environmentTokenHash", typeOf: reflect.TypeOf(relay.TokenHash{})},
 		{name: "environment", typeOf: reflect.TypeOf(relay.Environment{})},
 	}
 	if registrationType.NumField() != len(wantFields) {
