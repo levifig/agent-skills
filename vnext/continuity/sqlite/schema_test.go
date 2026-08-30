@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -194,7 +195,7 @@ func TestContinuitySQLiteRefusesDriftedV1BeforeMigration(t *testing.T) {
 	}
 }
 
-func TestContinuitySQLiteV6SyncSchemaIsExactAndCredentialFree(t *testing.T) {
+func TestContinuitySQLiteV7SyncSchemaIsExactAndCredentialFree(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -229,6 +230,7 @@ ORDER BY name`)
 		"continuity_sync_authority_candidate_membership_events",
 		"continuity_sync_authority_candidate_pages",
 		"continuity_sync_authority_candidates",
+		"continuity_sync_authority_recovery_terminal_receipts",
 		"continuity_sync_authority_recovery_transitions",
 		"continuity_sync_environment_certificates",
 		"continuity_sync_environment_heads",
@@ -302,7 +304,8 @@ func TestContinuitySQLiteSchemaDDLGoldenChecksums(t *testing.T) {
 		{name: "v3", ddl: schemaV3DDL, checksum: "d1163e6ba25279c5b332ce19d383d7709d4dc00b49928e32e8a58ccf70aaa3af", bytes: 19161},
 		{name: "v4", ddl: schemaV4DDL, checksum: "150cc2b8dfcaecda0fefcfbdff02aa924644984ae7bdef4480f884dc63fe95ca", bytes: 28556},
 		{name: "v5", ddl: schemaV5DDL, checksum: "4f81496ceac409a49ddd980fed0fe3f037cc7bff8e45f7b4f0a4e3a1aba985e4", bytes: 29204},
-		{name: "v6", ddl: schemaDDL, checksum: "1aa97f7f4f453f8bf0a659a346949e8865900dbc9675b8737c481238bf69843e", bytes: 31313},
+		{name: "v6", ddl: schemaV6DDL, checksum: "1aa97f7f4f453f8bf0a659a346949e8865900dbc9675b8737c481238bf69843e", bytes: 31313},
+		{name: "v7", ddl: schemaDDL, checksum: "cc8885f15ec98c010752282222ece44fcd9e8378a212aa177d762112fca1e930", bytes: 34272},
 	}
 	for _, test := range tests {
 		test := test
@@ -343,6 +346,181 @@ func TestContinuitySQLiteMigratesExactV5SchemaToV6(t *testing.T) {
 	}
 }
 
+func TestContinuitySQLiteMigratesExactV6RecoveryTransitionsToV7(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV6ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v6 database: %v", err)
+	}
+	seedV6RecoveryTransitions(t, db)
+	before := snapshotV6RecoveryTransitions(t, db, false)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close seeded v6 database: %v", err)
+	}
+
+	store, err := Open(stateRoot, "environment-v7")
+	if err != nil {
+		t.Fatalf("Open(v6) error = %v", err)
+	}
+	defer store.Close()
+	if err := validateSchema(store.db); err != nil {
+		t.Fatalf("validate migrated v7 schema: %v", err)
+	}
+	after := snapshotV6RecoveryTransitions(t, store.db, true)
+	if strings.Join(after, "|") != strings.Join(before, "|") {
+		t.Fatalf("migrated recovery transition bytes changed:\nbefore=%v\nafter=%v", before, after)
+	}
+	var attemptMismatches, receipts int64
+	if err := store.db.QueryRow(`
+SELECT COUNT(*)
+FROM continuity_sync_authority_recovery_transitions
+WHERE attempt_id <> successor_candidate_id`).Scan(&attemptMismatches); err != nil {
+		t.Fatalf("inspect migrated attempt identities: %v", err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_authority_recovery_terminal_receipts`).Scan(&receipts); err != nil {
+		t.Fatalf("count migrated terminal receipts: %v", err)
+	}
+	if attemptMismatches != 0 || receipts != 0 {
+		t.Fatalf("migration attempt mismatches=%d terminal receipts=%d", attemptMismatches, receipts)
+	}
+	foreignKeys, err := store.db.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatalf("check migrated foreign keys: %v", err)
+	}
+	defer foreignKeys.Close()
+	if foreignKeys.Next() {
+		t.Fatal("migrated v7 schema has a foreign-key violation")
+	}
+}
+
+func TestContinuitySQLiteConcurrentOpenMigratesPopulatedV6RecoveryTransitions(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV6ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v6 database: %v", err)
+	}
+	seedV6RecoveryTransitions(t, db)
+	before := snapshotV6RecoveryTransitions(t, db, false)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close seeded v6 database: %v", err)
+	}
+
+	const openers = 2
+	start := make(chan struct{})
+	errorsByOpener := make([]error, openers)
+	var wait sync.WaitGroup
+	wait.Add(openers)
+	for opener := 0; opener < openers; opener++ {
+		opener := opener
+		go func() {
+			defer wait.Done()
+			<-start
+			environmentID := continuity.EnvironmentID("environment-v7-a")
+			if opener == 1 {
+				environmentID = "environment-v7-b"
+			}
+			store, err := Open(stateRoot, environmentID)
+			if err == nil {
+				err = store.Close()
+			}
+			errorsByOpener[opener] = err
+		}()
+	}
+	close(start)
+	wait.Wait()
+	for opener, err := range errorsByOpener {
+		if err != nil {
+			t.Fatalf("concurrent Open(populated v6) caller %d: %v", opener, err)
+		}
+	}
+
+	db, err = openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("reopen concurrently migrated v7 database: %v", err)
+	}
+	defer db.Close()
+	if err := validateSchema(db); err != nil {
+		t.Fatalf("validate concurrently migrated v7 schema: %v", err)
+	}
+	after := snapshotV6RecoveryTransitions(t, db, true)
+	if strings.Join(after, "|") != strings.Join(before, "|") {
+		t.Fatalf("concurrently migrated recovery transition bytes changed:\nbefore=%v\nafter=%v", before, after)
+	}
+	var attemptMismatches, receipts, legacyTables int64
+	if err := db.QueryRow(`
+SELECT COUNT(*)
+FROM continuity_sync_authority_recovery_transitions
+WHERE attempt_id <> successor_candidate_id`).Scan(&attemptMismatches); err != nil {
+		t.Fatalf("inspect concurrently migrated attempt identities: %v", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_authority_recovery_terminal_receipts`).Scan(&receipts); err != nil {
+		t.Fatalf("count concurrently migrated terminal receipts: %v", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_schema WHERE name = 'continuity_sync_authority_recovery_transitions_v6'`).Scan(&legacyTables); err != nil {
+		t.Fatalf("inspect concurrently migrated legacy table: %v", err)
+	}
+	if attemptMismatches != 0 || receipts != 0 || legacyTables != 0 {
+		t.Fatalf("concurrent migration mismatches=%d receipts=%d legacy tables=%d", attemptMismatches, receipts, legacyTables)
+	}
+	foreignKeys, err := db.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatalf("check concurrently migrated foreign keys: %v", err)
+	}
+	defer foreignKeys.Close()
+	if foreignKeys.Next() {
+		t.Fatal("concurrently migrated v7 schema has a foreign-key violation")
+	}
+}
+
+func TestContinuitySQLiteRefusesDriftedV6BeforeV7Migration(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV6ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v6 database: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE continuity_v6_intruder(value TEXT)`); err != nil {
+		db.Close()
+		t.Fatalf("create v6 drift: %v", err)
+	}
+	before := schemaIdentitySnapshot(t, db)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close drifted v6 database: %v", err)
+	}
+
+	if store, err := Open(stateRoot, "environment-v7"); err == nil {
+		store.Close()
+		t.Fatal("Open(drifted v6) error = nil, want refusal")
+	}
+	db, err = openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("reopen refused v6 database: %v", err)
+	}
+	defer db.Close()
+	after := schemaIdentitySnapshot(t, db)
+	if after != before {
+		t.Fatalf("refused v6 migration mutated schema identity: before=%#v after=%#v", before, after)
+	}
+	var attemptColumns, receiptTables int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('continuity_sync_authority_recovery_transitions') WHERE name = 'attempt_id'`).Scan(&attemptColumns); err != nil {
+		t.Fatalf("inspect refused v6 attempt column: %v", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_schema WHERE name = 'continuity_sync_authority_recovery_terminal_receipts'`).Scan(&receiptTables); err != nil {
+		t.Fatalf("inspect refused v6 receipt table: %v", err)
+	}
+	if attemptColumns != 0 || receiptTables != 0 {
+		t.Fatalf("refused v6 migration created attempt columns=%d receipt tables=%d", attemptColumns, receiptTables)
+	}
+}
+
 func TestContinuitySQLiteRefusesDriftedOrFutureV5IdentityWithoutMigrationMutation(t *testing.T) {
 	t.Parallel()
 
@@ -361,7 +539,7 @@ func TestContinuitySQLiteRefusesDriftedOrFutureV5IdentityWithoutMigrationMutatio
 		{
 			name: "future user version",
 			mutate: func(t *testing.T, db *sql.DB) {
-				if _, err := db.Exec(`PRAGMA user_version = 7`); err != nil {
+				if _, err := db.Exec(`PRAGMA user_version = 8`); err != nil {
 					t.Fatalf("set future user version: %v", err)
 				}
 			},
@@ -1045,7 +1223,7 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		}
 	})
 
-	t.Run("v5 preflight observes exact v6", func(t *testing.T) {
+	t.Run("v5 preflight observes exact v7", func(t *testing.T) {
 		t.Parallel()
 		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
 		if err != nil {
@@ -1054,11 +1232,28 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		defer store.Close()
 		before := schemaIdentitySnapshot(t, store.db)
 		if err := migrateSchemaV5ToV6(store.db); err != nil {
-			t.Fatalf("migrateSchemaV5ToV6(exact v6) error = %v", err)
+			t.Fatalf("migrateSchemaV5ToV6(exact v7) error = %v", err)
 		}
 		after := schemaIdentitySnapshot(t, store.db)
 		if before != after {
-			t.Fatalf("v5 migration preflight mutated exact v6: before=%#v after=%#v", before, after)
+			t.Fatalf("v5 migration preflight mutated exact v7: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v6 preflight observes exact v7", func(t *testing.T) {
+		t.Parallel()
+		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+		if err != nil {
+			t.Fatalf("Open() error = %v", err)
+		}
+		defer store.Close()
+		before := schemaIdentitySnapshot(t, store.db)
+		if err := migrateSchemaV6ToV7(store.db); err != nil {
+			t.Fatalf("migrateSchemaV6ToV7(exact v7) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, store.db)
+		if before != after {
+			t.Fatalf("v6 migration preflight mutated exact v7: before=%#v after=%#v", before, after)
 		}
 	})
 }
@@ -1811,6 +2006,141 @@ func createV5ContinuityDatabase(t *testing.T, stateRoot string) string {
 		t.Fatalf("close v5 database: %v", err)
 	}
 	return databasePath
+}
+
+func createV6ContinuityDatabase(t *testing.T, stateRoot string) string {
+	t.Helper()
+
+	privateDirectory := filepath.Join(stateRoot, "vnext")
+	if err := os.MkdirAll(privateDirectory, 0o700); err != nil {
+		t.Fatalf("create v6 private directory: %v", err)
+	}
+	databasePath := filepath.Join(privateDirectory, databaseFileName)
+	file, err := os.OpenFile(databasePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("create v6 database: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close v6 database file: %v", err)
+	}
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v6 database: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		db.Close()
+		t.Fatalf("begin v6 schema: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schemaV6DDL); err != nil {
+		db.Close()
+		t.Fatalf("create v6 schema: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
+		db.Close()
+		t.Fatalf("set v6 application id: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 6`); err != nil {
+		db.Close()
+		t.Fatalf("set v6 user version: %v", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, 'vnext', 6, ?)`,
+		checksumSchemaV6(),
+	); err != nil {
+		db.Close()
+		t.Fatalf("record v6 schema identity: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		db.Close()
+		t.Fatalf("commit v6 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v6 database: %v", err)
+	}
+	return databasePath
+}
+
+func seedV6RecoveryTransitions(t *testing.T, db *sql.DB) {
+	t.Helper()
+	insertCandidate := func(projectID string, seed byte, state, role string, generation int) []byte {
+		t.Helper()
+		candidateID := schemaDigestBytes(seed)
+		var authorityDigest any
+		if state == "ready" {
+			authorityDigest = schemaDigestBytes(seed + 1)
+		}
+		if _, err := db.Exec(`
+INSERT INTO continuity_sync_authority_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  page_count, environment_count, through_environment_id,
+  rolling_environment_digest, authority_digest_version,
+  authority_digest, role
+) VALUES(?, ?, ?, ?, ?, ?, ?, 0, 1, 1, 'environment-v6', ?, 2, ?, ?)`,
+			projectID, candidateID, state, schemaDigestBytes(seed+2), schemaDigestBytes(seed+3),
+			schemaDigestBytes(seed+4), generation, schemaDigestBytes(seed+5), authorityDigest, role,
+		); err != nil {
+			t.Fatalf("insert v6 recovery candidate: %v", err)
+		}
+		return candidateID
+	}
+	bootstrapSuccessor := insertCandidate("project-v6-bootstrap", 0x11, "staging", "recovery-successor", 1)
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_authority_recovery_transitions(
+  project_id, predecessor_candidate_id, successor_candidate_id,
+  writer_environment_id, writer_certificate_id, target_membership_generation
+) VALUES('project-v6-bootstrap', NULL, ?, 'environment-writer', ?, 1)`,
+		bootstrapSuccessor, schemaDigestBytes(0x21),
+	); err != nil {
+		t.Fatalf("insert v6 bootstrap transition: %v", err)
+	}
+	predecessor := insertCandidate("project-v6-predecessor", 0x31, "ready", "recovery-predecessor", 1)
+	successor := insertCandidate("project-v6-predecessor", 0x41, "staging", "recovery-successor", 2)
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_authority_recovery_transitions(
+  project_id, predecessor_candidate_id, successor_candidate_id,
+  writer_environment_id, writer_certificate_id, target_membership_generation
+) VALUES('project-v6-predecessor', ?, ?, 'environment-writer', ?, 2)`,
+		predecessor, successor, schemaDigestBytes(0x51),
+	); err != nil {
+		t.Fatalf("insert v6 predecessor transition: %v", err)
+	}
+}
+
+func snapshotV6RecoveryTransitions(t *testing.T, db *sql.DB, includeAttempt bool) []string {
+	t.Helper()
+	attemptProjection := "''"
+	if includeAttempt {
+		attemptProjection = "hex(attempt_id)"
+	}
+	rows, err := db.Query(`
+SELECT project_id, ` + attemptProjection + `, COALESCE(hex(predecessor_candidate_id), ''),
+       hex(successor_candidate_id), writer_environment_id,
+       hex(writer_certificate_id), target_membership_generation
+FROM continuity_sync_authority_recovery_transitions
+ORDER BY project_id`)
+	if err != nil {
+		t.Fatalf("snapshot v6 recovery transitions: %v", err)
+	}
+	defer rows.Close()
+	var result []string
+	for rows.Next() {
+		var projectID, attemptID, predecessor, successor, writer, certificate string
+		var generation int64
+		if err := rows.Scan(&projectID, &attemptID, &predecessor, &successor, &writer, &certificate, &generation); err != nil {
+			t.Fatalf("scan v6 recovery transition: %v", err)
+		}
+		if includeAttempt && attemptID != successor {
+			t.Fatalf("migrated attempt ID = %s, want successor %s", attemptID, successor)
+		}
+		result = append(result, projectID+":"+predecessor+":"+successor+":"+writer+":"+certificate+":"+fmt.Sprint(generation))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate v6 recovery transitions: %v", err)
+	}
+	return result
 }
 
 func seedV3SyncAuthority(t *testing.T, db *sql.DB, projectID continuity.ProjectID, authority SyncAuthority, activeCandidateDigest *[32]byte) {

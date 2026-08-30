@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"errors"
@@ -21,6 +22,7 @@ const (
 // coexist. A zero predecessor candidate identifies the generation-one case.
 type SyncAuthorityRecoveryTransition struct {
 	ProjectID                  continuity.ProjectID
+	AttemptID                  [32]byte
 	PredecessorCandidateID     [32]byte
 	SuccessorCandidateID       [32]byte
 	WriterEnvironmentID        continuity.EnvironmentID
@@ -95,14 +97,15 @@ func readAndAuditSyncAuthorityRecoveryTransitionV1(
 	}
 
 	transition := SyncAuthorityRecoveryTransition{ProjectID: projectID}
-	var predecessor, successor, writerCertificate []byte
+	var attempt, predecessor, successor, writerCertificate []byte
 	var targetGeneration int64
 	err = tx.QueryRowContext(ctx, `
-SELECT predecessor_candidate_id, successor_candidate_id,
+SELECT attempt_id, predecessor_candidate_id, successor_candidate_id,
        writer_environment_id, writer_certificate_id,
        target_membership_generation
 FROM continuity_sync_authority_recovery_transitions
 WHERE project_id = ?`, string(projectID)).Scan(
+		&attempt,
 		&predecessor,
 		&successor,
 		&transition.WriterEnvironmentID,
@@ -118,18 +121,25 @@ WHERE project_id = ?`, string(projectID)).Scan(
 	if err != nil {
 		return SyncAuthorityRecoveryTransition{}, false, syncTransactionProblem(ctx)
 	}
-	if (predecessor != nil && (len(predecessor) != sha256.Size || isZeroDigestBytesV2(predecessor))) ||
+	if len(attempt) != sha256.Size || isZeroDigestBytesV2(attempt) ||
+		(predecessor != nil && (len(predecessor) != sha256.Size || isZeroDigestBytesV2(predecessor))) ||
 		len(successor) != sha256.Size || isZeroDigestBytesV2(successor) ||
 		len(writerCertificate) != sha256.Size || isZeroDigestBytesV2(writerCertificate) ||
 		transition.WriterEnvironmentID.Validate() != nil || targetGeneration < 1 || targetGeneration > math.MaxUint32 {
 		return SyncAuthorityRecoveryTransition{}, false, corruptSyncAuthorityRecoveryTransitionV1("transition link is malformed")
 	}
+	copy(transition.AttemptID[:], attempt)
 	copy(transition.PredecessorCandidateID[:], predecessor)
 	copy(transition.SuccessorCandidateID[:], successor)
 	copy(transition.WriterCertificateID[:], writerCertificate)
 	transition.TargetMembershipGeneration = uint32(targetGeneration)
 	if transition.PredecessorCandidateID == transition.SuccessorCandidateID {
 		return SyncAuthorityRecoveryTransition{}, false, corruptSyncAuthorityRecoveryTransitionV1("transition candidate links are not distinct")
+	}
+	if _, found, err := readAndAuditSyncAuthorityRecoveryTerminalReceiptV1(ctx, tx, projectID, transition.AttemptID); err != nil {
+		return SyncAuthorityRecoveryTransition{}, false, err
+	} else if found {
+		return SyncAuthorityRecoveryTransition{}, false, corruptSyncAuthorityRecoveryTransitionV1("attempt is both active and terminal")
 	}
 
 	wantParticipants := 1
@@ -157,6 +167,37 @@ WHERE project_id = ?`, string(projectID)).Scan(
 		}
 	}
 	return transition, true, nil
+}
+
+func generateSyncAuthorityRecoveryAttemptIDV1() ([32]byte, error) {
+	for {
+		var attemptID [32]byte
+		if _, err := rand.Read(attemptID[:]); err != nil {
+			return [32]byte{}, syncProblem(SyncErrorStore, "sync_authority_recovery_attempt", "cannot generate attempt identity")
+		}
+		if attemptID != ([32]byte{}) {
+			return attemptID, nil
+		}
+	}
+}
+
+func validateSyncAuthorityRecoveryTransitionV1(transition SyncAuthorityRecoveryTransition) error {
+	if err := validateSyncProjectID(transition.ProjectID); err != nil {
+		return err
+	}
+	if transition.AttemptID == ([32]byte{}) || transition.SuccessorCandidateID == ([32]byte{}) ||
+		transition.WriterEnvironmentID.Validate() != nil || transition.WriterCertificateID == ([32]byte{}) ||
+		transition.TargetMembershipGeneration == 0 ||
+		(transition.PredecessorCandidateID == ([32]byte{}) && transition.TargetMembershipGeneration != 1) ||
+		(transition.PredecessorCandidateID != ([32]byte{}) && transition.TargetMembershipGeneration < 2) ||
+		transition.PredecessorCandidateID == transition.SuccessorCandidateID {
+		return syncProblem(SyncErrorInvalid, "sync_authority_recovery_transition", "is invalid")
+	}
+	return nil
+}
+
+func syncAuthorityRecoveryTransitionMatchesV1(left, right SyncAuthorityRecoveryTransition) bool {
+	return left == right
 }
 
 func readSyncAuthorityRecoveryParticipantsV1(
