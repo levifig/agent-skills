@@ -14,7 +14,7 @@ import (
 const (
 	applicationID = 1280267825
 	schemaLine    = "vnext"
-	schemaVersion = 8
+	schemaVersion = 9
 )
 
 const schemaTableV1SQL = `CREATE TABLE continuity_schema (
@@ -87,10 +87,20 @@ const schemaTableV7SQL = `CREATE TABLE continuity_schema (
   )
 ) STRICT`
 
-const schemaTableSQL = `CREATE TABLE continuity_schema (
+const schemaTableV8SQL = `CREATE TABLE continuity_schema (
   singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
   schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
   schema_version INTEGER NOT NULL CHECK (schema_version = 8),
+  schema_checksum TEXT NOT NULL CHECK (
+    length(schema_checksum) = 64
+    AND schema_checksum NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT`
+
+const schemaTableSQL = `CREATE TABLE continuity_schema (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 9),
   schema_checksum TEXT NOT NULL CHECK (
     length(schema_checksum) = 64
     AND schema_checksum NOT GLOB '*[^0-9a-f]*'
@@ -428,6 +438,41 @@ const syncOutboxTableSQL = `CREATE TABLE continuity_sync_outbox (
   FOREIGN KEY (fact_id) REFERENCES continuity_facts(fact_id)
 ) STRICT, WITHOUT ROWID`
 
+const syncTombstonesTableV8SQL = `CREATE TABLE continuity_sync_tombstones (
+  fact_id TEXT NOT NULL PRIMARY KEY CHECK (
+    length(fact_id) BETWEEN 1 AND 128
+    AND fact_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  project_id TEXT NOT NULL,
+  environment_id TEXT NOT NULL CHECK (
+    length(environment_id) BETWEEN 1 AND 128
+    AND environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  environment_sequence INTEGER NOT NULL CHECK (environment_sequence > 0),
+  arrival_sequence INTEGER NOT NULL CHECK (arrival_sequence > 0),
+  previous_envelope_digest BLOB NOT NULL CHECK (
+    length(previous_envelope_digest) = 32
+  ),
+  envelope_digest BLOB NOT NULL CHECK (
+    length(envelope_digest) = 32 AND envelope_digest <> zeroblob(32)
+  ),
+  certificate_id BLOB NOT NULL CHECK (
+    length(certificate_id) = 32 AND certificate_id <> zeroblob(32)
+  ),
+  key_generation INTEGER NOT NULL CHECK (
+    key_generation BETWEEN 1 AND 4294967295
+  ),
+  nonce BLOB NOT NULL CHECK (length(nonce) = 24),
+  prune_certificate_id BLOB NOT NULL CHECK (
+    length(prune_certificate_id) = 32
+    AND prune_certificate_id <> zeroblob(32)
+  ),
+  UNIQUE (project_id, environment_id, environment_sequence),
+  UNIQUE (project_id, arrival_sequence),
+  UNIQUE (project_id, key_generation, nonce),
+  FOREIGN KEY (project_id) REFERENCES continuity_sync_projects(project_id)
+) STRICT, WITHOUT ROWID`
+
 const syncTombstonesTableSQL = `CREATE TABLE continuity_sync_tombstones (
   fact_id TEXT NOT NULL PRIMARY KEY CHECK (
     length(fact_id) BETWEEN 1 AND 128
@@ -456,6 +501,10 @@ const syncTombstonesTableSQL = `CREATE TABLE continuity_sync_tombstones (
   prune_certificate_id BLOB NOT NULL CHECK (
     length(prune_certificate_id) = 32
     AND prune_certificate_id <> zeroblob(32)
+  ),
+  pruned_arrival_digest BLOB CHECK (
+    pruned_arrival_digest IS NULL
+    OR (length(pruned_arrival_digest) = 32 AND pruned_arrival_digest <> zeroblob(32))
   ),
   UNIQUE (project_id, environment_id, environment_sequence),
   UNIQUE (project_id, arrival_sequence),
@@ -1210,7 +1259,7 @@ const syncSchemaV2DDL = syncProjectsTableSQL + ";\n" +
 	syncReceiptsTableSQL + ";\n" +
 	syncEnvironmentHeadsTableSQL + ";\n" +
 	syncOutboxTableSQL + ";\n" +
-	syncTombstonesTableSQL + ";\n" +
+	syncTombstonesTableV8SQL + ";\n" +
 	syncEnvironmentCertificatesTableSQL + ";\n"
 
 const schemaV2DDL = schemaTableV2SQL + ";\n" +
@@ -1222,6 +1271,17 @@ const schemaV2DDL = schemaTableV2SQL + ";\n" +
 	syncSchemaV2DDL
 
 const syncSchemaV3DDL = syncProjectsTableSQL + ";\n" +
+	syncInboxTableSQL + ";\n" +
+	syncReceiptsTableSQL + ";\n" +
+	syncEnvironmentHeadsTableSQL + ";\n" +
+	syncOutboxTableSQL + ";\n" +
+	syncTombstonesTableV8SQL + ";\n" +
+	syncEnvironmentCertificatesTableSQL + ";\n" +
+	syncTerminalCandidatesTableSQL + ";\n" +
+	syncTerminalCandidateFramesTableSQL + ";\n" +
+	syncTerminalCandidatesStagingIndexSQL + ";\n"
+
+const syncSchemaDDL = syncProjectsTableSQL + ";\n" +
 	syncInboxTableSQL + ";\n" +
 	syncReceiptsTableSQL + ";\n" +
 	syncEnvironmentHeadsTableSQL + ";\n" +
@@ -1308,13 +1368,23 @@ const schemaV7DDL = schemaTableV7SQL + ";\n" +
 	syncAuthorityCandidateSchemaDDL +
 	syncRelayWatermarksTableV1SQL + ";\n"
 
-const schemaDDL = schemaTableSQL + ";\n" +
+const schemaV8DDL = schemaTableV8SQL + ";\n" +
 	factsTableSQL + ";\n" +
 	projectIdentityIndexSQL + ";\n" +
 	projectOrderIndexSQL + ";\n" +
 	subjectOrderIndexSQL + ";\n" +
 	projectIdentityTriggerSQL + ";\n" +
 	syncSchemaV3DDL +
+	syncAuthorityCandidateSchemaDDL +
+	syncRelayWatermarksTableSQL + ";\n"
+
+const schemaDDL = schemaTableSQL + ";\n" +
+	factsTableSQL + ";\n" +
+	projectIdentityIndexSQL + ";\n" +
+	projectOrderIndexSQL + ";\n" +
+	subjectOrderIndexSQL + ";\n" +
+	projectIdentityTriggerSQL + ";\n" +
+	syncSchemaDDL +
 	syncAuthorityCandidateSchemaDDL +
 	syncRelayWatermarksTableSQL + ";\n"
 
@@ -1358,13 +1428,26 @@ func expectedSchemaObjects() []schemaObject {
 }
 
 func expectedSchemaV7Objects() []schemaObject {
-	objects := expectedSchemaObjects()
+	objects := expectedSchemaV8Objects()
 	for index := range objects {
 		switch objects[index].name {
 		case "continuity_schema":
 			objects[index].sql = schemaTableV7SQL
 		case "continuity_sync_relay_watermarks":
 			objects[index].sql = syncRelayWatermarksTableV1SQL
+		}
+	}
+	return objects
+}
+
+func expectedSchemaV8Objects() []schemaObject {
+	objects := expectedSchemaObjects()
+	for index := range objects {
+		switch objects[index].name {
+		case "continuity_schema":
+			objects[index].sql = schemaTableV8SQL
+		case "continuity_sync_tombstones":
+			objects[index].sql = syncTombstonesTableV8SQL
 		}
 	}
 	return objects
@@ -1396,7 +1479,7 @@ func expectedSchemaV6Objects() []schemaObject {
 		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableV1SQL},
 		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
-		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableV8SQL},
 		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
 	}
 }
@@ -1425,7 +1508,7 @@ func expectedSchemaV5Objects() []schemaObject {
 		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableV1SQL},
 		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
-		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableV8SQL},
 		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
 	}
 }
@@ -1453,7 +1536,7 @@ func expectedSchemaV4Objects() []schemaObject {
 		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
-		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableV8SQL},
 		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
 	}
 }
@@ -1474,7 +1557,7 @@ func expectedSchemaV3Objects() []schemaObject {
 		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
-		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableV8SQL},
 		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
 	}
 }
@@ -1492,7 +1575,7 @@ func expectedSchemaV2Objects() []schemaObject {
 		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", sql: syncOutboxTableSQL},
 		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", sql: syncProjectsTableSQL},
 		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
-		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableV8SQL},
 		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
 	}
 }
@@ -1510,6 +1593,10 @@ func expectedSchemaV1Objects() []schemaObject {
 
 func checksumSchema() string {
 	return checksumDDL(schemaDDL)
+}
+
+func checksumSchemaV8() string {
+	return checksumDDL(schemaV8DDL)
 }
 
 func checksumSchemaV7() string {
@@ -1701,8 +1788,12 @@ func migrateSchema(db *sql.DB) error {
 			if err := migrateSchemaV7ToV8(db); err != nil {
 				return err
 			}
+		case 8:
+			if err := migrateSchemaV8ToV9(db); err != nil {
+				return err
+			}
 		default:
-			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, 6, 7, or %d", version, schemaVersion)
+			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, 6, 7, 8, or %d", version, schemaVersion)
 		}
 	}
 }
@@ -2221,7 +2312,7 @@ func migrateSchemaV7ToV8(db *sql.DB) error {
 	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("recheck continuity v7 schema version in migration: %w", err)
 	}
-	if version == schemaVersion {
+	if version > 7 && version <= schemaVersion {
 		if err := validateKnownSchemaVersion(tx, version); err != nil {
 			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
 		}
@@ -2274,7 +2365,7 @@ WHERE frontier.project_id IS NULL
 	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
 		return fmt.Errorf("drop continuity v7 schema identity: %w", err)
 	}
-	if _, err := tx.Exec(schemaTableSQL); err != nil {
+	if _, err := tx.Exec(schemaTableV8SQL); err != nil {
 		return fmt.Errorf("create continuity v8 schema identity: %w", err)
 	}
 	if _, err := tx.Exec(`PRAGMA user_version = 8`); err != nil {
@@ -2283,12 +2374,12 @@ WHERE frontier.project_id IS NULL
 	if _, err := tx.Exec(
 		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
 		schemaLine,
-		schemaVersion,
-		checksumSchema(),
+		8,
+		checksumSchemaV8(),
 	); err != nil {
 		return fmt.Errorf("record continuity v8 schema identity: %w", err)
 	}
-	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+	if err := validateSchemaVersion(tx, 8, checksumSchemaV8(), expectedSchemaV8Objects()); err != nil {
 		return fmt.Errorf("validate continuity v8 migration: %w", err)
 	}
 	if err := validateForeignKeys(tx); err != nil {
@@ -2296,6 +2387,81 @@ WHERE frontier.project_id IS NULL
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit continuity v8 migration: %w", err)
+	}
+	return nil
+}
+
+func migrateSchemaV8ToV9(db *sql.DB) error {
+	advanced, err := validateMigrationPreflight(db, 8)
+	if err != nil {
+		return fmt.Errorf("validate continuity v8 before migration: %w", err)
+	}
+	if advanced {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin continuity v9 migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	var version int
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("recheck continuity v8 schema version in migration: %w", err)
+	}
+	if version > 8 && version <= schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
+		return nil
+	}
+	if version != 8 {
+		return fmt.Errorf("continuity schema changed during v9 migration")
+	}
+	if err := validateSchemaVersion(tx, 8, checksumSchemaV8(), expectedSchemaV8Objects()); err != nil {
+		return fmt.Errorf("revalidate continuity v8 in migration: %w", err)
+	}
+
+	if _, err := tx.Exec(`ALTER TABLE continuity_sync_tombstones ADD COLUMN pruned_arrival_digest BLOB CHECK (
+  pruned_arrival_digest IS NULL
+  OR (length(pruned_arrival_digest) = 32 AND pruned_arrival_digest <> zeroblob(32))
+)`); err != nil {
+		return fmt.Errorf("add continuity v9 pruned arrival digest: %w", err)
+	}
+	var synthesizedDigests int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM continuity_sync_tombstones WHERE pruned_arrival_digest IS NOT NULL`).Scan(&synthesizedDigests); err != nil {
+		return fmt.Errorf("validate continuity v9 legacy tombstone digests: %w", err)
+	}
+	if synthesizedDigests != 0 {
+		return fmt.Errorf("continuity v9 migration synthesized %d legacy tombstone digests", synthesizedDigests)
+	}
+
+	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
+		return fmt.Errorf("drop continuity v8 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(schemaTableSQL); err != nil {
+		return fmt.Errorf("create continuity v9 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 9`); err != nil {
+		return fmt.Errorf("set continuity v9 schema version: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
+		schemaLine,
+		schemaVersion,
+		checksumSchema(),
+	); err != nil {
+		return fmt.Errorf("record continuity v9 schema identity: %w", err)
+	}
+	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+		return fmt.Errorf("validate continuity v9 migration: %w", err)
+	}
+	if err := validateForeignKeys(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit continuity v9 migration: %w", err)
 	}
 	return nil
 }
@@ -2450,6 +2616,8 @@ func validateKnownSchemaVersion(db schemaQuerier, version int) error {
 		return validateSchemaVersion(db, 6, checksumSchemaV6(), expectedSchemaV6Objects())
 	case 7:
 		return validateSchemaVersion(db, 7, checksumSchemaV7(), expectedSchemaV7Objects())
+	case 8:
+		return validateSchemaVersion(db, 8, checksumSchemaV8(), expectedSchemaV8Objects())
 	case schemaVersion:
 		return validateSchemaVersion(db, schemaVersion, checksumSchema(), expectedSchemaObjects())
 	default:

@@ -45,8 +45,10 @@ type VerifiedPrunePlan struct {
 }
 
 type retainedPruneTombstoneV1 struct {
-	reference          VerifiedPruneReference
-	pruneCertificateID [32]byte
+	reference                VerifiedPruneReference
+	pruneCertificateID       [32]byte
+	prunedArrivalDigest      [32]byte
+	prunedArrivalDigestKnown bool
 }
 
 // ApplyVerifiedPrune atomically replaces verified, closed-scratchpad facts
@@ -175,7 +177,7 @@ func (store *Store) ApplyVerifiedPrune(ctx context.Context, projectID continuity
 		return nil
 	}
 	for index, target := range prepared.Targets {
-		if err := insertPruneTombstoneV1(ctx, tx, projectID, target, prepared.PruneCertificateID); err != nil {
+		if err := insertPruneTombstoneV1(ctx, tx, projectID, target, prepared.PruneCertificateID, nil); err != nil {
 			return refieldPruneErrorV1(err, fmt.Sprintf("targets[%d]", index))
 		}
 		result, err := tx.ExecContext(ctx, `
@@ -395,7 +397,7 @@ func readPruneTombstoneCollisionV1(ctx context.Context, tx *sql.Tx, projectID co
 	rows, err := tx.QueryContext(ctx, `
 SELECT fact_id, environment_id, environment_sequence, arrival_sequence,
        previous_envelope_digest, envelope_digest, certificate_id, key_generation, nonce,
-       prune_certificate_id
+       prune_certificate_id, pruned_arrival_digest
 FROM continuity_sync_tombstones
 WHERE project_id = ? AND (
   fact_id = ? OR arrival_sequence = ? OR (environment_id = ? AND environment_sequence = ?)
@@ -410,11 +412,11 @@ WHERE project_id = ? AND (
 		if found {
 			return retainedPruneTombstoneV1{}, false, syncProblem(SyncErrorConflict, "tombstone", "reference identities collide with different tombstones")
 		}
-		var previousDigest, digest, certificateID, nonce, pruneCertificateID []byte
+		var previousDigest, digest, certificateID, nonce, pruneCertificateID, prunedArrivalDigest []byte
 		if err := rows.Scan(
 			&retained.reference.FactID, &retained.reference.EnvironmentID, &retained.reference.EnvironmentSequence,
 			&retained.reference.ArrivalSequence, &previousDigest, &digest, &certificateID,
-			&retained.reference.KeyGeneration, &nonce, &pruneCertificateID,
+			&retained.reference.KeyGeneration, &nonce, &pruneCertificateID, &prunedArrivalDigest,
 		); err != nil {
 			return retainedPruneTombstoneV1{}, false, syncTransactionProblem(ctx)
 		}
@@ -426,6 +428,13 @@ WHERE project_id = ? AND (
 		copy(retained.reference.CertificateID[:], certificateID)
 		copy(retained.reference.Nonce[:], nonce)
 		copy(retained.pruneCertificateID[:], pruneCertificateID)
+		if prunedArrivalDigest != nil {
+			if len(prunedArrivalDigest) != 32 {
+				return retainedPruneTombstoneV1{}, false, syncProblem(SyncErrorStore, "tombstone", "retained pruned arrival digest is corrupt")
+			}
+			copy(retained.prunedArrivalDigest[:], prunedArrivalDigest)
+			retained.prunedArrivalDigestKnown = true
+		}
 		found = true
 	}
 	if err := rows.Err(); err != nil {
@@ -446,16 +455,27 @@ WHERE project_id = ? AND (
 	return count != 0, nil
 }
 
-func insertPruneTombstoneV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, reference VerifiedPruneReference, pruneCertificateID [32]byte) error {
+func insertPruneTombstoneV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	reference VerifiedPruneReference,
+	pruneCertificateID [32]byte,
+	prunedArrivalDigest *[32]byte,
+) error {
+	var retainedPrunedArrivalDigest any
+	if prunedArrivalDigest != nil {
+		retainedPrunedArrivalDigest = prunedArrivalDigest[:]
+	}
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO continuity_sync_tombstones(
   fact_id, project_id, environment_id, environment_sequence, arrival_sequence,
   previous_envelope_digest, envelope_digest, certificate_id, key_generation, nonce,
-  prune_certificate_id
-) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  prune_certificate_id, pruned_arrival_digest
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(reference.FactID), string(projectID), string(reference.EnvironmentID), reference.EnvironmentSequence, reference.ArrivalSequence,
 		reference.PreviousEnvelopeDigest[:], reference.EnvelopeDigest[:], reference.CertificateID[:], reference.KeyGeneration, reference.Nonce[:],
-		pruneCertificateID[:])
+		pruneCertificateID[:], retainedPrunedArrivalDigest)
 	if err != nil {
 		return syncTransactionProblem(ctx)
 	}

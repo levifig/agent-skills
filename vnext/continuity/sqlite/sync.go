@@ -1596,21 +1596,44 @@ WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival
 func validateStagedPageReplayV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, appliedCursor int64, frames []OpaqueSyncFrame) error {
 	for _, frame := range frames {
 		if frame.ArrivalSequence <= appliedCursor {
-			candidateKind, _, err := opaqueSyncFrameStorageV1(frame)
+			candidateKind, candidateBytes, err := opaqueSyncFrameStorageV1(frame)
 			if err != nil {
 				return err
 			}
-			if candidateKind == terminalCandidateFrameKindPrunedV1 {
-				return syncProblem(SyncErrorConflict, "frame_bytes", "applied pruned arrival bytes are no longer retained")
-			}
 			rows, err := tx.QueryContext(ctx, `
-SELECT envelope_digest, 'sealed'
-FROM continuity_sync_receipts
-WHERE project_id = ? AND arrival_sequence = ?
+SELECT envelope_digest, 'sealed', NULL, 0, 0
+FROM continuity_sync_receipts AS receipt
+WHERE receipt.project_id = ? AND receipt.arrival_sequence = ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM continuity_sync_tombstones AS tombstone
+    WHERE tombstone.project_id = receipt.project_id
+      AND tombstone.arrival_sequence = receipt.arrival_sequence
+  )
 UNION ALL
-SELECT envelope_digest, 'pruned'
-FROM continuity_sync_tombstones
-WHERE project_id = ? AND arrival_sequence = ?`,
+SELECT tombstone.envelope_digest, 'pruned', tombstone.pruned_arrival_digest,
+       EXISTS (
+         SELECT 1
+         FROM continuity_sync_receipts AS receipt
+         WHERE receipt.project_id = tombstone.project_id
+           AND receipt.arrival_sequence = tombstone.arrival_sequence
+       ),
+       EXISTS (
+         SELECT 1
+         FROM continuity_sync_receipts AS receipt
+         WHERE receipt.project_id = tombstone.project_id
+           AND receipt.arrival_sequence = tombstone.arrival_sequence
+           AND receipt.fact_id = tombstone.fact_id
+           AND receipt.environment_id = tombstone.environment_id
+           AND receipt.environment_sequence = tombstone.environment_sequence
+           AND receipt.previous_envelope_digest = tombstone.previous_envelope_digest
+           AND receipt.envelope_digest = tombstone.envelope_digest
+           AND receipt.certificate_id = tombstone.certificate_id
+           AND receipt.key_generation = tombstone.key_generation
+           AND receipt.nonce = tombstone.nonce
+       )
+FROM continuity_sync_tombstones AS tombstone
+WHERE tombstone.project_id = ? AND tombstone.arrival_sequence = ?`,
 				string(projectID),
 				frame.ArrivalSequence,
 				string(projectID),
@@ -1621,16 +1644,39 @@ WHERE project_id = ? AND arrival_sequence = ?`,
 			}
 			matched := false
 			for rows.Next() {
-				var digest []byte
+				var digest, prunedArrivalDigest []byte
 				var retainedKind string
-				if err := rows.Scan(&digest, &retainedKind); err != nil {
+				var shadowedReceipt, matchingShadowedReceipt int
+				if err := rows.Scan(
+					&digest, &retainedKind, &prunedArrivalDigest,
+					&shadowedReceipt, &matchingShadowedReceipt,
+				); err != nil {
 					rows.Close()
 					return syncTransactionProblem(ctx)
+				}
+				if shadowedReceipt != matchingShadowedReceipt {
+					rows.Close()
+					return syncProblem(SyncErrorStore, "tombstone", "shadowed receipt conflicts with the prune tombstone")
 				}
 				if retainedKind != candidateKind || len(digest) != len(frame.EnvelopeDigest) ||
 					!bytes.Equal(digest, frame.EnvelopeDigest[:]) {
 					rows.Close()
 					return syncProblem(SyncErrorConflict, "frame_bytes", "stage retry conflicts with an applied arrival")
+				}
+				if retainedKind == terminalCandidateFrameKindPrunedV1 {
+					if prunedArrivalDigest == nil {
+						rows.Close()
+						return syncProblem(SyncErrorConflict, "applied_pruned_unverifiable", "applied pruned arrival has no exact byte receipt")
+					}
+					if len(prunedArrivalDigest) != sha256.Size {
+						rows.Close()
+						return syncProblem(SyncErrorStore, "tombstone", "applied pruned arrival digest is corrupt")
+					}
+					candidateDigest := sha256.Sum256(candidateBytes)
+					if !bytes.Equal(prunedArrivalDigest, candidateDigest[:]) {
+						rows.Close()
+						return syncProblem(SyncErrorConflict, "frame_bytes", "stage retry conflicts with an applied arrival")
+					}
 				}
 				matched = true
 			}
