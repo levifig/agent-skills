@@ -90,24 +90,44 @@ func deriveTerminalCandidateIdentityV1(projectID continuity.ProjectID, authority
 		return [32]byte{}, [32]byte{}, err
 	}
 	authorityDigest := sha256.Sum256(authorityTranscript)
+	binding := SyncAuthorityBinding{
+		ChannelID:              authority.ChannelID,
+		RelayGeneration:        authority.RelayGeneration,
+		AdminPublicKey:         authority.AdminPublicKey,
+		MembershipGeneration:   authority.MembershipGeneration,
+		InventoryArrivalHead:   authority.InventoryArrivalHead,
+		AuthorityDigestVersion: 1,
+		AuthorityDigest:        authorityDigest,
+	}
+	candidateID, err := deriveTerminalCandidateIDFromAuthorityBindingV1(projectID, binding, startArrivalSequence)
+	if err != nil {
+		return [32]byte{}, [32]byte{}, err
+	}
+	return authorityDigest, candidateID, nil
+}
+
+func deriveTerminalCandidateIDFromAuthorityBindingV1(projectID continuity.ProjectID, binding SyncAuthorityBinding, startArrivalSequence int64) ([32]byte, error) {
+	if projectID.Validate() != nil || validateSyncAuthorityBindingV2(binding) != nil {
+		return [32]byte{}, invalidTerminalCandidateCodecV1()
+	}
 	if startArrivalSequence < 1 {
-		return [32]byte{}, [32]byte{}, invalidTerminalCandidateCodecV1()
+		return [32]byte{}, invalidTerminalCandidateCodecV1()
 	}
 	identityTranscript, err := encodeTerminalCandidateTranscriptV1(
 		terminalCandidateIdentityDomainV1,
 		maximumTerminalCandidateIdentityBytesV1,
 		terminalCandidateUint16BytesV1(terminalCandidateCodecVersionV1),
 		[]byte(projectID),
-		authority.ChannelID[:],
-		authority.RelayGeneration[:],
-		terminalCandidateUint32BytesV1(authority.MembershipGeneration),
-		authorityDigest[:],
+		binding.ChannelID[:],
+		binding.RelayGeneration[:],
+		terminalCandidateUint32BytesV1(binding.MembershipGeneration),
+		binding.AuthorityDigest[:],
 		terminalCandidateInt64BytesV1(startArrivalSequence),
 	)
 	if err != nil {
-		return [32]byte{}, [32]byte{}, err
+		return [32]byte{}, err
 	}
-	return authorityDigest, sha256.Sum256(identityTranscript), nil
+	return sha256.Sum256(identityTranscript), nil
 }
 
 func terminalCandidateAuthorityTranscriptV1(projectID continuity.ProjectID, authority SyncAuthority) ([]byte, error) {

@@ -66,6 +66,19 @@ type SyncAuthority struct {
 	Environments         []SyncEnvironmentCertificate
 }
 
+// SyncAuthorityBinding is the fixed-size identity and digest binding for one
+// project's canonical sync authority. It intentionally excludes the complete
+// environment inventory.
+type SyncAuthorityBinding struct {
+	ChannelID              SyncChannelID
+	RelayGeneration        [32]byte
+	AdminPublicKey         [32]byte
+	MembershipGeneration   uint32
+	InventoryArrivalHead   int64
+	AuthorityDigestVersion uint16
+	AuthorityDigest        [32]byte
+}
+
 // InstallVerifiedSyncAuthority pins or advances one project's verified relay
 // authority and complete environment inventory in a single serializable
 // transaction. The first install creates the staging sync project row, so
@@ -107,6 +120,14 @@ func (store *Store) InstallVerifiedSyncAuthority(ctx context.Context, projectID 
 		return SyncProgress{}, err
 	}
 	if !found {
+		_, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return SyncProgress{}, err
+		default:
+			return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "canonical authority exists without sync progress")
+		}
 		if err := validateSyncAuthority(authority); err != nil {
 			return SyncProgress{}, err
 		}
@@ -145,6 +166,13 @@ INSERT INTO continuity_sync_authorities(
 			ActivationState: SyncActivationStaging,
 		}
 	} else {
+		binding, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
+		if err != nil {
+			return SyncProgress{}, err
+		}
+		if binding.AuthorityDigestVersion != 1 {
+			return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority", "compatibility install cannot reconcile a version 2 canonical authority")
+		}
 		persisted, err := readSyncAuthorityV1(ctx, tx, projectID)
 		if err != nil {
 			return SyncProgress{}, err
@@ -209,17 +237,56 @@ func (store *Store) CurrentSyncAuthority(ctx context.Context, projectID continui
 		return SyncAuthority{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
-	authority, err := readSyncAuthorityV1(ctx, tx, projectID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return SyncAuthority{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
-	}
+	authority, _, _, found, err := readCanonicalSyncAuthorityForCandidateV2(ctx, tx, projectID)
 	if err != nil {
 		return SyncAuthority{}, err
+	}
+	if !found {
+		return SyncAuthority{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
 	}
 	if err := tx.Commit(); err != nil {
 		return SyncAuthority{}, syncTransactionProblem(ctx)
 	}
 	return authority, nil
+}
+
+// CurrentSyncAuthorityBinding returns the project's fixed-size canonical
+// authority binding without reading its environment inventory.
+func (store *Store) CurrentSyncAuthorityBinding(ctx context.Context, projectID continuity.ProjectID) (SyncAuthorityBinding, error) {
+	if err := validateSyncProjectID(projectID); err != nil {
+		return SyncAuthorityBinding{}, err
+	}
+	if store == nil {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorStore, "", "store is closed")
+	}
+	if ctx == nil {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorInvalid, "context", "must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return SyncAuthorityBinding{}, err
+	}
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	if store.closed || store.db == nil {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorStore, "", "store is closed")
+	}
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return SyncAuthorityBinding{}, syncTransactionProblem(ctx)
+	}
+	defer tx.Rollback()
+	binding, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
+	}
+	if err != nil {
+		return SyncAuthorityBinding{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SyncAuthorityBinding{}, syncTransactionProblem(ctx)
+	}
+	return binding, nil
 }
 
 func validateSyncProjectID(projectID continuity.ProjectID) error {
@@ -373,6 +440,96 @@ WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &digestBytes, &in
 	}
 	authority.InventoryArrivalHead = inventoryArrivalHead
 	return authority, nil
+}
+
+func validateSyncAuthorityBindingV2(binding SyncAuthorityBinding) error {
+	if binding.ChannelID == (SyncChannelID{}) {
+		return syncProblem(SyncErrorInvalid, "channel_id", "is invalid")
+	}
+	if binding.RelayGeneration == ([32]byte{}) {
+		return syncProblem(SyncErrorInvalid, "relay_generation", "must be nonzero")
+	}
+	if binding.AdminPublicKey == ([32]byte{}) {
+		return syncProblem(SyncErrorInvalid, "admin_public_key", "must be nonzero")
+	}
+	if binding.MembershipGeneration == 0 {
+		return syncProblem(SyncErrorInvalid, "membership_generation", "must begin at one")
+	}
+	if binding.InventoryArrivalHead < 0 {
+		return syncProblem(SyncErrorInvalid, "inventory_arrival_head", "must not be negative")
+	}
+	if binding.AuthorityDigestVersion != 1 && binding.AuthorityDigestVersion != 2 {
+		return syncProblem(SyncErrorInvalid, "authority_digest_version", "must be one or two")
+	}
+	if binding.AuthorityDigest == ([32]byte{}) {
+		return syncProblem(SyncErrorInvalid, "authority_digest", "must be nonzero")
+	}
+	if binding.AuthorityDigestVersion == 1 && binding.InventoryArrivalHead != 0 {
+		return syncProblem(SyncErrorInvalid, "inventory_arrival_head", "version one requires zero")
+	}
+	return nil
+}
+
+func readCanonicalSyncAuthorityBindingV2(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (SyncAuthorityBinding, error) {
+	var binding SyncAuthorityBinding
+	var channelID, relayGeneration, adminPublicKey []byte
+	var membershipGeneration int64
+	err := tx.QueryRowContext(ctx, `
+SELECT channel_id, relay_generation, admin_public_key, membership_generation
+FROM continuity_sync_projects
+WHERE project_id = ?`, string(projectID)).Scan(
+		&channelID,
+		&relayGeneration,
+		&adminPublicKey,
+		&membershipGeneration,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		var orphaned int
+		if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM continuity_sync_authorities WHERE project_id = ?
+  UNION ALL
+  SELECT 1 FROM continuity_sync_environment_certificates WHERE project_id = ?
+)`, string(projectID), string(projectID)).Scan(&orphaned); err != nil {
+			return SyncAuthorityBinding{}, syncTransactionProblem(ctx)
+		}
+		if orphaned != 0 {
+			return SyncAuthorityBinding{}, syncProblem(SyncErrorStore, "sync_authority", "orphaned canonical authority rows exist")
+		}
+		return SyncAuthorityBinding{}, sql.ErrNoRows
+	}
+	if err != nil {
+		return SyncAuthorityBinding{}, syncTransactionProblem(ctx)
+	}
+	if len(channelID) != len(binding.ChannelID) || len(relayGeneration) != len(binding.RelayGeneration) ||
+		len(adminPublicKey) != len(binding.AdminPublicKey) || membershipGeneration < 1 || membershipGeneration > math.MaxUint32 {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority binding header is corrupt")
+	}
+	copy(binding.ChannelID[:], channelID)
+	copy(binding.RelayGeneration[:], relayGeneration)
+	copy(binding.AdminPublicKey[:], adminPublicKey)
+	binding.MembershipGeneration = uint32(membershipGeneration)
+
+	var digestVersion int64
+	var digestBytes []byte
+	if err := tx.QueryRowContext(ctx, `
+SELECT digest_version, authority_digest, inventory_arrival_head
+FROM continuity_sync_authorities
+WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &digestBytes, &binding.InventoryArrivalHead); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SyncAuthorityBinding{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata is missing")
+		}
+		return SyncAuthorityBinding{}, syncTransactionProblem(ctx)
+	}
+	if digestVersion < 0 || digestVersion > math.MaxUint16 || len(digestBytes) != len(binding.AuthorityDigest) {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority binding metadata is corrupt")
+	}
+	binding.AuthorityDigestVersion = uint16(digestVersion)
+	copy(binding.AuthorityDigest[:], digestBytes)
+	if err := validateSyncAuthorityBindingV2(binding); err != nil {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority binding is corrupt")
+	}
+	return binding, nil
 }
 
 func readLegacySyncAuthorityV3(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (SyncAuthority, error) {
