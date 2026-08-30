@@ -20,6 +20,25 @@ func currentSyncAuthorityBindingForTest(t testing.TB, store *Store, projectID co
 	return binding
 }
 
+func promoteSyncAuthorityArrivalHeadForTest(t *testing.T, store *Store, projectID continuity.ProjectID, head int64) SyncAuthorityBinding {
+	t.Helper()
+	authority, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	if err != nil {
+		t.Fatalf("CurrentSyncAuthority() error = %v", err)
+	}
+	binding := currentSyncAuthorityBindingForTest(t, store, projectID)
+	if binding.InventoryArrivalHead == head {
+		return binding
+	}
+	snapshot := syncAuthoritySnapshotFromAuthorityV2(authority, binding.AuthorityDigestVersion, binding.AuthorityDigest)
+	snapshot.InventoryArrivalHead = head
+	ready := stageSyncAuthorityCandidateInventoryV2(t, store, projectID, snapshot, authority.Environments)
+	if _, err := store.PromoteSyncAuthorityCandidate(context.Background(), projectID, ready.Checkpoint()); err != nil {
+		t.Fatalf("PromoteSyncAuthorityCandidate(arrival head %d) error = %v", head, err)
+	}
+	return currentSyncAuthorityBindingForTest(t, store, projectID)
+}
+
 func syncAuthorityBindingV1ForTest(t testing.TB, projectID continuity.ProjectID, authority SyncAuthority) SyncAuthorityBinding {
 	t.Helper()
 	digest, err := frozenSyncAuthorityDigestV1(projectID, authority)

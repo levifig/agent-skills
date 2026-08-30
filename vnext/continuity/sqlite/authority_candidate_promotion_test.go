@@ -910,7 +910,7 @@ BEGIN SELECT RAISE(ABORT, 'exact install wrote environment metadata'); END`,
 		if err != nil {
 			t.Fatalf("stage authority candidate: %v", err)
 		}
-		if _, err := store.ActivateStagedSync(context.Background(), projectID, authority.ChannelID); err == nil {
+		if _, err := store.ActivateStagedSync(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID)); err == nil {
 			t.Fatal("ActivateStagedSync(active authority candidate) error = nil")
 		} else {
 			assertSyncErrorCode(t, err, SyncErrorConflict)
@@ -918,7 +918,7 @@ BEGIN SELECT RAISE(ABORT, 'exact install wrote environment metadata'); END`,
 		if _, err := store.PromoteSyncAuthorityCandidate(context.Background(), projectID, ready.Checkpoint()); err != nil {
 			t.Fatalf("promote authority candidate: %v", err)
 		}
-		if _, err := store.ActivateStagedSync(context.Background(), projectID, authority.ChannelID); err != nil {
+		if _, err := store.ActivateStagedSync(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID)); err != nil {
 			t.Fatalf("ActivateStagedSync(promoted receipt) error = %v", err)
 		}
 	})
@@ -929,14 +929,15 @@ BEGIN SELECT RAISE(ABORT, 'exact install wrote environment metadata'); END`,
 		if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, authority); err != nil {
 			t.Fatalf("InstallVerifiedSyncAuthority() error = %v", err)
 		}
-		wantProgress, err := store.ActivateStagedSync(context.Background(), projectID, authority.ChannelID)
+		binding := currentSyncAuthorityBindingForTest(t, store, projectID)
+		wantProgress, err := store.ActivateStagedSync(context.Background(), projectID, binding)
 		if err != nil {
 			t.Fatalf("ActivateStagedSync(initial) error = %v", err)
 		}
 		candidate := stageSyncAuthorityGuardCandidateV2(t, store, projectID, authority, true)
 		before := append(terminalLogicalRowsV1(t, store, projectID), syncAuthorityCandidatePersistedRowsV2(t, store, projectID)...)
 
-		gotProgress, err := store.ActivateStagedSync(context.Background(), projectID, authority.ChannelID)
+		gotProgress, err := store.ActivateStagedSync(context.Background(), projectID, binding)
 		if err != nil || gotProgress != wantProgress {
 			t.Fatalf("ActivateStagedSync(attached with active candidate) = (%#v, %v), want (%#v, nil)", gotProgress, err, wantProgress)
 		}
@@ -958,7 +959,7 @@ BEGIN SELECT RAISE(ABORT, 'exact install wrote environment metadata'); END`,
 			t.Fatalf("InstallVerifiedSyncAuthority() error = %v", err)
 		}
 		staging := stageSyncAuthorityGuardCandidateV2(t, store, projectID, authority, false)
-		if _, err := store.ActivateStagedSync(context.Background(), projectID, authority.ChannelID); err == nil {
+		if _, err := store.ActivateStagedSync(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID)); err == nil {
 			t.Fatal("ActivateStagedSync(staging authority candidate) error = nil")
 		} else {
 			assertSyncErrorCode(t, err, SyncErrorConflict)
@@ -1937,7 +1938,7 @@ func syncAuthorityPromotionLocalOutboxFixtureV2(t *testing.T, suffix string) (*S
 		Label:       "Loaf",
 	}))
 	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
-	if _, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a")); err != nil {
+	if _, err := store.ActivateStagedSync(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID)); err != nil {
 		t.Fatalf("ActivateStagedSync() error = %v", err)
 	}
 	unsealed, found, err := store.NextUnsealedLocalFact(context.Background(), projectID)

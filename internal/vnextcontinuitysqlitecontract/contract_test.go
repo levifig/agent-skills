@@ -132,6 +132,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.CurrentSyncAuthority",
 		"Store.CurrentSyncAuthorityBinding",
 		"Store.CurrentSyncAuthorityCandidate",
+		"Store.CurrentSyncEnvironmentStates",
 		"Store.CurrentSyncProgress",
 		"Store.CurrentTerminalCandidate",
 		"Store.DeriveContext",
@@ -176,6 +177,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.StageVerifiedTerminalCandidateChunk",
 		"Store.StartExploration",
 		"Store.SupersedeDecision",
+		"Store.WriterEnvironmentID",
 		"SyncActivationAttached",
 		"SyncActivationStaging",
 		"SyncActivationState",
@@ -255,6 +257,9 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"SyncEnvironmentRetirement.RelayGeneration",
 		"SyncEnvironmentRetirement.RetirementBytes",
 		"SyncEnvironmentRetirement.RetirementID",
+		"SyncEnvironmentState",
+		"SyncEnvironmentState.Certificate",
+		"SyncEnvironmentState.ConsumedSequence",
 		"SyncEnvironmentTrusted",
 		"SyncError",
 		"SyncError.Code",
@@ -758,6 +763,25 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		t.Fatalf("SyncAuthorityBinding fields = %#v, want %#v", gotBindingFields, wantBindingFields)
 	}
 
+	environmentStateType := reflect.TypeOf(continuitysqlite.SyncEnvironmentState{})
+	gotEnvironmentStateFields := make([]fieldSpec, 0, environmentStateType.NumField())
+	for index := 0; index < environmentStateType.NumField(); index++ {
+		field := environmentStateType.Field(index)
+		gotEnvironmentStateFields = append(gotEnvironmentStateFields, fieldSpec{
+			name:      field.Name,
+			typeName:  field.Type.String(),
+			exported:  field.IsExported(),
+			anonymous: field.Anonymous,
+		})
+	}
+	wantEnvironmentStateFields := []fieldSpec{
+		{name: "Certificate", typeName: "sqlite.SyncEnvironmentCertificate", exported: true},
+		{name: "ConsumedSequence", typeName: "int64", exported: true},
+	}
+	if !reflect.DeepEqual(gotEnvironmentStateFields, wantEnvironmentStateFields) {
+		t.Fatalf("SyncEnvironmentState fields = %#v, want %#v", gotEnvironmentStateFields, wantEnvironmentStateFields)
+	}
+
 	receiptType := reflect.TypeOf(continuitysqlite.SyncAuthorityCandidateReceipt{})
 	gotReceiptFields := make([]fieldSpec, 0, receiptType.NumField())
 	for index := 0; index < receiptType.NumField(); index++ {
@@ -786,7 +810,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 
 	pointerType := reflect.TypeOf((*continuitysqlite.Store)(nil))
 	wantMethods := map[string]string{
-		"ActivateStagedSync":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncChannelID) (sqlite.SyncProgress, error)",
+		"ActivateStagedSync":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityBinding) (sqlite.SyncProgress, error)",
 		"ApplySyncBatch":                          "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityBinding, []sqlite.VerifiedSyncFrame, int64, int64) (sqlite.SyncProgress, error)",
 		"ApplyVerifiedPrune":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.VerifiedPrunePlan) error",
 		"ArchiveIdea":                             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaArchivePayload) (continuity.AppendReceipt, error)",
@@ -800,6 +824,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"CurrentSyncAuthority":                    "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthority, error)",
 		"CurrentSyncAuthorityBinding":             "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthorityBinding, error)",
 		"CurrentSyncAuthorityCandidate":           "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthorityCandidate, bool, error)",
+		"CurrentSyncEnvironmentStates":            "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityBinding, []continuity.EnvironmentID) ([]sqlite.SyncEnvironmentState, error)",
 		"CurrentSyncProgress":                     "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncProgress, error)",
 		"CurrentTerminalCandidate":                "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.TerminalCandidate, bool, error)",
 		"DeriveContext":                           "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.ContextRequest) (continuity.ContextDigest, error)",
@@ -844,6 +869,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"StageVerifiedTerminalCandidateChunk":     "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityBinding, []sqlite.VerifiedTerminalCandidateFrame, int64, int64) (sqlite.TerminalCandidate, error)",
 		"StartExploration":                        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExplorationStartedPayload) (continuity.AppendReceipt, error)",
 		"SupersedeDecision":                       "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionSupersessionPayload) (continuity.AppendReceipt, error)",
+		"WriterEnvironmentID":                     "func(*sqlite.Store) continuity.EnvironmentID",
 	}
 	gotMethods := make(map[string]string, pointerType.NumMethod())
 	for index := 0; index < pointerType.NumMethod(); index++ {
@@ -1300,7 +1326,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
 		"schema.go":                        "5009592f61bb11d2d0035a4ead6c6757e07522e36143dce9087bbfce605557a3",
-		"store.go":                         "25a31b8efe29c41bbc6dcac1a7e2dcb2fd5cfca38863c4b4ee56660115a856a2",
+		"store.go":                         "d43c65b22cefe1cf8be9c6cb7e85137a3c59c155240a0f74922b3fc26ca59bb2",
 	}
 	for fileName, wantDigest := range wantSourceDigests {
 		gotDigest := digestSourceFile(t, filepath.Join(sqliteSourceRoot, fileName))
@@ -1366,6 +1392,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"store.go": {
 			"Close":                     "69f3a1056e0ce920d07dbdbf96c0559b9edf375218c904d29ea307d6623006f1",
 			"Open":                      "074877062be5bb129401c555bb8734fb952a284d8a8a00aaed2d20ca7f06f357",
+			"WriterEnvironmentID":       "2a2fd671d845891184dc3073fffc876292463e385b44bdb3ccbf224a5ac84e65",
 			"databaseDSN":               "31b0b9b4bd1269c1e5f8c521c17fcac5ed99cfe1609e48e1937744a729788e19",
 			"inspectRegularPrivateFile": "177aaa7ec2087d38ca322829f4a54d9c333a51aea70be68823d1d9d34772e64a",
 			"openDatabase":              "63865fcf446d578fad398587c9c01c6e7330f6117673125cd4afd351b57c3dfc",

@@ -207,17 +207,16 @@ func (store *Store) CurrentSyncProgress(ctx context.Context, projectID continuit
 	return progress, nil
 }
 
-// ActivateStagedSync marks one fully applied staging channel as attached. The
-// caller must already have verified attach authority, relay generation, membership,
-// and the complete inventory; this transaction proves only the local durable
-// conditions and deterministic corpus needed for an atomic activation flag.
+// ActivateStagedSync marks one fully applied authority snapshot as attached.
+// The exact canonical authority binding and its inventory-arrival cutoff are
+// checked in the same transaction as the local durable activation conditions.
 // An exact retry after an uncertain commit is idempotent.
-func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity.ProjectID, channelID SyncChannelID) (SyncProgress, error) {
+func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity.ProjectID, expectedAuthority SyncAuthorityBinding) (SyncProgress, error) {
 	if err := projectID.Validate(); err != nil {
 		return SyncProgress{}, syncProblem(SyncErrorInvalid, "project_id", "is invalid")
 	}
-	if channelID == (SyncChannelID{}) {
-		return SyncProgress{}, syncProblem(SyncErrorInvalid, "channel_id", "is invalid")
+	if err := validateSyncAuthorityBindingV2(expectedAuthority); err != nil {
+		return SyncProgress{}, err
 	}
 	if store == nil {
 		return SyncProgress{}, syncProblem(SyncErrorStore, "", "store is closed")
@@ -238,6 +237,10 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, expectedAuthority)
+	if err != nil {
+		return SyncProgress{}, err
+	}
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
 		return SyncProgress{}, err
@@ -245,8 +248,8 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 	if !found {
 		return SyncProgress{}, syncProblem(SyncErrorNotFound, "project_id", "has no staged sync state")
 	}
-	if progress.ChannelID != channelID {
-		return SyncProgress{}, syncProblem(SyncErrorConflict, "channel_id", "does not match the retained channel")
+	if progress.ChannelID != binding.ChannelID {
+		return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "canonical authority and sync progress channels disagree")
 	}
 	if progress.ActivationState == SyncActivationAttached {
 		if err := tx.Commit(); err != nil {
@@ -263,6 +266,9 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 	}
 	if progress.DownloadedCursor != progress.AppliedCursor {
 		return SyncProgress{}, syncProblem(SyncErrorActivation, "cursor", "downloaded and applied cursors must agree")
+	}
+	if progress.AppliedCursor != binding.InventoryArrivalHead {
+		return SyncProgress{}, syncProblem(SyncErrorConflict, "inventory_arrival_head", "does not match the fully applied staging cutoff")
 	}
 	var pending int
 	if err := tx.QueryRowContext(ctx, `
@@ -290,7 +296,11 @@ WHERE project_id = ?`, string(projectID)).Scan(&pending); err != nil {
 	result, err := tx.ExecContext(ctx, `
 UPDATE continuity_sync_projects
 SET activation_state = 'attached'
-WHERE project_id = ? AND activation_state = 'staging'`, string(projectID))
+WHERE project_id = ?
+  AND activation_state = 'staging'
+  AND channel_id = ?
+  AND downloaded_cursor = ?
+  AND applied_cursor = ?`, string(projectID), binding.ChannelID[:], binding.InventoryArrivalHead, binding.InventoryArrivalHead)
 	if err != nil {
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}

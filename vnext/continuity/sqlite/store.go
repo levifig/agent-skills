@@ -34,6 +34,15 @@ type Store struct {
 	closed        bool
 }
 
+// WriterEnvironmentID returns the immutable local environment identity used to
+// author facts through this store. It remains available after Close.
+func (store *Store) WriterEnvironmentID() continuity.EnvironmentID {
+	if store == nil {
+		return ""
+	}
+	return store.environmentID
+}
+
 // Open opens or creates the vNext continuity database below stateRoot.
 func Open(stateRoot string, environmentID continuity.EnvironmentID) (*Store, error) {
 	if err := validateEnvironmentID(environmentID); err != nil {
