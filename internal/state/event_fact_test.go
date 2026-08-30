@@ -304,7 +304,7 @@ func TestRebuildMutableCoreProjectionsFromReceivedRefAndVerificationFacts(t *tes
 		t.Fatalf("projectID() error = %v", err)
 	}
 
-	now := time.Date(2026, 8, 26, 18, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
 	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000101", FactKindRefRegistered, "env-recv", 1, now.UnixMilli(), CoreEventPayload{
 		SubjectKind:  "ref",
 		SubjectID:    "bmap-recv-1",
@@ -380,10 +380,11 @@ func TestRebuildMutableCoreProjectionsFoldsWorktreeFacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("projectID() error = %v", err)
 	}
-	now := time.Date(2026, 8, 26, 18, 30, 0, 0, time.UTC).Format(time.RFC3339)
+	baseTime := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
+	now := baseTime.Format(time.RFC3339)
 	mustExec(t, store, `INSERT INTO issues (id, project_id, kind, title, body, status, created_at, updated_at) VALUES (?, ?, 'delivery', 'worktree fold', '', 'todo', ?, ?)`, "issue-wt-1", projectID, now, now)
 
-	boundAt := time.Date(2026, 8, 26, 18, 31, 0, 0, time.UTC)
+	boundAt := baseTime.Add(time.Second)
 	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000201", FactKindWorktreeBound, "env-wt", 1, boundAt.UnixMilli(), CoreEventPayload{
 		SubjectKind: "issue",
 		SubjectID:   "issue-wt-1",
