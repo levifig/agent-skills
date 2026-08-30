@@ -172,6 +172,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"SyncAuthority.AdminPublicKey",
 		"SyncAuthority.ChannelID",
 		"SyncAuthority.Environments",
+		"SyncAuthority.InventoryArrivalHead",
 		"SyncAuthority.MembershipGeneration",
 		"SyncAuthority.RelayGeneration",
 		"SyncChannelID",
@@ -322,6 +323,7 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 		"authority.go": {
 			"bytes",
 			"context",
+			"crypto/sha256",
 			"database/sql",
 			"errors",
 			"fmt",
@@ -349,7 +351,7 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 			"github.com/levifig/loaf/vnext/continuity",
 		},
 		"read.go":                   {"context", "database/sql", "github.com/levifig/loaf/vnext/continuity"},
-		"schema.go":                 {"crypto/sha256", "database/sql", "encoding/hex", "fmt", "strings"},
+		"schema.go":                 {"context", "crypto/sha256", "database/sql", "encoding/hex", "fmt", "github.com/levifig/loaf/vnext/continuity", "strings"},
 		"snapshot_fold_v1.go":       {"context", "github.com/levifig/loaf/vnext/continuity", "strings"},
 		"snapshot_records_v1.go":    {"github.com/levifig/loaf/vnext/continuity", "sort"},
 		"snapshot_references_v1.go": {"github.com/levifig/loaf/vnext/continuity", "sort", "strings"},
@@ -491,7 +493,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		t.Fatalf("read user version: %v", err)
 	}
-	if applicationID != 1280267825 || userVersion != 3 {
+	if applicationID != 1280267825 || userVersion != 4 {
 		t.Fatalf("schema pragmas = application_id %d, user_version %d", applicationID, userVersion)
 	}
 
@@ -500,7 +502,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`SELECT schema_line, schema_version, schema_checksum FROM continuity_schema WHERE singleton = 1`).Scan(&line, &version, &checksum); err != nil {
 		t.Fatalf("read schema identity: %v", err)
 	}
-	if line != "vnext" || version != 3 || checksum != "d1163e6ba25279c5b332ce19d383d7709d4dc00b49928e32e8a58ccf70aaa3af" {
+	if line != "vnext" || version != 4 || checksum != "150cc2b8dfcaecda0fefcfbdff02aa924644984ae7bdef4480f884dc63fe95ca" {
 		t.Fatalf("schema identity = %q, %d, %q", line, version, checksum)
 	}
 
@@ -508,9 +510,16 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 		{kind: "index", name: "ix_continuity_facts_project_order", table: "continuity_facts", digest: "576f27dbbd45eb321a02382151c8caa7c3253d13bae84e780bbb8beb3e622c5b"},
 		{kind: "index", name: "ix_continuity_facts_subject_order", table: "continuity_facts", digest: "4e442bf181f90b62b48372a200f3eb7ad1ac2863efc36f25d23db11e062d0ab9"},
 		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", digest: "53c7715e0a375cff5f23cf76cc860b1df863e89050e451ffcfce720e67d28720"},
+		{kind: "index", name: "ux_continuity_sync_authority_candidate_pages_final", table: "continuity_sync_authority_candidate_pages", digest: "fc66e9d7051940d8e042a891fcbf094c31c9869dc83a93a63f8dc5618359a340"},
+		{kind: "index", name: "ux_continuity_sync_authority_candidates_active_project", table: "continuity_sync_authority_candidates", digest: "2e880d95fb29ab11f1ba2bafd5e17120b9942893d4d62f0fee7d2964db694967"},
 		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", digest: "b0aa78a63d19c8503b7df73fb9ddecb2c4bc15ef9789c3577d3ecc6eb5aec495"},
 		{kind: "table", name: "continuity_facts", table: "continuity_facts", digest: "cc2165e3ec85a50478f7ee550bf4a25db6b3282b56de7b1332a007961c75555f"},
-		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "a3183da9f695437f4901145dad673f531e6f6fde68e4f8aeadfc1ebf25212f21"},
+		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "e9ab86f558e51912758b0f063195bc96deb43b9e7466ea8fadb40794fbdb505d"},
+		{kind: "table", name: "continuity_sync_authorities", table: "continuity_sync_authorities", digest: "a8506a59db4d2cb96fa1ac8c30dbeb271c1e2b0dd5182370994a478865d35746"},
+		{kind: "table", name: "continuity_sync_authority_candidate_environments", table: "continuity_sync_authority_candidate_environments", digest: "6f5f5d4d8f0a97657ec116b57ababf2f84e1588608e9447c671dca8b056caa89"},
+		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", digest: "9df1d2916a6fc809a41620f24e3e04edf74efcd7771b045d64ed39969c6a7c4e"},
+		{kind: "table", name: "continuity_sync_authority_candidate_pages", table: "continuity_sync_authority_candidate_pages", digest: "6215f0f2eb502421980bde44b2aaed53bc23a14436eff1eec3b387274f70e629"},
+		{kind: "table", name: "continuity_sync_authority_candidates", table: "continuity_sync_authority_candidates", digest: "6c5a0dbcc5817f6173ecfb178e8e4d03cfe9f86815c8f9a10b0ab74556a8e1f1"},
 		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", digest: "65ed5ac0d095a7eb155793bd043b3080e2822cb98ce32e3a1a7c44e6059e0856"},
 		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", digest: "542dc7124d2db185a983d6a997274f975870521524daaf82d940f824ae7b69e3"},
 		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", digest: "008be5c6e34b28d39c1a47d6be64f49b82c105ff4c02947e1ab5b94bf7046ab9"},
@@ -1129,7 +1138,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"filesystem_attributes_windows.go": "1e3b5f12e4debbc5432f2153818862cdc39ec617409e526b750e6db093dcb0a0",
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
-		"schema.go":                        "398bf2c1c7f50268a4a34811074239a578b2a99f11f870515946c02c6d271226",
+		"schema.go":                        "5009592f61bb11d2d0035a4ead6c6757e07522e36143dce9087bbfce605557a3",
 		"store.go":                         "25a31b8efe29c41bbc6dcac1a7e2dcb2fd5cfca38863c4b4ee56660115a856a2",
 	}
 	for fileName, wantDigest := range wantSourceDigests {
@@ -1172,16 +1181,21 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 			"checksumSchema":               "57e891a96e8bcc3f1889cc71c530afe367d1f097717d25389e206b6b24e74907",
 			"checksumSchemaV1":             "caceb1d21c21d048cbaca49bf393f3d37a3290fa02cf84b3a2933a183c8dd054",
 			"checksumSchemaV2":             "89dd6cdd8c6947ca7f6e649675dd82d4456a2ea2db0c6c9107510f36bd0b21be",
-			"expectedSchemaObjects":        "34ce18034672e64582d68c49c2fbe9993f31f2a8174688fa65cb8a36d6570aa1",
+			"checksumSchemaV3":             "50f038bbbda2f56c6725ef28690e987c57e04d3d59e9fd6c066db3b148a81d3f",
+			"closeMigrationRows":           "1a1b6a77c23eef79fb5730df7674519c954e253ec51fd8f9a1c60ac793d1861f",
+			"expectedSchemaObjects":        "0094c2ecdf12cb79b06eef38f89607fed191e7cd3f470455e2b0ca03f4692cb3",
 			"expectedSchemaV1Objects":      "690fbda019e83a41451abc381d9d1c10f56f9597c2b55a0809bf977abd4b6da1",
 			"expectedSchemaV2Objects":      "f8a369c7a168ff5a4a5228fbc0888af213e0d18b36dcc996334eb4ec3a936e9d",
-			"initializeSchemaIfEmpty":      "80a37e2124d4f9c2ece223556705cea675b8eca7391d5b71abed6cb701893254",
-			"migrateSchema":                "752b1872a6315bd7239b0ba655b1e49c30d3819eaca48601af87e821fec3aedc",
-			"migrateSchemaV1ToV2":          "6089003a61446814cf9650241b50053090c463f9bdabdf6981a908607abd0eac",
-			"migrateSchemaV2ToV3":          "6bc83da407dcc37b3c84e7968c9114c47e4dcba9e94f4651f378b7a12cefbeab",
+			"expectedSchemaV3Objects":      "e0ed9b1701a662c2d23dc02f338b8bc42799b477b215841ab696cf2c0a4ea3f1",
+			"initializeSchemaIfEmpty":      "ca3df10057c06362dbf790b8dcfcc2f7865bca40374099eed9012f7523ac491a",
+			"migrateSchema":                "3658f72330d0977a45f8851753c64dc26415602a056ef104f5ada0db829f74cf",
+			"migrateSchemaV1ToV2":          "3f1ee78cc1b2a56a036b03a390207ea7d27a911867efdad1fc4f162623925293",
+			"migrateSchemaV2ToV3":          "3b640231ba853caec59017133ddcc87d3e20d0c3419abb6027b3b447f450fef9",
+			"migrateSchemaV3ToV4":          "38ad8482a0a9411c1db9afb2c231518e965348f979631afa1ccd27f330d8f5db",
 			"normalizeSQL":                 "ba395a0d4dddb73b4b9669ad5a6cd12d28494ba464560910074abbddd0d96e98",
-			"validateForeignKeys":          "ab88c549e26e4b3388c2a4a8af684caae642a8bb2b0a4b0bd2a7da812bef0d8f",
-			"validateKnownSchemaVersion":   "a5a917f530c5144d5412893ef95fa1402e16efa0fea91072b655b930c044fc3c",
+			"seedV3SyncAuthorityMetadata":  "61d5a908b0fee56af16bd14bba221c70ffe1f100259b3335beae1a43452e9e55",
+			"validateForeignKeys":          "5d789c539f43fdb2be215784eeb7074c290023cc6ef12dbe92511c1d335163f1",
+			"validateKnownSchemaVersion":   "f803ada484269862fc656896c65d71431fb7a593a8273f0556ef742962dc88ba",
 			"validateMigrationPreflight":   "70843e4fedff7b293fc588c53ea29d8a20e0598dc0b2a5fb3dfd6f8a44e74026",
 			"validateSchema":               "03e687e88be737459ecbdde22172fd82222a45c8b6c6bd9942fb83a1da1c1e93",
 			"validateSchemaVersion":        "56b5625f087b8809fd6abc6e9e67326dac4e35d71ba77e32cf6cad00c5ec41f4",

@@ -567,6 +567,7 @@ func cloneTerminalCandidateAuthorityV1(authority SyncAuthority) SyncAuthority {
 func terminalCandidateAuthorityEqualV1(left, right SyncAuthority) bool {
 	if left.ChannelID != right.ChannelID || left.RelayGeneration != right.RelayGeneration ||
 		left.AdminPublicKey != right.AdminPublicKey || left.MembershipGeneration != right.MembershipGeneration ||
+		left.InventoryArrivalHead != right.InventoryArrivalHead ||
 		len(left.Environments) != len(right.Environments) {
 		return false
 	}

@@ -8,7 +8,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/levifig/loaf/vnext/continuity"
 )
 
 func TestContinuitySQLiteSchemaRejectsInvalidFacts(t *testing.T) {
@@ -117,8 +120,8 @@ func TestContinuitySQLiteMigratesExactV1SchemaWithoutChangingFacts(t *testing.T)
 	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		t.Fatalf("read migrated user version: %v", err)
 	}
-	if userVersion != 3 {
-		t.Fatalf("user version = %d, want 3", userVersion)
+	if userVersion != 4 {
+		t.Fatalf("user version = %d, want 4", userVersion)
 	}
 
 	fact, err := store.ExportFact(context.Background(), "fact-project")
@@ -191,7 +194,7 @@ func TestContinuitySQLiteRefusesDriftedV1BeforeMigration(t *testing.T) {
 	}
 }
 
-func TestContinuitySQLiteV3SyncSchemaIsExactAndCredentialFree(t *testing.T) {
+func TestContinuitySQLiteV4SyncSchemaIsExactAndCredentialFree(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -221,6 +224,11 @@ ORDER BY name`)
 		t.Fatalf("close sync tables: %v", err)
 	}
 	wantTables := []string{
+		"continuity_sync_authorities",
+		"continuity_sync_authority_candidate_environments",
+		"continuity_sync_authority_candidate_membership_events",
+		"continuity_sync_authority_candidate_pages",
+		"continuity_sync_authority_candidates",
 		"continuity_sync_environment_certificates",
 		"continuity_sync_environment_heads",
 		"continuity_sync_inbox",
@@ -289,7 +297,8 @@ func TestContinuitySQLiteSchemaDDLGoldenChecksums(t *testing.T) {
 	}{
 		{name: "v1", ddl: schemaV1DDL, checksum: "6fcc409d4d49d1f7702e57ea96c493623ef37eec4e1aae6ec888f542532f0004", bytes: 4322},
 		{name: "v2", ddl: schemaV2DDL, checksum: "f7edc0566cc24ee50009d7b70389aeb4a6bb4558dcba89a56df0f0ddfc6a64ab", bytes: 14202},
-		{name: "v3", ddl: schemaDDL, checksum: "d1163e6ba25279c5b332ce19d383d7709d4dc00b49928e32e8a58ccf70aaa3af", bytes: 19161},
+		{name: "v3", ddl: schemaV3DDL, checksum: "d1163e6ba25279c5b332ce19d383d7709d4dc00b49928e32e8a58ccf70aaa3af", bytes: 19161},
+		{name: "v4", ddl: schemaDDL, checksum: "150cc2b8dfcaecda0fefcfbdff02aa924644984ae7bdef4480f884dc63fe95ca", bytes: 28556},
 	}
 	for _, test := range tests {
 		test := test
@@ -324,6 +333,15 @@ INSERT INTO continuity_sync_projects(
 		schemaDigestBytes(0x11), schemaDigestBytes(0x12), schemaDigestBytes(0x13)); err != nil {
 		db.Close()
 		t.Fatalf("seed v2 project: %v", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_environment_certificates(
+  project_id, environment_id, certificate_id, certificate_bytes,
+  mode, expires_at_millis, join_membership_generation
+) VALUES('project-v2', 'environment-v2', ?, X'01', 'trusted', 0, 1)`,
+		schemaDigestBytes(0x14)); err != nil {
+		db.Close()
+		t.Fatalf("seed v2 authority environment: %v", err)
 	}
 	for index, value := range sealed {
 		state := "staged"
@@ -475,6 +493,150 @@ WHERE name IN (
 	}
 }
 
+func TestContinuitySQLiteMigratesExactV3AuthorityMetadataWithoutChangingTerminalCandidate(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV3ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v3 database for seed: %v", err)
+	}
+	projectID := continuity.ProjectID("project-v3-authority")
+	authority := testSyncAuthority()
+	authorityDigest, _, err := deriveTerminalCandidateIdentityV1(projectID, authority, 1)
+	if err != nil {
+		db.Close()
+		t.Fatalf("derive v3 authority digest: %v", err)
+	}
+	seedV3SyncAuthority(t, db, projectID, authority, &authorityDigest)
+	promotedCandidateID := testAuthorityDigest(0xd1)
+	promotedAuthorityDigest := testAuthorityDigest(0xd2)
+	promotedRollingDigest := testAuthorityDigest(0xd3)
+	promotedCorpusDigest := testAuthorityDigest(0xd4)
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_terminal_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  membership_generation, authority_digest, start_arrival_sequence,
+  through_arrival_sequence, frame_count, rolling_candidate_digest,
+  post_promotion_corpus_digest, resulting_applied_cursor
+) VALUES(?, ?, 'promoted', ?, ?, 1, ?, 1, 1, 1, ?, ?, 1)`,
+		string(projectID), promotedCandidateID[:], authority.ChannelID[:], authority.RelayGeneration[:],
+		promotedAuthorityDigest[:], promotedRollingDigest[:], promotedCorpusDigest[:],
+	); err != nil {
+		db.Close()
+		t.Fatalf("seed old promoted terminal receipt: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close seeded v3 database: %v", err)
+	}
+
+	store, err := Open(stateRoot, "environment-v4")
+	if err != nil {
+		t.Fatalf("Open(v3) error = %v", err)
+	}
+	defer store.Close()
+
+	var version, digestVersion int
+	var gotDigest []byte
+	var arrivalHead int64
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read migrated version: %v", err)
+	}
+	if err := store.db.QueryRow(`
+SELECT digest_version, authority_digest, inventory_arrival_head
+FROM continuity_sync_authorities
+WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &gotDigest, &arrivalHead); err != nil {
+		t.Fatalf("read migrated authority metadata: %v", err)
+	}
+	if version != 4 || digestVersion != 1 || !bytes.Equal(gotDigest, authorityDigest[:]) || arrivalHead != 0 {
+		t.Fatalf("migrated authority metadata = version %d digest-version %d digest %x head %d", version, digestVersion, gotDigest, arrivalHead)
+	}
+	got, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	if err != nil {
+		t.Fatalf("CurrentSyncAuthority(after migration) error = %v", err)
+	}
+	if !syncAuthorityEqual(got, authority) || got.InventoryArrivalHead != 0 {
+		t.Fatalf("migrated authority = %#v, want %#v with head 0", got, authority)
+	}
+	var activeCandidates, promotedCandidates, candidateFrames, authorityCandidateRows int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_terminal_candidates WHERE state = 'staging'`).Scan(&activeCandidates); err != nil {
+		t.Fatalf("count migrated active terminal candidate: %v", err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_terminal_candidate_frames`).Scan(&candidateFrames); err != nil {
+		t.Fatalf("count migrated terminal candidate frames: %v", err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_terminal_candidates WHERE state = 'promoted' AND authority_digest = ?`, promotedAuthorityDigest[:]).Scan(&promotedCandidates); err != nil {
+		t.Fatalf("count migrated promoted terminal receipt: %v", err)
+	}
+	if err := store.db.QueryRow(`
+SELECT
+  (SELECT COUNT(*) FROM continuity_sync_authority_candidates)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_pages)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_environments)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_membership_events)`).Scan(&authorityCandidateRows); err != nil {
+		t.Fatalf("count synthesized authority candidate rows: %v", err)
+	}
+	if activeCandidates != 1 || promotedCandidates != 1 || candidateFrames != 0 || authorityCandidateRows != 0 {
+		t.Fatalf("migration changed candidates: active=%d promoted=%d frames=%d authority-rows=%d", activeCandidates, promotedCandidates, candidateFrames, authorityCandidateRows)
+	}
+}
+
+func TestContinuitySQLiteV3MigrationRejectsMismatchedActiveTerminalAuthorityWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV3ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v3 database for seed: %v", err)
+	}
+	validProjectID := continuity.ProjectID("project-v3-a-valid-candidate")
+	validAuthority := testSyncAuthority()
+	validDigest, _, err := deriveTerminalCandidateIdentityV1(validProjectID, validAuthority, 1)
+	if err != nil {
+		db.Close()
+		t.Fatalf("derive valid v3 authority digest: %v", err)
+	}
+	seedV3SyncAuthority(t, db, validProjectID, validAuthority, &validDigest)
+	projectID := continuity.ProjectID("project-v3-z-mismatched-candidate")
+	wrongDigest := testAuthorityDigest(0xe1)
+	seedV3SyncAuthority(t, db, projectID, testSyncAuthority(), &wrongDigest)
+	before := schemaIdentitySnapshot(t, db)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close mismatched v3 database: %v", err)
+	}
+
+	if store, err := Open(stateRoot, "environment-v4"); err == nil {
+		store.Close()
+		t.Fatal("Open(v3 mismatched active authority) error = nil, want refusal")
+	}
+	db, err = openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("reopen refused v3 database: %v", err)
+	}
+	defer db.Close()
+	after := schemaIdentitySnapshot(t, db)
+	if after != before {
+		t.Fatalf("refused v3 migration mutated schema: before=%#v after=%#v", before, after)
+	}
+	var newObjects int
+	if err := db.QueryRow(`
+SELECT COUNT(*) FROM sqlite_schema
+WHERE name IN (
+  'continuity_sync_authorities',
+  'continuity_sync_authority_candidates',
+  'continuity_sync_authority_candidate_pages',
+  'continuity_sync_authority_candidate_environments',
+  'continuity_sync_authority_candidate_membership_events'
+)`).Scan(&newObjects); err != nil {
+		t.Fatalf("inspect refused v4 objects: %v", err)
+	}
+	if newObjects != 0 {
+		t.Fatalf("refused v3 migration retained %d v4 objects", newObjects)
+	}
+}
+
 func TestContinuitySQLiteFrozenV2ValidatorRejectsV3WithoutMutation(t *testing.T) {
 	t.Parallel()
 
@@ -491,6 +653,148 @@ func TestContinuitySQLiteFrozenV2ValidatorRejectsV3WithoutMutation(t *testing.T)
 	after := schemaIdentitySnapshot(t, store.db)
 	if before != after {
 		t.Fatalf("frozen v2 validation mutated v3: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestContinuitySQLiteFrozenV3ValidatorRejectsV4WithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	before := schemaIdentitySnapshot(t, store.db)
+	if err := validateSchemaVersion(store.db, 3, checksumSchemaV3(), expectedSchemaV3Objects()); err == nil {
+		t.Fatal("frozen v3 validation of v4 error = nil, want refusal")
+	}
+	after := schemaIdentitySnapshot(t, store.db)
+	if before != after {
+		t.Fatalf("frozen v3 validation mutated v4: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestContinuitySQLiteConcurrentOpenMigratesExactSchemas(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		create        func(*testing.T, string) string
+		seedAuthority bool
+	}{
+		{name: "v1", create: createV1ContinuityDatabase},
+		{name: "v2", create: createV2ContinuityDatabase, seedAuthority: true},
+		{name: "v3", create: createV3ContinuityDatabase, seedAuthority: true},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			stateRoot := filepath.Join(testTempDir(t), "state")
+			databasePath := test.create(t, stateRoot)
+			projectID := continuity.ProjectID("project-concurrent-" + test.name)
+			authority := testSyncAuthority()
+			var wantAuthorityDigest [32]byte
+			if test.seedAuthority {
+				db, err := openDatabase(databasePath)
+				if err != nil {
+					t.Fatalf("open exact %s database for authority seed: %v", test.name, err)
+				}
+				seedV3SyncAuthority(t, db, projectID, authority, nil)
+				if err := db.Close(); err != nil {
+					t.Fatalf("close seeded exact %s database: %v", test.name, err)
+				}
+				wantAuthorityDigest, err = frozenSyncAuthorityDigestV1(projectID, authority)
+				if err != nil {
+					t.Fatalf("digest exact %s authority: %v", test.name, err)
+				}
+			}
+
+			const openers = 2
+			start := make(chan struct{})
+			errorsByOpener := make([]error, openers)
+			var wait sync.WaitGroup
+			wait.Add(openers)
+			for opener := 0; opener < openers; opener++ {
+				opener := opener
+				go func() {
+					defer wait.Done()
+					<-start
+					environmentID := continuity.EnvironmentID("environment-concurrent-a")
+					if opener == 1 {
+						environmentID = "environment-concurrent-b"
+					}
+					store, err := Open(stateRoot, environmentID)
+					if err == nil {
+						err = store.Close()
+					}
+					errorsByOpener[opener] = err
+				}()
+			}
+			close(start)
+			wait.Wait()
+			for opener, err := range errorsByOpener {
+				if err != nil {
+					t.Fatalf("concurrent Open(exact %s) caller %d: %v", test.name, opener, err)
+				}
+			}
+
+			db, err := openDatabase(databasePath)
+			if err != nil {
+				t.Fatalf("reopen concurrently migrated %s database: %v", test.name, err)
+			}
+			defer db.Close()
+			if err := validateSchema(db); err != nil {
+				t.Fatalf("validate concurrently migrated %s schema: %v", test.name, err)
+			}
+			var authorityRows, authorityCandidateRows int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_authorities`).Scan(&authorityRows); err != nil {
+				t.Fatalf("count concurrently migrated %s authority metadata: %v", test.name, err)
+			}
+			if err := db.QueryRow(`
+SELECT
+  (SELECT COUNT(*) FROM continuity_sync_authority_candidates)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_pages)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_environments)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_membership_events)`).Scan(&authorityCandidateRows); err != nil {
+				t.Fatalf("count concurrently migrated %s authority candidates: %v", test.name, err)
+			}
+			wantAuthorityRows := 0
+			if test.seedAuthority {
+				wantAuthorityRows = 1
+				var digestVersion int
+				var digest []byte
+				var arrivalHead int64
+				if err := db.QueryRow(`
+SELECT digest_version, authority_digest, inventory_arrival_head
+FROM continuity_sync_authorities
+WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &digest, &arrivalHead); err != nil {
+					t.Fatalf("read concurrently migrated %s authority metadata: %v", test.name, err)
+				}
+				if digestVersion != 1 || !bytes.Equal(digest, wantAuthorityDigest[:]) || arrivalHead != 0 {
+					t.Fatalf("concurrently migrated %s authority metadata = version %d digest %x head %d", test.name, digestVersion, digest, arrivalHead)
+				}
+			}
+			if authorityRows != wantAuthorityRows || authorityCandidateRows != 0 {
+				t.Fatalf("concurrently migrated %s rows: authority=%d want=%d candidates=%d", test.name, authorityRows, wantAuthorityRows, authorityCandidateRows)
+			}
+			foreignKeyRows, err := db.Query(`PRAGMA foreign_key_check`)
+			if err != nil {
+				t.Fatalf("check concurrently migrated %s foreign keys: %v", test.name, err)
+			}
+			if foreignKeyRows.Next() {
+				foreignKeyRows.Close()
+				t.Fatalf("concurrently migrated %s database has a foreign-key violation", test.name)
+			}
+			if err := foreignKeyRows.Err(); err != nil {
+				foreignKeyRows.Close()
+				t.Fatalf("iterate concurrently migrated %s foreign-key check: %v", test.name, err)
+			}
+			if err := foreignKeyRows.Close(); err != nil {
+				t.Fatalf("close concurrently migrated %s foreign-key check: %v", test.name, err)
+			}
+		})
 	}
 }
 
@@ -516,7 +820,7 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		}
 	})
 
-	t.Run("v2 preflight observes exact v3", func(t *testing.T) {
+	t.Run("v2 preflight observes exact v4", func(t *testing.T) {
 		t.Parallel()
 		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
 		if err != nil {
@@ -525,11 +829,47 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		defer store.Close()
 		before := schemaIdentitySnapshot(t, store.db)
 		if err := migrateSchemaV2ToV3(store.db); err != nil {
-			t.Fatalf("migrateSchemaV2ToV3(exact v3) error = %v", err)
+			t.Fatalf("migrateSchemaV2ToV3(exact v4) error = %v", err)
 		}
 		after := schemaIdentitySnapshot(t, store.db)
 		if before != after {
+			t.Fatalf("v2 migration preflight mutated exact v4: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v2 preflight observes exact v3", func(t *testing.T) {
+		t.Parallel()
+		stateRoot := filepath.Join(testTempDir(t), "state")
+		databasePath := createV3ContinuityDatabase(t, stateRoot)
+		db, err := openDatabase(databasePath)
+		if err != nil {
+			t.Fatalf("open exact v3 database: %v", err)
+		}
+		defer db.Close()
+		before := schemaIdentitySnapshot(t, db)
+		if err := migrateSchemaV2ToV3(db); err != nil {
+			t.Fatalf("migrateSchemaV2ToV3(exact v3) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, db)
+		if before != after {
 			t.Fatalf("v2 migration preflight mutated exact v3: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v3 preflight observes exact v4", func(t *testing.T) {
+		t.Parallel()
+		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+		if err != nil {
+			t.Fatalf("Open() error = %v", err)
+		}
+		defer store.Close()
+		before := schemaIdentitySnapshot(t, store.db)
+		if err := migrateSchemaV3ToV4(store.db); err != nil {
+			t.Fatalf("migrateSchemaV3ToV4(exact v4) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, store.db)
+		if before != after {
+			t.Fatalf("v3 migration preflight mutated exact v4: before=%#v after=%#v", before, after)
 		}
 	})
 }
@@ -797,6 +1137,215 @@ WHERE project_id = 'project-candidate' AND candidate_id = ?`, candidateID); err 
 	}
 }
 
+func TestContinuitySQLiteV4AuthorityCandidateConstraints(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	projectID := "project-authority-candidate"
+	candidateID := schemaDigestBytes(0x81)
+	var initialCandidateRows int
+	if err := store.db.QueryRow(`
+SELECT
+  (SELECT COUNT(*) FROM continuity_sync_authority_candidates)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_pages)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_environments)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_membership_events)`).Scan(&initialCandidateRows); err != nil {
+		t.Fatalf("count fresh authority candidate rows: %v", err)
+	}
+	if initialCandidateRows != 0 {
+		t.Fatalf("fresh authority candidate rows = %d, want 0", initialCandidateRows)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_pages(
+  project_id, candidate_id, page_number, after_environment_id,
+  through_environment_id, environment_count, more, page_digest,
+  resulting_environment_count, resulting_rolling_digest
+) VALUES(?, ?, 1, NULL, 'environment-a', 1, 0, ?, 1, ?)`,
+		projectID, candidateID, schemaDigestBytes(0x79), schemaDigestBytes(0x7a)); err == nil {
+		t.Fatal("page without authority candidate error = nil, want FK refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  page_count, environment_count, through_environment_id,
+  rolling_environment_digest, authority_digest_version
+) VALUES(?, ?, 'staging', ?, ?, ?, 1, 0, 1, 1, 'environment-a', ?, 2)`,
+		projectID, candidateID, schemaDigestBytes(0x82), schemaDigestBytes(0x83),
+		schemaDigestBytes(0x84), schemaDigestBytes(0x85)); err != nil {
+		t.Fatalf("insert authority candidate header: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  page_count, environment_count, through_environment_id,
+  rolling_environment_digest, authority_digest_version, authority_digest
+) VALUES(?, ?, 'ready', ?, ?, ?, 1, 0, 1, 1, 'environment-a', ?, 2, ?)`,
+		projectID, schemaDigestBytes(0x86), schemaDigestBytes(0x82), schemaDigestBytes(0x83),
+		schemaDigestBytes(0x84), schemaDigestBytes(0x87), schemaDigestBytes(0x88)); err == nil {
+		t.Fatal("second active authority candidate error = nil, want partial-index refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  page_count, environment_count, through_environment_id,
+  rolling_environment_digest, authority_digest_version, authority_digest
+) VALUES(?, ?, 'promoted', ?, ?, ?, 257, 257, 65, 257, 'environment-257', ?, 2, ?)`,
+		projectID, schemaDigestBytes(0x96), schemaDigestBytes(0x82), schemaDigestBytes(0x83),
+		schemaDigestBytes(0x84), schemaDigestBytes(0x97), schemaDigestBytes(0x98)); err != nil {
+		t.Fatalf("insert authority candidate above compatibility inventory bound: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_pages(
+  project_id, candidate_id, page_number, after_environment_id,
+  through_environment_id, environment_count, more, page_digest,
+  resulting_environment_count, resulting_rolling_digest
+) VALUES(?, ?, 1, NULL, 'environment-a', 1, 0, ?, 1, ?)`,
+		projectID, candidateID, schemaDigestBytes(0x89), schemaDigestBytes(0x8a)); err != nil {
+		t.Fatalf("insert authority candidate page: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_pages(
+  project_id, candidate_id, page_number, after_environment_id,
+  through_environment_id, environment_count, more, page_digest,
+  resulting_environment_count, resulting_rolling_digest
+) VALUES(?, ?, 2, 'environment-a', 'environment-b', 1, 0, ?, 2, ?)`,
+		projectID, candidateID, schemaDigestBytes(0x8b), schemaDigestBytes(0x8c)); err == nil {
+		t.Fatal("second final authority page error = nil, want partial-index refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_pages(
+  project_id, candidate_id, page_number, after_environment_id,
+  through_environment_id, environment_count, more, page_digest,
+  resulting_environment_count, resulting_rolling_digest
+) VALUES(?, ?, 2, NULL, 'environment-b', 1, 1, ?, 2, ?)`,
+		projectID, candidateID, schemaDigestBytes(0x8b), schemaDigestBytes(0x8c)); err == nil {
+		t.Fatal("later authority page with NULL cursor error = nil, want CHECK refusal")
+	}
+	certificateID := schemaDigestBytes(0x8d)
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_environments(
+  project_id, candidate_id, environment_id, environment_ordinal, page_number,
+  certificate_id, certificate_bytes, mode, expires_at_millis,
+  join_membership_generation
+) VALUES(?, ?, 'environment-a', 1, 1, ?, X'01', 'trusted', 0, 1)`,
+		projectID, candidateID, certificateID); err != nil {
+		t.Fatalf("insert authority candidate environment: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_membership_events(
+  project_id, candidate_id, membership_generation, event_kind, environment_id
+) VALUES(?, ?, 1, 'join', 'environment-a')`, projectID, candidateID); err != nil {
+		t.Fatalf("insert authority candidate membership event: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_environments(
+  project_id, candidate_id, environment_id, environment_ordinal, page_number,
+  certificate_id, certificate_bytes, mode, expires_at_millis,
+  join_membership_generation
+) VALUES(?, ?, 'environment-orphan', 2, 99, ?, X'01', 'trusted', 0, 2)`,
+		projectID, candidateID, schemaDigestBytes(0x8e)); err == nil {
+		t.Fatal("environment on missing candidate page error = nil, want FK refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_environments(
+  project_id, candidate_id, environment_id, environment_ordinal, page_number,
+  certificate_id, certificate_bytes, mode, expires_at_millis,
+  join_membership_generation, retirement_relay_generation
+) VALUES(?, ?, 'environment-partial', 2, 1, ?, X'01', 'trusted', 0, 2, ?)`,
+		projectID, candidateID, schemaDigestBytes(0x8f), schemaDigestBytes(0x90)); err == nil {
+		t.Fatal("partial candidate retirement error = nil, want CHECK refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_environments(
+  project_id, candidate_id, environment_id, environment_ordinal, page_number,
+  certificate_id, certificate_bytes, mode, expires_at_millis,
+  join_membership_generation
+) VALUES(?, ?, 'environment-duplicate-ordinal', 1, 1, ?, X'01', 'trusted', 0, 2)`,
+		projectID, candidateID, schemaDigestBytes(0x95)); err == nil {
+		t.Fatal("duplicate candidate environment ordinal error = nil, want candidate-wide UNIQUE refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_environments(
+  project_id, candidate_id, environment_id, environment_ordinal, page_number,
+  certificate_id, certificate_bytes, mode, expires_at_millis,
+  join_membership_generation
+) VALUES(?, ?, 'environment-duplicate-certificate', 2, 1, ?, X'01', 'trusted', 0, 2)`,
+		projectID, candidateID, certificateID); err == nil {
+		t.Fatal("duplicate candidate certificate error = nil, want candidate-wide UNIQUE refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_membership_events(
+  project_id, candidate_id, membership_generation, event_kind, environment_id
+) VALUES(?, ?, 1, 'retirement', 'environment-a')`, projectID, candidateID); err == nil {
+		t.Fatal("duplicate candidate membership generation error = nil, want candidate-wide UNIQUE refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authority_candidate_membership_events(
+  project_id, candidate_id, membership_generation, event_kind, environment_id
+) VALUES(?, ?, 2, 'join', 'environment-missing')`, projectID, candidateID); err == nil {
+		t.Fatal("membership event without candidate environment error = nil, want FK refusal")
+	}
+
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_projects(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, activation_state, downloaded_cursor,
+  applied_cursor, relay_head
+) VALUES('project-authority-metadata-constraints', ?, ?, ?, 1, 'staging', 0, 0, 0)`,
+		schemaDigestBytes(0x91), schemaDigestBytes(0x92), schemaDigestBytes(0x93)); err != nil {
+		t.Fatalf("insert metadata constraint project: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authorities(
+  project_id, digest_version, authority_digest, inventory_arrival_head
+) VALUES('project-authority-metadata-constraints', 1, ?, 1)`, schemaDigestBytes(0x94)); err == nil {
+		t.Fatal("v1 metadata with nonzero head error = nil, want CHECK refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authorities(
+  project_id, digest_version, authority_digest, inventory_arrival_head
+) VALUES('project-authority-metadata-constraints', 1, zeroblob(32), 0)`); err == nil {
+		t.Fatal("zero authority metadata digest error = nil, want CHECK refusal")
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_authorities(
+  project_id, digest_version, authority_digest, inventory_arrival_head
+) VALUES('project-authority-metadata-constraints', 1, zeroblob(31), 0)`); err == nil {
+		t.Fatal("malformed authority metadata digest error = nil, want CHECK refusal")
+	}
+
+	if _, err := store.db.Exec(`DELETE FROM continuity_sync_authority_candidates WHERE project_id = ? AND candidate_id = ?`, projectID, candidateID); err != nil {
+		t.Fatalf("delete authority candidate header: %v", err)
+	}
+	var children int
+	if err := store.db.QueryRow(`
+SELECT
+  (SELECT COUNT(*) FROM continuity_sync_authority_candidate_pages)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_environments)
+  + (SELECT COUNT(*) FROM continuity_sync_authority_candidate_membership_events)`).Scan(&children); err != nil {
+		t.Fatalf("count cascaded authority candidate children: %v", err)
+	}
+	if children != 0 {
+		t.Fatalf("authority candidate cascade left %d children", children)
+	}
+	foreignKeyRows, err := store.db.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatalf("run v4 foreign-key check: %v", err)
+	}
+	defer foreignKeyRows.Close()
+	if foreignKeyRows.Next() {
+		t.Fatal("foreign_key_check returned a v4 authority candidate violation")
+	}
+}
+
 const v1ProjectPayload = `{"observation":{"observed_at_millis":1,"harness_session_id":"","branch":"","worktree":""},"label":"Loaf"}`
 
 func createV1ContinuityDatabase(t *testing.T, stateRoot string) string {
@@ -911,6 +1460,102 @@ func createV2ContinuityDatabase(t *testing.T, stateRoot string) string {
 		t.Fatalf("close v2 database: %v", err)
 	}
 	return databasePath
+}
+
+func createV3ContinuityDatabase(t *testing.T, stateRoot string) string {
+	t.Helper()
+
+	privateDirectory := filepath.Join(stateRoot, "vnext")
+	if err := os.MkdirAll(privateDirectory, 0o700); err != nil {
+		t.Fatalf("create v3 private directory: %v", err)
+	}
+	databasePath := filepath.Join(privateDirectory, databaseFileName)
+	file, err := os.OpenFile(databasePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("create v3 database: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close v3 database file: %v", err)
+	}
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v3 database: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		db.Close()
+		t.Fatalf("begin v3 schema: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schemaV3DDL); err != nil {
+		db.Close()
+		t.Fatalf("create v3 schema: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
+		db.Close()
+		t.Fatalf("set v3 application id: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 3`); err != nil {
+		db.Close()
+		t.Fatalf("set v3 user version: %v", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, 'vnext', 3, ?)`,
+		checksumSchemaV3(),
+	); err != nil {
+		db.Close()
+		t.Fatalf("record v3 schema identity: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		db.Close()
+		t.Fatalf("commit v3 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v3 database: %v", err)
+	}
+	return databasePath
+}
+
+func seedV3SyncAuthority(t *testing.T, db *sql.DB, projectID continuity.ProjectID, authority SyncAuthority, activeCandidateDigest *[32]byte) {
+	t.Helper()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin v3 authority seed: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+INSERT INTO continuity_sync_projects(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, activation_state, downloaded_cursor,
+  applied_cursor, relay_head
+) VALUES(?, ?, ?, ?, ?, 'staging', 0, 0, 0)`,
+		string(projectID), authority.ChannelID[:], authority.RelayGeneration[:], authority.AdminPublicKey[:], authority.MembershipGeneration,
+	); err != nil {
+		t.Fatalf("seed v3 sync project: %v", err)
+	}
+	for _, environment := range authority.Environments {
+		if err := insertSyncEnvironmentCertificateV1(context.Background(), tx, projectID, environment); err != nil {
+			t.Fatalf("seed v3 environment %q: %v", environment.EnvironmentID, err)
+		}
+	}
+	if activeCandidateDigest != nil {
+		candidateID := testAuthorityDigest(0xe2)
+		rollingDigest := testAuthorityDigest(0xe3)
+		if _, err := tx.Exec(`
+INSERT INTO continuity_sync_terminal_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  membership_generation, authority_digest, start_arrival_sequence,
+  through_arrival_sequence, frame_count, rolling_candidate_digest
+) VALUES(?, ?, 'staging', ?, ?, ?, ?, 1, 1, 1, ?)`,
+			string(projectID), candidateID[:], authority.ChannelID[:], authority.RelayGeneration[:],
+			authority.MembershipGeneration, activeCandidateDigest[:], rollingDigest[:],
+		); err != nil {
+			t.Fatalf("seed v3 active terminal candidate: %v", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit v3 authority seed: %v", err)
+	}
 }
 
 func schemaDigestBytes(value byte) []byte {

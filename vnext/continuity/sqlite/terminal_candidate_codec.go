@@ -111,7 +111,7 @@ func deriveTerminalCandidateIdentityV1(projectID continuity.ProjectID, authority
 }
 
 func terminalCandidateAuthorityTranscriptV1(projectID continuity.ProjectID, authority SyncAuthority) ([]byte, error) {
-	if projectID.Validate() != nil || validateSyncAuthority(authority) != nil {
+	if projectID.Validate() != nil || validateSyncAuthority(authority) != nil || authority.InventoryArrivalHead != 0 {
 		return nil, invalidTerminalCandidateCodecV1()
 	}
 	environments := make([][]byte, 0, len(authority.Environments))
