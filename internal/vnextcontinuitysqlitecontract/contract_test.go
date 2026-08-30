@@ -79,6 +79,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"authority_candidate_promotion.go",
 		"authority_candidate_reader.go",
 		"authority_candidate_stage.go",
+		"authority_recovery_transition.go",
 		"codec_v1.go",
 		"context_v1.go",
 		"driver.go",
@@ -135,6 +136,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.CurrentSyncAuthority",
 		"Store.CurrentSyncAuthorityBinding",
 		"Store.CurrentSyncAuthorityCandidate",
+		"Store.CurrentSyncAuthorityRecoveryTransition",
 		"Store.CurrentSyncEnvironmentStates",
 		"Store.CurrentSyncProgress",
 		"Store.CurrentTerminalCandidate",
@@ -234,6 +236,13 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"SyncAuthorityPage.Environments",
 		"SyncAuthorityPage.More",
 		"SyncAuthorityPage.ThroughEnvironmentID",
+		"SyncAuthorityRecoveryTransition",
+		"SyncAuthorityRecoveryTransition.PredecessorCandidateID",
+		"SyncAuthorityRecoveryTransition.ProjectID",
+		"SyncAuthorityRecoveryTransition.SuccessorCandidateID",
+		"SyncAuthorityRecoveryTransition.TargetMembershipGeneration",
+		"SyncAuthorityRecoveryTransition.WriterCertificateID",
+		"SyncAuthorityRecoveryTransition.WriterEnvironmentID",
 		"SyncAuthoritySnapshot",
 		"SyncAuthoritySnapshot.AdminPublicKey",
 		"SyncAuthoritySnapshot.BaseAuthorityDigest",
@@ -450,6 +459,14 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 			"database/sql",
 			"github.com/levifig/loaf/vnext/continuity",
 		},
+		"authority_recovery_transition.go": {
+			"context",
+			"crypto/sha256",
+			"database/sql",
+			"errors",
+			"github.com/levifig/loaf/vnext/continuity",
+			"math",
+		},
 		"codec_v1.go": {
 			"bytes",
 			"encoding/json",
@@ -621,7 +638,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		t.Fatalf("read user version: %v", err)
 	}
-	if applicationID != 1280267825 || userVersion != 5 {
+	if applicationID != 1280267825 || userVersion != 6 {
 		t.Fatalf("schema pragmas = application_id %d, user_version %d", applicationID, userVersion)
 	}
 
@@ -630,7 +647,7 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 	if err := db.QueryRow(`SELECT schema_line, schema_version, schema_checksum FROM continuity_schema WHERE singleton = 1`).Scan(&line, &version, &checksum); err != nil {
 		t.Fatalf("read schema identity: %v", err)
 	}
-	if line != "vnext" || version != 5 || checksum != "4f81496ceac409a49ddd980fed0fe3f037cc7bff8e45f7b4f0a4e3a1aba985e4" {
+	if line != "vnext" || version != 6 || checksum != "1aa97f7f4f453f8bf0a659a346949e8865900dbc9675b8737c481238bf69843e" {
 		t.Fatalf("schema identity = %q, %d, %q", line, version, checksum)
 	}
 
@@ -639,15 +656,17 @@ func TestContinuitySQLiteContractPinsExactSchema(t *testing.T) {
 		{kind: "index", name: "ix_continuity_facts_subject_order", table: "continuity_facts", digest: "4e442bf181f90b62b48372a200f3eb7ad1ac2863efc36f25d23db11e062d0ab9"},
 		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", digest: "53c7715e0a375cff5f23cf76cc860b1df863e89050e451ffcfce720e67d28720"},
 		{kind: "index", name: "ux_continuity_sync_authority_candidate_pages_final", table: "continuity_sync_authority_candidate_pages", digest: "fc66e9d7051940d8e042a891fcbf094c31c9869dc83a93a63f8dc5618359a340"},
-		{kind: "index", name: "ux_continuity_sync_authority_candidates_active_project", table: "continuity_sync_authority_candidates", digest: "2e880d95fb29ab11f1ba2bafd5e17120b9942893d4d62f0fee7d2964db694967"},
+		{kind: "index", name: "ux_continuity_sync_authority_candidates_active_project", table: "continuity_sync_authority_candidates", digest: "4546056e36b488130357a1fc2c5e28bc9bec6fbdcf8e7248dac15aaa15f27357"},
+		{kind: "index", name: "ux_continuity_sync_authority_candidates_recovery_predecessor_project", table: "continuity_sync_authority_candidates", digest: "096d5adf6044c5135cfd37ef10137b3a1f20d45583a514db5df0b2b5b4cc1007"},
 		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", digest: "b0aa78a63d19c8503b7df73fb9ddecb2c4bc15ef9789c3577d3ecc6eb5aec495"},
 		{kind: "table", name: "continuity_facts", table: "continuity_facts", digest: "cc2165e3ec85a50478f7ee550bf4a25db6b3282b56de7b1332a007961c75555f"},
-		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "f5c93c7a0fded089b8934137d55b0a732a8cd048564e26045931eec807df3914"},
+		{kind: "table", name: "continuity_schema", table: "continuity_schema", digest: "6e16c5c5e1535986c8309d93dd4d4db59f7c118691fd2a46a5942523c9d156d2"},
 		{kind: "table", name: "continuity_sync_authorities", table: "continuity_sync_authorities", digest: "a8506a59db4d2cb96fa1ac8c30dbeb271c1e2b0dd5182370994a478865d35746"},
 		{kind: "table", name: "continuity_sync_authority_candidate_environments", table: "continuity_sync_authority_candidate_environments", digest: "6f5f5d4d8f0a97657ec116b57ababf2f84e1588608e9447c671dca8b056caa89"},
 		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", digest: "9df1d2916a6fc809a41620f24e3e04edf74efcd7771b045d64ed39969c6a7c4e"},
 		{kind: "table", name: "continuity_sync_authority_candidate_pages", table: "continuity_sync_authority_candidate_pages", digest: "6215f0f2eb502421980bde44b2aaed53bc23a14436eff1eec3b387274f70e629"},
-		{kind: "table", name: "continuity_sync_authority_candidates", table: "continuity_sync_authority_candidates", digest: "6c5a0dbcc5817f6173ecfb178e8e4d03cfe9f86815c8f9a10b0ab74556a8e1f1"},
+		{kind: "table", name: "continuity_sync_authority_candidates", table: "continuity_sync_authority_candidates", digest: "a5e43e39f1a82157d8dab9ecd846e79630642839505f2b9d6754faca20af0215"},
+		{kind: "table", name: "continuity_sync_authority_recovery_transitions", table: "continuity_sync_authority_recovery_transitions", digest: "a0f5e12585714483936500f4b760ebee9601cb64d7ac590aa5b15439385bf26f"},
 		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", digest: "65ed5ac0d095a7eb155793bd043b3080e2822cb98ce32e3a1a7c44e6059e0856"},
 		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", digest: "542dc7124d2db185a983d6a997274f975870521524daaf82d940f824ae7b69e3"},
 		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", digest: "008be5c6e34b28d39c1a47d6be64f49b82c105ff4c02947e1ab5b94bf7046ab9"},
@@ -872,6 +891,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"CurrentSyncAuthority":                    "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthority, error)",
 		"CurrentSyncAuthorityBinding":             "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthorityBinding, error)",
 		"CurrentSyncAuthorityCandidate":           "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthorityCandidate, bool, error)",
+		"CurrentSyncAuthorityRecoveryTransition":  "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthorityRecoveryTransition, bool, error)",
 		"CurrentSyncEnvironmentStates":            "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityBinding, []continuity.EnvironmentID) ([]sqlite.SyncEnvironmentState, error)",
 		"CurrentSyncProgress":                     "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncProgress, error)",
 		"CurrentTerminalCandidate":                "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.TerminalCandidate, bool, error)",
@@ -1373,7 +1393,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"filesystem_attributes_windows.go": "1e3b5f12e4debbc5432f2153818862cdc39ec617409e526b750e6db093dcb0a0",
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
-		"schema.go":                        "9b389f7a7b1d8452b28c7b92002a2a12c21758fdf1a16c1ec83eeb338dccb1f0",
+		"schema.go":                        "93ed2ac705b61391ffbc7e8ddf400425e6fc854b91da9dba7f9fe087bb33ea52",
 		"store.go":                         "d43c65b22cefe1cf8be9c6cb7e85137a3c59c155240a0f74922b3fc26ca59bb2",
 	}
 	for fileName, wantDigest := range wantSourceDigests {
@@ -1418,22 +1438,25 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 			"checksumSchemaV2":             "89dd6cdd8c6947ca7f6e649675dd82d4456a2ea2db0c6c9107510f36bd0b21be",
 			"checksumSchemaV3":             "50f038bbbda2f56c6725ef28690e987c57e04d3d59e9fd6c066db3b148a81d3f",
 			"checksumSchemaV4":             "5176b451d75708fefa4bd826e97ff903f456ebff677b55caa83fd33bdad9375b",
+			"checksumSchemaV5":             "e90fa69963e4c728f1d9946db744730c4f283259b1abb6937a8e5d7c64914236",
 			"closeMigrationRows":           "1a1b6a77c23eef79fb5730df7674519c954e253ec51fd8f9a1c60ac793d1861f",
-			"expectedSchemaObjects":        "78fdeb04fa8462344fcfa6176f0f09bde8aa6c75c5fe9a837763803a2d566252",
+			"expectedSchemaObjects":        "97fe4b2be2d397b419cbf8174d2e9b08df51e390120cc9d6c3749db040377561",
 			"expectedSchemaV1Objects":      "690fbda019e83a41451abc381d9d1c10f56f9597c2b55a0809bf977abd4b6da1",
 			"expectedSchemaV2Objects":      "f8a369c7a168ff5a4a5228fbc0888af213e0d18b36dcc996334eb4ec3a936e9d",
 			"expectedSchemaV3Objects":      "e0ed9b1701a662c2d23dc02f338b8bc42799b477b215841ab696cf2c0a4ea3f1",
-			"expectedSchemaV4Objects":      "1ccf8b701024e0e1f7689df911ee11d405b478b5048734d3ddb0b51b1da83ba0",
-			"initializeSchemaIfEmpty":      "2eda289077b7a3ada21feb2865b1136eaaeafbb71df99fbe6cba35dc100c3c76",
-			"migrateSchema":                "8eba6f74003139eeb17d86a1d89b689f70a3a4f00b3f5a4bd344daa9023726e0",
+			"expectedSchemaV4Objects":      "e8df660eae06e4c145ab67c6b2e6addf1fbf77d1f6f2b5b2f80a0a9ba4cd9dfd",
+			"expectedSchemaV5Objects":      "db923ec759ecc2593d85f912502edc5d18c8492362cc8099ac452c705e46b9f8",
+			"initializeSchemaIfEmpty":      "b514551f2d5dfe8de244aa0671baf36e1297f39d5dad0b791e1251e6d11c34d5",
+			"migrateSchema":                "7906000661df5e6aaaf5cf483602fbbd78dc510ca5da95194f94bbb9e35e7951",
 			"migrateSchemaV1ToV2":          "3f1ee78cc1b2a56a036b03a390207ea7d27a911867efdad1fc4f162623925293",
 			"migrateSchemaV2ToV3":          "3b640231ba853caec59017133ddcc87d3e20d0c3419abb6027b3b447f450fef9",
-			"migrateSchemaV3ToV4":          "4e05a53dc0d5f17b2ddd48eb39c8331bf88bfba23a9eef93c541ebb95acc4ba4",
-			"migrateSchemaV4ToV5":          "68c3eb8b8e2370d0ac17e0f5293cbd9a8612cdca25dd5ebe29c6966763778d9d",
+			"migrateSchemaV3ToV4":          "2aeec568d4050ac14c323ed444c9a6acdc70123b1414aa0421e107df5d6b7447",
+			"migrateSchemaV4ToV5":          "c97c6ef213c3a24e9a8756d2cf74f0bde3b0c61ebb3ba6c785e12f95027369af",
+			"migrateSchemaV5ToV6":          "eb5772d9682b2f28740ab10bbefae4ee35d99a56e19d2c13a6da500fecbdea3f",
 			"normalizeSQL":                 "ba395a0d4dddb73b4b9669ad5a6cd12d28494ba464560910074abbddd0d96e98",
 			"seedV3SyncAuthorityMetadata":  "61d5a908b0fee56af16bd14bba221c70ffe1f100259b3335beae1a43452e9e55",
 			"validateForeignKeys":          "5d789c539f43fdb2be215784eeb7074c290023cc6ef12dbe92511c1d335163f1",
-			"validateKnownSchemaVersion":   "f977ce9a06e160eba04c592b2bb2146886886fa59dbd1ecba9f777619e555413",
+			"validateKnownSchemaVersion":   "18677a1b68c52891f8beb9734a90c948f2ebd9719b3c00dd1b3ea47d227a3307",
 			"validateMigrationPreflight":   "70843e4fedff7b293fc588c53ea29d8a20e0598dc0b2a5fb3dfd6f8a44e74026",
 			"validateSchema":               "03e687e88be737459ecbdde22172fd82222a45c8b6c6bd9942fb83a1da1c1e93",
 			"validateSchemaVersion":        "56b5625f087b8809fd6abc6e9e67326dac4e35d71ba77e32cf6cad00c5ec41f4",

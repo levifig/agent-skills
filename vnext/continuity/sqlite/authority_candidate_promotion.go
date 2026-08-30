@@ -65,6 +65,9 @@ func (store *Store) PromoteSyncAuthorityCandidate(
 		return SyncAuthorityCandidateReceipt{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncAuthorityCandidateReceipt{}, err
+	}
 
 	if receipt, found, err := readPromotedSyncAuthorityCandidateReceiptV2(ctx, tx, projectID, expected.CandidateID); err != nil {
 		return SyncAuthorityCandidateReceipt{}, err

@@ -105,6 +105,9 @@ func (store *Store) StageVerifiedSyncAuthorityCandidatePage(
 		return SyncAuthorityCandidate{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncAuthorityCandidate{}, err
+	}
 
 	canonicalBase, err := readCanonicalSyncAuthorityBaseV2(ctx, tx, projectID)
 	if err != nil {
@@ -230,6 +233,9 @@ func (store *Store) CurrentSyncAuthorityCandidate(ctx context.Context, projectID
 		return SyncAuthorityCandidate{}, false, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncAuthorityCandidate{}, false, err
+	}
 	candidate, found, err := readAndValidateActiveSyncAuthorityCandidateV2(ctx, tx, projectID)
 	if err != nil || !found {
 		return SyncAuthorityCandidate{}, found, err
@@ -269,6 +275,9 @@ func (store *Store) DiscardSyncAuthorityCandidate(ctx context.Context, projectID
 		return syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return err
+	}
 	var promoted int
 	if err := tx.QueryRowContext(ctx, `
 SELECT EXISTS (
