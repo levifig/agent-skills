@@ -35,17 +35,19 @@ type TerminalCandidateReceipt struct {
 }
 
 type preparedTerminalCandidatePromotionFrameV1 struct {
-	normalized      terminalCandidateFrameV1
-	inbox           OpaqueSyncFrame
-	inboxBytes      []byte
-	sealedFact      *storedFactV1
-	prunedReference *VerifiedPruneReference
-	prunedKind      continuity.FactKind
-	newSource       bool
-	newFact         bool
-	insertReceipt   bool
-	insertTombstone bool
-	deleteOutbox    bool
+	normalized              terminalCandidateFrameV1
+	inbox                   OpaqueSyncFrame
+	inboxBytes              []byte
+	sealedFact              *storedFactV1
+	prunedReference         *VerifiedPruneReference
+	prunedKind              continuity.FactKind
+	prunedArrivalDigest     [32]byte
+	newSource               bool
+	newFact                 bool
+	insertReceipt           bool
+	insertTombstone         bool
+	fillPrunedArrivalDigest bool
+	deleteOutbox            bool
 }
 
 // PromoteTerminalCandidate strictly revalidates and atomically promotes the
@@ -412,6 +414,7 @@ func validateTerminalCandidatePromotionFramesV1(ctx context.Context, tx *sql.Tx,
 			reference := terminalCandidatePruneReferenceV1(frame.normalized)
 			frame.prunedReference = &reference
 			frame.prunedKind = body.FactKind
+			frame.prunedArrivalDigest = body.InboxFrameDigest
 		}
 		if index != len(frames)-1 {
 			if expectedArrival == math.MaxInt64 {
@@ -573,6 +576,10 @@ func planTerminalCandidatePromotionV1(ctx context.Context, tx *sql.Tx, projectID
 					tombstone.pruneCertificateID != *normalized.pruneCertificateID {
 					return nil, syncProblem(SyncErrorConflict, "tombstone", "conflicts with the pruned candidate")
 				}
+				if tombstone.prunedArrivalDigestKnown && tombstone.prunedArrivalDigest != frame.prunedArrivalDigest {
+					return nil, syncProblem(SyncErrorConflict, "tombstone", "conflicts with the exact pruned arrival")
+				}
+				frame.fillPrunedArrivalDigest = !tombstone.prunedArrivalDigestKnown
 			} else {
 				frame.insertTombstone = true
 			}
@@ -697,7 +704,7 @@ func readTerminalCandidatePromotionTombstoneV1(ctx context.Context, tx *sql.Tx, 
 	rows, err := tx.QueryContext(ctx, `
 SELECT fact_id, environment_id, environment_sequence, arrival_sequence,
        previous_envelope_digest, envelope_digest, certificate_id, key_generation,
-       nonce, prune_certificate_id
+       nonce, prune_certificate_id, pruned_arrival_digest
 FROM continuity_sync_tombstones
 WHERE project_id = ? AND (
   fact_id = ? OR arrival_sequence = ? OR
@@ -714,10 +721,11 @@ WHERE project_id = ? AND (
 		if found {
 			return retainedPruneTombstoneV1{}, false, syncProblem(SyncErrorStore, "", "terminal candidate tombstone identities disagree")
 		}
-		var previousDigest, digest, certificateID, nonce, pruneCertificateID []byte
+		var previousDigest, digest, certificateID, nonce, pruneCertificateID, prunedArrivalDigest []byte
 		var keyGeneration int64
 		if err := rows.Scan(&retained.reference.FactID, &retained.reference.EnvironmentID, &retained.reference.EnvironmentSequence,
-			&retained.reference.ArrivalSequence, &previousDigest, &digest, &certificateID, &keyGeneration, &nonce, &pruneCertificateID); err != nil {
+			&retained.reference.ArrivalSequence, &previousDigest, &digest, &certificateID, &keyGeneration, &nonce, &pruneCertificateID,
+			&prunedArrivalDigest); err != nil {
 			return retainedPruneTombstoneV1{}, false, syncTransactionProblem(ctx)
 		}
 		if len(previousDigest) != 32 || len(digest) != 32 || len(certificateID) != 32 || len(nonce) != 24 || len(pruneCertificateID) != 32 ||
@@ -730,6 +738,13 @@ WHERE project_id = ? AND (
 		retained.reference.KeyGeneration = uint32(keyGeneration)
 		copy(retained.reference.Nonce[:], nonce)
 		copy(retained.pruneCertificateID[:], pruneCertificateID)
+		if prunedArrivalDigest != nil {
+			if len(prunedArrivalDigest) != 32 {
+				return retainedPruneTombstoneV1{}, false, syncProblem(SyncErrorStore, "", "terminal candidate tombstone is corrupt")
+			}
+			copy(retained.prunedArrivalDigest[:], prunedArrivalDigest)
+			retained.prunedArrivalDigestKnown = true
+		}
 		found = true
 	}
 	if err := rows.Err(); err != nil {
@@ -890,10 +905,41 @@ WHERE project_id = ? AND fact_id = ? AND environment_id = ? AND environment_sequ
 			}
 		}
 		if frame.insertTombstone {
-			if err := insertPruneTombstoneV1(ctx, tx, candidate.ProjectID, *frame.prunedReference, *frame.normalized.pruneCertificateID); err != nil {
+			if err := insertPruneTombstoneV1(
+				ctx, tx, candidate.ProjectID, *frame.prunedReference,
+				*frame.normalized.pruneCertificateID, &frame.prunedArrivalDigest,
+			); err != nil {
 				return err
 			}
 		}
+		if frame.fillPrunedArrivalDigest {
+			if err := fillTerminalCandidatePrunedArrivalDigestV1(ctx, tx, candidate.ProjectID, frame); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func fillTerminalCandidatePrunedArrivalDigestV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	frame preparedTerminalCandidatePromotionFrameV1,
+) error {
+	result, err := tx.ExecContext(ctx, `
+UPDATE continuity_sync_tombstones
+SET pruned_arrival_digest = ?
+WHERE project_id = ? AND fact_id = ? AND arrival_sequence = ?
+  AND prune_certificate_id = ? AND pruned_arrival_digest IS NULL`,
+		frame.prunedArrivalDigest[:], string(projectID), string(frame.normalized.factID),
+		frame.normalized.arrivalSequence, frame.normalized.pruneCertificateID[:],
+	)
+	if err != nil {
+		return syncTransactionProblem(ctx)
+	}
+	if err := requireOneAffectedV1(result, ctx); err != nil {
+		return syncProblem(SyncErrorConflict, "tombstone", "changed during terminal promotion")
 	}
 	return nil
 }
