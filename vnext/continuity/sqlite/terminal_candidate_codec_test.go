@@ -39,9 +39,10 @@ func TestTerminalCandidateCodecIdentityAndPrunedBodyAreDeterministicV1(t *testin
 	}
 
 	body := terminalCandidatePrunedBodyV1{
-		ReferenceDigest: testAuthorityDigest(0x51),
-		FactKind:        continuity.FactScratchpadMessageRecorded,
-		Clock:           continuity.HybridTime{WallMillis: 1234, Logical: 5},
+		ReferenceDigest:  testAuthorityDigest(0x51),
+		InboxFrameDigest: sha256.Sum256([]byte("exact-pruned-arrival")),
+		FactKind:         continuity.FactScratchpadMessageRecorded,
+		Clock:            continuity.HybridTime{WallMillis: 1234, Logical: 5},
 	}
 	encoded, err := encodeTerminalCandidatePrunedBodyV1(body)
 	if err != nil {
@@ -292,9 +293,10 @@ func TestTerminalCandidatePrunedBodyIsStrictAndSchemaBoundedV1(t *testing.T) {
 		continuity.FactScratchpadClaimReleased,
 	} {
 		body := terminalCandidatePrunedBodyV1{
-			ReferenceDigest: sha256.Sum256([]byte("reference:" + string(kind))),
-			FactKind:        kind,
-			Clock:           continuity.HybridTime{WallMillis: math.MaxInt64, Logical: math.MaxInt32},
+			ReferenceDigest:  sha256.Sum256([]byte("reference:" + string(kind))),
+			InboxFrameDigest: sha256.Sum256([]byte("inbox:" + string(kind))),
+			FactKind:         kind,
+			Clock:            continuity.HybridTime{WallMillis: math.MaxInt64, Logical: math.MaxInt32},
 		}
 		encoded, err := encodeTerminalCandidatePrunedBodyV1(body)
 		if err != nil {
@@ -324,9 +326,10 @@ func TestTerminalCandidatePrunedBodyIsStrictAndSchemaBoundedV1(t *testing.T) {
 
 	invalid := []terminalCandidatePrunedBodyV1{
 		{FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{}},
-		{ReferenceDigest: testAuthorityDigest(0x61), FactKind: continuity.FactScratchpadOpened, Clock: continuity.HybridTime{}},
-		{ReferenceDigest: testAuthorityDigest(0x62), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{WallMillis: -1}},
-		{ReferenceDigest: testAuthorityDigest(0x63), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{Logical: -1}},
+		{ReferenceDigest: testAuthorityDigest(0x60), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{}},
+		{ReferenceDigest: testAuthorityDigest(0x61), InboxFrameDigest: testAuthorityDigest(0x71), FactKind: continuity.FactScratchpadOpened, Clock: continuity.HybridTime{}},
+		{ReferenceDigest: testAuthorityDigest(0x62), InboxFrameDigest: testAuthorityDigest(0x72), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{WallMillis: -1}},
+		{ReferenceDigest: testAuthorityDigest(0x63), InboxFrameDigest: testAuthorityDigest(0x73), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{Logical: -1}},
 	}
 	for _, body := range invalid {
 		if _, err := encodeTerminalCandidatePrunedBodyV1(body); !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) {
@@ -336,6 +339,22 @@ func TestTerminalCandidatePrunedBodyIsStrictAndSchemaBoundedV1(t *testing.T) {
 	oversized := make([]byte, maximumTerminalCandidatePrunedBodyBytesV1+1)
 	if _, err := decodeTerminalCandidatePrunedBodyV1(oversized); !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) {
 		t.Fatalf("oversized pruned body error = %v, want bounded refusal", err)
+	}
+	legacyReferenceDigest := testAuthorityDigest(0x64)
+	legacy, err := encodeTerminalCandidateTranscriptV1(
+		terminalCandidatePrunedBodyDomainV1,
+		maximumTerminalCandidatePrunedBodyBytesV1,
+		terminalCandidateUint16BytesV1(1),
+		legacyReferenceDigest[:],
+		[]byte(continuity.FactScratchpadMessageRecorded),
+		terminalCandidateInt64BytesV1(1),
+		terminalCandidateInt32BytesV1(0),
+	)
+	if err != nil {
+		t.Fatalf("encode prior pruned body fixture: %v", err)
+	}
+	if _, err := decodeTerminalCandidatePrunedBodyV1(legacy); !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) {
+		t.Fatalf("prior unbound pruned body error = %v, want fail-closed refusal", err)
 	}
 	tooManyFields := make([][]byte, maximumTerminalCandidateTranscriptFieldsV1+1)
 	if _, err := encodeTerminalCandidateTranscriptV1("bounded-test", 1024, tooManyFields...); !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) {
@@ -349,6 +368,40 @@ func TestTerminalCandidatePrunedBodyIsStrictAndSchemaBoundedV1(t *testing.T) {
 	}
 	if _, err := parseTerminalCandidateTranscriptV1(oversizedFieldHeader, "bounded-test", len(tooManyFields)); !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) {
 		t.Fatalf("oversized parse field count error = %v, want pre-allocation refusal", err)
+	}
+}
+
+func TestTerminalCandidatePrunedBodyBindsExactInboxBytesV1(t *testing.T) {
+	t.Parallel()
+
+	frame := terminalCodecPrunedFrameV1(t)
+	inbox := OpaqueSyncFrame{
+		ArrivalSequence: frame.arrivalSequence,
+		EnvelopeDigest:  frame.envelopeDigest,
+		PrunedArrival:   []byte("terminal-codec-pruned-arrival"),
+	}
+	if err := validateTerminalCandidateInboxBindingV1(frame, inbox); err != nil {
+		t.Fatalf("validate exact pruned inbox binding: %v", err)
+	}
+	mutated := cloneOpaqueSyncFrameV1(inbox)
+	mutated.PrunedArrival[0] ^= 0xff
+	err := validateTerminalCandidateInboxBindingV1(frame, mutated)
+	assertSyncErrorCode(t, err, SyncErrorStore)
+
+	body, err := decodeTerminalCandidatePrunedBodyV1(frame.candidateBytes)
+	if err != nil {
+		t.Fatalf("decode pruned body fixture: %v", err)
+	}
+	if body.InboxFrameDigest != sha256.Sum256(inbox.PrunedArrival) {
+		t.Fatal("pruned body does not retain the exact inbox frame digest")
+	}
+	body.InboxFrameDigest[0] ^= 0xff
+	changed, err := encodeTerminalCandidatePrunedBodyV1(body)
+	if err != nil {
+		t.Fatalf("encode changed inbox digest: %v", err)
+	}
+	if bytes.Equal(changed, frame.candidateBytes) {
+		t.Fatal("changed exact inbox bytes did not change the pruned candidate body")
 	}
 }
 
@@ -547,8 +600,9 @@ func TestTerminalCandidateCodecErrorsDoNotExposeContentV1(t *testing.T) {
 		t.Fatalf("authority error = %q, want content-free codec refusal", err)
 	}
 	body := terminalCandidatePrunedBodyV1{
-		ReferenceDigest: testAuthorityDigest(0xa1),
-		FactKind:        continuity.FactKind(secret),
+		ReferenceDigest:  testAuthorityDigest(0xa1),
+		InboxFrameDigest: testAuthorityDigest(0xa2),
+		FactKind:         continuity.FactKind(secret),
 	}
 	_, err = encodeTerminalCandidatePrunedBodyV1(body)
 	if !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) || strings.Contains(err.Error(), secret) {
@@ -581,6 +635,7 @@ func TestTerminalCandidateCodecMatchesPublishedVectorsV1(t *testing.T) {
 
 type terminalCandidateCodecVectorV1 struct {
 	Version                     uint16 `json:"version"`
+	PrunedBodyVersion           uint16 `json:"pruned_body_version"`
 	AuthorityTranscriptHex      string `json:"authority_transcript_hex"`
 	AuthorityDigestHex          string `json:"authority_digest_hex"`
 	CandidateIDHex              string `json:"candidate_id_hex"`
@@ -606,9 +661,10 @@ func terminalCandidateCodecVectorFixtureV1(t *testing.T) terminalCandidateCodecV
 		t.Fatalf("vector candidate identity: %v", err)
 	}
 	prunedBody, err := encodeTerminalCandidatePrunedBodyV1(terminalCandidatePrunedBodyV1{
-		ReferenceDigest: sha256.Sum256([]byte("terminal-candidate-vector-reference")),
-		FactKind:        continuity.FactScratchpadMessageRecorded,
-		Clock:           continuity.HybridTime{WallMillis: 1_727_000_000_123, Logical: 17},
+		ReferenceDigest:  sha256.Sum256([]byte("terminal-candidate-vector-reference")),
+		InboxFrameDigest: sha256.Sum256([]byte("terminal-candidate-vector-inbox")),
+		FactKind:         continuity.FactScratchpadMessageRecorded,
+		Clock:            continuity.HybridTime{WallMillis: 1_727_000_000_123, Logical: 17},
 	})
 	if err != nil {
 		t.Fatalf("vector pruned body: %v", err)
@@ -640,6 +696,7 @@ func terminalCandidateCodecVectorFixtureV1(t *testing.T) terminalCandidateCodecV
 	prunedBodyDigest := sha256.Sum256(prunedBody)
 	return terminalCandidateCodecVectorV1{
 		Version:                     terminalCandidateCodecVersionV1,
+		PrunedBodyVersion:           terminalCandidatePrunedBodyVersionV2,
 		AuthorityTranscriptHex:      hex.EncodeToString(authorityTranscript),
 		AuthorityDigestHex:          hex.EncodeToString(authorityDigest[:]),
 		CandidateIDHex:              hex.EncodeToString(candidateID[:]),
@@ -713,9 +770,10 @@ func terminalCodecPrunedFrameV1(t *testing.T) terminalCandidateFrameV1 {
 		t.Fatalf("derive prune reference fixture: %v", err)
 	}
 	frame.candidateBytes, err = encodeTerminalCandidatePrunedBodyV1(terminalCandidatePrunedBodyV1{
-		ReferenceDigest: referenceDigest,
-		FactKind:        continuity.FactScratchpadClaimRecorded,
-		Clock:           frame.clock,
+		ReferenceDigest:  referenceDigest,
+		InboxFrameDigest: sha256.Sum256([]byte("terminal-codec-pruned-arrival")),
+		FactKind:         continuity.FactScratchpadClaimRecorded,
+		Clock:            frame.clock,
 	})
 	if err != nil {
 		t.Fatalf("encode pruned fixture: %v", err)
