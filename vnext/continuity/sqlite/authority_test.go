@@ -151,7 +151,7 @@ func TestContinuityStoreRequiresExactCanonicalAuthorityMetadata(t *testing.T) {
 				if _, err := store.db.Exec(`PRAGMA ignore_check_constraints = ON`); err != nil {
 					t.Fatalf("enable corruption fixture: %v", err)
 				}
-				if _, err := store.db.Exec(`UPDATE continuity_sync_authorities SET digest_version = 2 WHERE project_id = ?`, string(projectID)); err != nil {
+				if _, err := store.db.Exec(`UPDATE continuity_sync_authorities SET digest_version = 3 WHERE project_id = ?`, string(projectID)); err != nil {
 					t.Fatalf("change authority metadata version: %v", err)
 				}
 			},

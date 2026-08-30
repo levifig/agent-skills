@@ -129,6 +129,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.CorrectJournalEntry",
 		"Store.CreateIdea",
 		"Store.CurrentSyncAuthority",
+		"Store.CurrentSyncAuthorityBinding",
 		"Store.CurrentSyncAuthorityCandidate",
 		"Store.CurrentSyncProgress",
 		"Store.CurrentTerminalCandidate",
@@ -183,6 +184,14 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"SyncAuthority.InventoryArrivalHead",
 		"SyncAuthority.MembershipGeneration",
 		"SyncAuthority.RelayGeneration",
+		"SyncAuthorityBinding",
+		"SyncAuthorityBinding.AdminPublicKey",
+		"SyncAuthorityBinding.AuthorityDigest",
+		"SyncAuthorityBinding.AuthorityDigestVersion",
+		"SyncAuthorityBinding.ChannelID",
+		"SyncAuthorityBinding.InventoryArrivalHead",
+		"SyncAuthorityBinding.MembershipGeneration",
+		"SyncAuthorityBinding.RelayGeneration",
 		"SyncAuthorityCandidate",
 		"SyncAuthorityCandidate.AuthorityDigest",
 		"SyncAuthorityCandidate.AuthorityDigestVersion",
@@ -704,6 +713,30 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		t.Fatalf("Store fields = %#v, want %#v", gotFields, wantFields)
 	}
 
+	bindingType := reflect.TypeOf(continuitysqlite.SyncAuthorityBinding{})
+	gotBindingFields := make([]fieldSpec, 0, bindingType.NumField())
+	for index := 0; index < bindingType.NumField(); index++ {
+		field := bindingType.Field(index)
+		gotBindingFields = append(gotBindingFields, fieldSpec{
+			name:      field.Name,
+			typeName:  field.Type.String(),
+			exported:  field.IsExported(),
+			anonymous: field.Anonymous,
+		})
+	}
+	wantBindingFields := []fieldSpec{
+		{name: "ChannelID", typeName: "sqlite.SyncChannelID", exported: true},
+		{name: "RelayGeneration", typeName: "[32]uint8", exported: true},
+		{name: "AdminPublicKey", typeName: "[32]uint8", exported: true},
+		{name: "MembershipGeneration", typeName: "uint32", exported: true},
+		{name: "InventoryArrivalHead", typeName: "int64", exported: true},
+		{name: "AuthorityDigestVersion", typeName: "uint16", exported: true},
+		{name: "AuthorityDigest", typeName: "[32]uint8", exported: true},
+	}
+	if !reflect.DeepEqual(gotBindingFields, wantBindingFields) {
+		t.Fatalf("SyncAuthorityBinding fields = %#v, want %#v", gotBindingFields, wantBindingFields)
+	}
+
 	pointerType := reflect.TypeOf((*continuitysqlite.Store)(nil))
 	wantMethods := map[string]string{
 		"ActivateStagedSync":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncChannelID) (sqlite.SyncProgress, error)",
@@ -718,6 +751,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"CorrectJournalEntry":                     "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.JournalCorrectionPayload) (continuity.AppendReceipt, error)",
 		"CreateIdea":                              "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaCreatedPayload) (continuity.AppendReceipt, error)",
 		"CurrentSyncAuthority":                    "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthority, error)",
+		"CurrentSyncAuthorityBinding":             "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthorityBinding, error)",
 		"CurrentSyncAuthorityCandidate":           "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncAuthorityCandidate, bool, error)",
 		"CurrentSyncProgress":                     "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.SyncProgress, error)",
 		"CurrentTerminalCandidate":                "func(*sqlite.Store, context.Context, continuity.ProjectID) (sqlite.TerminalCandidate, bool, error)",
