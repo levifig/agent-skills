@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	terminalCandidateCodecVersionV1 uint16 = 1
+	terminalCandidateCodecVersionV1      uint16 = 1
+	terminalCandidatePrunedBodyVersionV2 uint16 = 2
 
 	terminalCandidateAuthorityDomainV1         = "loaf.continuity.sync.authority-snapshot.v1"
 	terminalCandidateEnvironmentDomainV1       = "loaf.continuity.sync.authority-snapshot.environment.v1"
@@ -26,7 +27,7 @@ const (
 	terminalCandidateEnvironmentFieldCountV1   = 9
 	terminalCandidateRetirementFieldCountV1    = 7
 	terminalCandidateIdentityFieldCountV1      = 7
-	terminalCandidatePrunedBodyFieldCountV1    = 5
+	terminalCandidatePrunedBodyFieldCountV1    = 6
 	terminalCandidateFrameFieldCountV1         = 18
 	terminalCandidateRollingSeedFieldCountV1   = 2
 	terminalCandidateRollingStepFieldCountV1   = 5
@@ -53,9 +54,10 @@ func invalidTerminalCandidateCodecV1() error { return errors.New(terminalCandida
 func terminalCandidateTooLargeV1() error { return errors.New(terminalCandidateTooLargeErrorV1) }
 
 type terminalCandidatePrunedBodyV1 struct {
-	ReferenceDigest [32]byte
-	FactKind        continuity.FactKind
-	Clock           continuity.HybridTime
+	ReferenceDigest  [32]byte
+	InboxFrameDigest [32]byte
+	FactKind         continuity.FactKind
+	Clock            continuity.HybridTime
 }
 
 type terminalCandidateFrameV1 struct {
@@ -217,15 +219,16 @@ func validateTerminalCandidateFactV1(projectID continuity.ProjectID, fact contin
 }
 
 func encodeTerminalCandidatePrunedBodyV1(body terminalCandidatePrunedBodyV1) ([]byte, error) {
-	if body.ReferenceDigest == ([32]byte{}) || !prunableScratchpadFactKindV1(body.FactKind) ||
+	if body.ReferenceDigest == ([32]byte{}) || body.InboxFrameDigest == ([32]byte{}) || !prunableScratchpadFactKindV1(body.FactKind) ||
 		body.Clock.WallMillis < 0 || body.Clock.Logical < 0 {
 		return nil, invalidTerminalCandidateCodecV1()
 	}
 	return encodeTerminalCandidateTranscriptV1(
 		terminalCandidatePrunedBodyDomainV1,
 		maximumTerminalCandidatePrunedBodyBytesV1,
-		terminalCandidateUint16BytesV1(terminalCandidateCodecVersionV1),
+		terminalCandidateUint16BytesV1(terminalCandidatePrunedBodyVersionV2),
 		body.ReferenceDigest[:],
+		body.InboxFrameDigest[:],
 		[]byte(body.FactKind),
 		terminalCandidateInt64BytesV1(body.Clock.WallMillis),
 		terminalCandidateInt32BytesV1(body.Clock.Logical),
@@ -237,18 +240,19 @@ func decodeTerminalCandidatePrunedBodyV1(encoded []byte) (terminalCandidatePrune
 		return terminalCandidatePrunedBodyV1{}, invalidTerminalCandidateCodecV1()
 	}
 	fields, err := parseTerminalCandidateTranscriptV1(encoded, terminalCandidatePrunedBodyDomainV1, terminalCandidatePrunedBodyFieldCountV1)
-	if err != nil || len(fields[0]) != 2 || len(fields[1]) != 32 || len(fields[3]) != 8 || len(fields[4]) != 4 ||
-		binary.BigEndian.Uint16(fields[0]) != terminalCandidateCodecVersionV1 {
+	if err != nil || len(fields[0]) != 2 || len(fields[1]) != 32 || len(fields[2]) != 32 || len(fields[4]) != 8 || len(fields[5]) != 4 ||
+		binary.BigEndian.Uint16(fields[0]) != terminalCandidatePrunedBodyVersionV2 {
 		return terminalCandidatePrunedBodyV1{}, invalidTerminalCandidateCodecV1()
 	}
 	body := terminalCandidatePrunedBodyV1{
-		FactKind: continuity.FactKind(string(fields[2])),
+		FactKind: continuity.FactKind(string(fields[3])),
 		Clock: continuity.HybridTime{
-			WallMillis: int64(binary.BigEndian.Uint64(fields[3])),
-			Logical:    int32(binary.BigEndian.Uint32(fields[4])),
+			WallMillis: int64(binary.BigEndian.Uint64(fields[4])),
+			Logical:    int32(binary.BigEndian.Uint32(fields[5])),
 		},
 	}
 	copy(body.ReferenceDigest[:], fields[1])
+	copy(body.InboxFrameDigest[:], fields[2])
 	canonical, encodeErr := encodeTerminalCandidatePrunedBodyV1(body)
 	if encodeErr != nil || !bytes.Equal(canonical, encoded) {
 		return terminalCandidatePrunedBodyV1{}, invalidTerminalCandidateCodecV1()

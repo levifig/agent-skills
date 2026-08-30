@@ -144,6 +144,71 @@ func TestTerminalCandidateReplayOverlapAndAppendRollback(t *testing.T) {
 	}
 }
 
+func TestTerminalCandidatePrunedInboxBindingPersistsExactBytesV1(t *testing.T) {
+	t.Parallel()
+
+	_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-pruned-inbox-binding", 2)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	if err != nil {
+		t.Fatalf("StageVerifiedTerminalCandidateChunk() error = %v", err)
+	}
+	var candidateBytes []byte
+	if err := store.db.QueryRow(`
+SELECT candidate_bytes
+FROM continuity_sync_terminal_candidate_frames
+WHERE project_id = ? AND candidate_id = ? AND arrival_sequence = 2`, string(projectID), candidate.CandidateID[:]).Scan(&candidateBytes); err != nil {
+		t.Fatalf("read retained pruned candidate body: %v", err)
+	}
+	body, err := decodeTerminalCandidatePrunedBodyV1(candidateBytes)
+	if err != nil {
+		t.Fatalf("decode retained pruned candidate body: %v", err)
+	}
+	if body.InboxFrameDigest != sha256.Sum256(frames[1].Inbox.PrunedArrival) {
+		t.Fatal("retained pruned candidate body does not bind exact inbox bytes")
+	}
+
+	mutated := cloneTerminalCandidateInputV1(frames[1])
+	mutated.Inbox.PrunedArrival = append(mutated.Inbox.PrunedArrival, 0)
+	if _, err := store.db.Exec(`
+UPDATE continuity_sync_inbox
+SET frame_bytes = ?
+WHERE project_id = ? AND arrival_sequence = 2`, mutated.Inbox.PrunedArrival, string(projectID)); err != nil {
+		t.Fatalf("mutate retained pruned inbox fixture: %v", err)
+	}
+	_, err = store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, []VerifiedTerminalCandidateFrame{mutated}, 1_000, 100)
+	assertSyncErrorCode(t, err, SyncErrorConflict)
+	current, found, currentErr := store.CurrentTerminalCandidate(context.Background(), projectID)
+	if currentErr != nil || !found || current != candidate {
+		t.Fatalf("candidate after altered exact inbox replay = (%#v, %v, %v), want unchanged %#v", current, found, currentErr, candidate)
+	}
+
+	legacyBody, err := encodeTerminalCandidateTranscriptV1(
+		terminalCandidatePrunedBodyDomainV1,
+		maximumTerminalCandidatePrunedBodyBytesV1,
+		terminalCandidateUint16BytesV1(1),
+		body.ReferenceDigest[:],
+		[]byte(body.FactKind),
+		terminalCandidateInt64BytesV1(body.Clock.WallMillis),
+		terminalCandidateInt32BytesV1(body.Clock.Logical),
+	)
+	if err != nil {
+		t.Fatalf("encode prior pruned candidate body: %v", err)
+	}
+	if _, err := store.db.Exec(`
+UPDATE continuity_sync_terminal_candidate_frames
+SET candidate_bytes = ?
+WHERE project_id = ? AND candidate_id = ? AND arrival_sequence = 2`, legacyBody, string(projectID), candidate.CandidateID[:]); err != nil {
+		t.Fatalf("install prior pruned candidate body fixture: %v", err)
+	}
+	current, found, currentErr = store.CurrentTerminalCandidate(context.Background(), projectID)
+	if currentErr != nil || !found || current != candidate {
+		t.Fatalf("CurrentTerminalCandidate(prior body) = (%#v, %v, %v), want readable %#v", current, found, currentErr, candidate)
+	}
+	if err := store.DiscardTerminalCandidate(context.Background(), projectID, terminalCandidateCheckpointV1(candidate)); err != nil {
+		t.Fatalf("DiscardTerminalCandidate(prior body) error = %v", err)
+	}
+}
+
 func TestTerminalCandidateBoundsAndFutureSkewAreAtomic(t *testing.T) {
 	t.Parallel()
 

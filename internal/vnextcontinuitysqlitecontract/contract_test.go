@@ -367,6 +367,7 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 		"terminal_candidate.go": {
 			"bytes",
 			"context",
+			"crypto/sha256",
 			"database/sql",
 			"errors",
 			"github.com/levifig/loaf/vnext/continuity",

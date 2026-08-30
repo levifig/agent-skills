@@ -3,6 +3,7 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"math"
@@ -485,9 +486,10 @@ func prepareTerminalCandidateChunkV1(projectID continuity.ProjectID, frames []Ve
 				return nil, syncProblem(SyncErrorInvalid, "pruned.reference", "is invalid")
 			}
 			body, err := encodeTerminalCandidatePrunedBodyV1(terminalCandidatePrunedBodyV1{
-				ReferenceDigest: referenceDigest,
-				FactKind:        input.Pruned.FactKind,
-				Clock:           input.Pruned.HLC,
+				ReferenceDigest:  referenceDigest,
+				InboxFrameDigest: sha256.Sum256(inboxBytes),
+				FactKind:         input.Pruned.FactKind,
+				Clock:            input.Pruned.HLC,
 			})
 			if err != nil {
 				return nil, syncProblem(SyncErrorInvalid, "pruned", "does not have canonical anchor fields")
@@ -657,6 +659,27 @@ WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), prepared.norm
 	}
 	if !terminalCandidateOpaqueFrameEqualV1(retained, prepared.inbox) {
 		return syncProblem(SyncErrorConflict, "inbox", "does not match the retained staged arrival")
+	}
+	if err := validateTerminalCandidateInboxBindingV1(prepared.normalized, retained); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateTerminalCandidateInboxBindingV1(frame terminalCandidateFrameV1, inbox OpaqueSyncFrame) error {
+	frameKind, frameBytes, err := opaqueSyncFrameStorageV1(inbox)
+	if err != nil {
+		return err
+	}
+	if frameKind != frame.frameKind || inbox.ArrivalSequence != frame.arrivalSequence || inbox.EnvelopeDigest != frame.envelopeDigest {
+		return syncProblem(SyncErrorConflict, "inbox", "does not match the normalized terminal frame")
+	}
+	if frameKind != terminalCandidateFrameKindPrunedV1 {
+		return nil
+	}
+	body, err := decodeTerminalCandidatePrunedBodyV1(frame.candidateBytes)
+	if err != nil || body.InboxFrameDigest != sha256.Sum256(frameBytes) {
+		return syncProblem(SyncErrorStore, "", "terminal candidate inbox binding is corrupt")
 	}
 	return nil
 }
