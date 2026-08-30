@@ -31,6 +31,8 @@ type syncAuthorityMembershipEventV2 struct {
 	environmentID string
 }
 
+const maximumSyncAuthorityCandidateBoundedReadRowsV2 = maximumSyncAuthorityCandidatePageEnvironments + 1
+
 const syncAuthorityCandidatePageByCursorSelectV2 = `
 SELECT
   page_number, after_environment_id, through_environment_id,
@@ -137,6 +139,16 @@ ORDER BY candidate_id`, string(projectID))
 		return persistedSyncAuthorityCandidateV2{}, false, corruptSyncAuthorityCandidateV2("active candidate identity is stale")
 	}
 	persisted.headerDigest = headerDigest
+	if persisted.candidate.Ready {
+		authorityDigest, err := finalizeSyncAuthorityDigestV2(
+			persisted.headerDigest,
+			persisted.candidate.EnvironmentCount,
+			persisted.candidate.RollingEnvironmentDigest,
+		)
+		if err != nil || authorityDigest != persisted.candidate.AuthorityDigest {
+			return persistedSyncAuthorityCandidateV2{}, false, corruptSyncAuthorityCandidateV2("ready candidate final digest is stale")
+		}
+	}
 	lastPage, found, err := readAndValidateSyncAuthorityCandidatePageByNumberV2(ctx, tx, persisted, persisted.candidate.PageCount)
 	if err != nil {
 		return persistedSyncAuthorityCandidateV2{}, false, err
@@ -231,6 +243,10 @@ WHERE project_id = ? AND candidate_id = ? AND page_number = ?`,
 		return persistedSyncAuthorityCandidatePageV2{}, false, corruptSyncAuthorityCandidateV2("candidate page cursor is not contiguous")
 	}
 	expectedEvents := make(map[uint32]syncAuthorityMembershipEventV2, maximumSyncAuthorityCandidatePageEnvironments*2)
+	resultingCount, err := checkedSyncAuthorityCandidateAdvanceV2(priorCount, page.environmentCount)
+	if err != nil || page.resultingEnvironmentCount != resultingCount {
+		return persistedSyncAuthorityCandidatePageV2{}, false, corruptSyncAuthorityCandidateV2("candidate page environment count is stale")
+	}
 	environments, environmentDigests, rolling, err := readAndValidateSyncAuthorityCandidatePageEnvironmentsV2(
 		ctx, tx, current, page, priorCount, priorRolling, priorThrough,
 		make(map[[32]byte]struct{}, maximumSyncAuthorityCandidatePageEnvironments), expectedEvents,
@@ -239,10 +255,6 @@ WHERE project_id = ? AND candidate_id = ? AND page_number = ?`,
 		return persistedSyncAuthorityCandidatePageV2{}, false, err
 	}
 	page.page.Environments = environments
-	resultingCount, err := checkedSyncAuthorityCandidateAdvanceV2(priorCount, int64(len(environments)))
-	if err != nil {
-		return persistedSyncAuthorityCandidatePageV2{}, false, corruptSyncAuthorityCandidateV2("candidate environment count overflows")
-	}
 	derivedPageDigest, err := syncAuthorityCandidatePageDigestV2(current.candidate.CandidateID, page.pageNumber, page.page, resultingCount, rolling, environmentDigests)
 	if err != nil || derivedPageDigest != page.pageDigest || page.resultingEnvironmentCount != resultingCount || page.resultingRollingDigest != rolling {
 		return persistedSyncAuthorityCandidatePageV2{}, false, corruptSyncAuthorityCandidateV2("candidate page result is stale")
@@ -256,43 +268,44 @@ WHERE project_id = ? AND candidate_id = ? AND page_number = ?`,
 	return page, true, nil
 }
 
+const syncAuthorityCandidateMembershipEventsByEnvironmentQueryV2 = `
+SELECT membership_generation
+FROM continuity_sync_authority_candidate_membership_events
+WHERE project_id = ? AND candidate_id = ? AND environment_id = ? AND event_kind = ?`
+
 func readAndValidateBoundedSyncAuthorityCandidateEventsV2(ctx context.Context, tx *sql.Tx, current persistedSyncAuthorityCandidateV2, environments []SyncEnvironmentCertificate, expected map[uint32]syncAuthorityMembershipEventV2) error {
 	for _, environment := range environments {
-		rows, err := tx.QueryContext(ctx, `
-SELECT membership_generation, event_kind
-FROM continuity_sync_authority_candidate_membership_events
-WHERE project_id = ? AND candidate_id = ? AND environment_id = ?
-ORDER BY membership_generation`, string(current.candidate.ProjectID), current.candidate.CandidateID[:], environment.EnvironmentID)
-		if err != nil {
-			return syncTransactionProblem(ctx)
+		events := [2]struct {
+			kind       string
+			generation uint32
+			present    bool
+		}{
+			{kind: "join", generation: environment.JoinMembershipGeneration, present: true},
+			{kind: "retirement"},
 		}
-		observed := 0
-		for rows.Next() {
+		if environment.Retirement != nil {
+			events[1].generation = environment.Retirement.MembershipGeneration
+			events[1].present = true
+		}
+		for _, event := range events {
 			var generation int64
-			var kind string
-			if err := rows.Scan(&generation, &kind); err != nil {
-				rows.Close()
+			err := tx.QueryRowContext(
+				ctx, syncAuthorityCandidateMembershipEventsByEnvironmentQueryV2,
+				string(current.candidate.ProjectID), current.candidate.CandidateID[:], environment.EnvironmentID, event.kind,
+			).Scan(&generation)
+			if errors.Is(err, sql.ErrNoRows) {
+				if event.present {
+					return corruptSyncAuthorityCandidateV2("candidate membership events are incomplete")
+				}
+				continue
+			}
+			if err != nil {
 				return syncTransactionProblem(ctx)
 			}
-			if generation < 1 || generation > math.MaxUint32 || expected[uint32(generation)] != (syncAuthorityMembershipEventV2{kind: kind, environmentID: environment.EnvironmentID}) {
-				rows.Close()
+			if !event.present || generation < 1 || generation > math.MaxUint32 || uint32(generation) != event.generation ||
+				expected[uint32(generation)] != (syncAuthorityMembershipEventV2{kind: event.kind, environmentID: environment.EnvironmentID}) {
 				return corruptSyncAuthorityCandidateV2("candidate membership event does not match its environment")
 			}
-			observed++
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return syncTransactionProblem(ctx)
-		}
-		if err := rows.Close(); err != nil {
-			return syncTransactionProblem(ctx)
-		}
-		want := 1
-		if environment.Retirement != nil {
-			want = 2
-		}
-		if observed != want {
-			return corruptSyncAuthorityCandidateV2("candidate membership events are incomplete")
 		}
 	}
 	return nil
@@ -602,6 +615,19 @@ WHERE project_id = ? AND candidate_id = ?`, string(persisted.candidate.ProjectID
 	return nil
 }
 
+const syncAuthorityCandidatePageEnvironmentsByOrdinalRangeQueryV2 = `
+SELECT
+  environment_id, environment_ordinal, page_number,
+  certificate_id, certificate_bytes, mode, expires_at_millis,
+  join_membership_generation, retirement_relay_generation,
+  retirement_membership_generation, retirement_final_environment_sequence,
+  retirement_final_envelope_digest, retirement_id, retirement_bytes
+FROM continuity_sync_authority_candidate_environments
+WHERE project_id = ? AND candidate_id = ?
+  AND environment_ordinal > ? AND environment_ordinal <= ?
+ORDER BY environment_ordinal
+LIMIT ?`
+
 func readAndValidateSyncAuthorityCandidatePageEnvironmentsV2(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -613,16 +639,14 @@ func readAndValidateSyncAuthorityCandidatePageEnvironmentsV2(
 	seenCertificateIDs map[[32]byte]struct{},
 	expectedEvents map[uint32]syncAuthorityMembershipEventV2,
 ) ([]SyncEnvironmentCertificate, [][32]byte, [32]byte, error) {
-	rows, err := tx.QueryContext(ctx, `
-SELECT
-  environment_id, environment_ordinal, page_number,
-  certificate_id, certificate_bytes, mode, expires_at_millis,
-  join_membership_generation, retirement_relay_generation,
-  retirement_membership_generation, retirement_final_environment_sequence,
-  retirement_final_envelope_digest, retirement_id, retirement_bytes
-FROM continuity_sync_authority_candidate_environments
-WHERE project_id = ? AND candidate_id = ? AND page_number = ?
-ORDER BY environment_ordinal`, string(persisted.candidate.ProjectID), persisted.candidate.CandidateID[:], page.pageNumber)
+	// Lazy page ownership is the exact checkpoint ordinal interval. A row in the
+	// interval must name this page; an off-interval row with a corrupt page_number
+	// remains a full-audit concern for Current, Discard, and promotion.
+	rows, err := tx.QueryContext(
+		ctx, syncAuthorityCandidatePageEnvironmentsByOrdinalRangeQueryV2,
+		string(persisted.candidate.ProjectID), persisted.candidate.CandidateID[:],
+		priorEnvironmentCount, page.resultingEnvironmentCount, maximumSyncAuthorityCandidateBoundedReadRowsV2,
+	)
 	if err != nil {
 		return nil, nil, [32]byte{}, syncTransactionProblem(ctx)
 	}
