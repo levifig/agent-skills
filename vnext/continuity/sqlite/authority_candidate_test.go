@@ -438,7 +438,7 @@ func TestSyncAuthorityCandidateBindsAndPreservesCanonicalBase(t *testing.T) {
 	}
 }
 
-func TestSyncAuthorityCandidateAllowsOnlyExactAuthorityAtSameHead(t *testing.T) {
+func TestSyncAuthorityCandidateAllowsExactReplayAtSameHeadAndRejectsHistoricalMutation(t *testing.T) {
 	store := openSyncStore(t, "authority-candidate-same-head")
 	projectID := continuity.ProjectID("project-authority-candidate-same-head")
 	canonical := testSyncAuthority()
@@ -466,6 +466,170 @@ func TestSyncAuthorityCandidateAllowsOnlyExactAuthorityAtSameHead(t *testing.T) 
 		context.Background(), projectID, snapshot, syncAuthorityCandidatePageV2("", changed, false),
 	); err == nil {
 		t.Fatal("changed same-head candidate error = nil")
+	}
+}
+
+func TestSyncAuthorityCandidatePromotesSameArrivalMembershipAdvances(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(SyncAuthority, []SyncEnvironmentCertificate) []SyncEnvironmentCertificate
+	}{
+		{
+			name: "join",
+			mutate: func(_ SyncAuthority, environments []SyncEnvironmentCertificate) []SyncEnvironmentCertificate {
+				return append(environments, SyncEnvironmentCertificate{
+					EnvironmentID:            "environment-c",
+					CertificateID:            sha256.Sum256([]byte("same-arrival-join-certificate")),
+					CertificateBytes:         []byte("same arrival join certificate"),
+					Mode:                     SyncEnvironmentTrusted,
+					JoinMembershipGeneration: 4,
+				})
+			},
+		},
+		{
+			name: "retirement",
+			mutate: func(canonical SyncAuthority, environments []SyncEnvironmentCertificate) []SyncEnvironmentCertificate {
+				environments[1].Retirement = &SyncEnvironmentRetirement{
+					RelayGeneration:      canonical.RelayGeneration,
+					MembershipGeneration: 4,
+					RetirementID:         sha256.Sum256([]byte("same-arrival-retirement")),
+					RetirementBytes:      []byte("same arrival retirement"),
+				}
+				return environments
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := openSyncStore(t, "authority-candidate-same-arrival-"+test.name)
+			projectID := continuity.ProjectID("project-authority-candidate-same-arrival-" + test.name)
+			canonical := testSyncAuthority()
+			if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, canonical); err != nil {
+				t.Fatalf("InstallVerifiedSyncAuthority() error = %v", err)
+			}
+			baseDigest, err := frozenSyncAuthorityDigestV1(projectID, canonical)
+			if err != nil {
+				t.Fatalf("frozenSyncAuthorityDigestV1() error = %v", err)
+			}
+			snapshot := syncAuthoritySnapshotFromAuthorityV2(canonical, 1, baseDigest)
+			snapshot.MembershipGeneration = 4
+			target := test.mutate(canonical, cloneSyncAuthorityCandidateEnvironmentsV2(canonical.Environments))
+
+			ready, err := store.StageVerifiedSyncAuthorityCandidatePage(
+				context.Background(), projectID, snapshot, syncAuthorityCandidatePageV2("", target, false),
+			)
+			if err != nil || !ready.Ready {
+				t.Fatalf("same-arrival %s candidate = (%#v, %v), want ready", test.name, ready, err)
+			}
+			if _, err := store.PromoteSyncAuthorityCandidate(context.Background(), projectID, ready.Checkpoint()); err != nil {
+				t.Fatalf("PromoteSyncAuthorityCandidate(%s) error = %v", test.name, err)
+			}
+			advanced, err := store.CurrentSyncAuthority(context.Background(), projectID)
+			if err != nil {
+				t.Fatalf("CurrentSyncAuthority() error = %v", err)
+			}
+			if advanced.MembershipGeneration != 4 || advanced.InventoryArrivalHead != canonical.InventoryArrivalHead ||
+				!reflect.DeepEqual(advanced.Environments, target) {
+				t.Fatalf("promoted same-arrival authority = %#v, want G=4 A=%d inventory=%#v", advanced, canonical.InventoryArrivalHead, target)
+			}
+		})
+	}
+}
+
+func TestSyncAuthorityCandidateRejectsSameArrivalNonAppendChangesWithoutMutation(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(SyncAuthority, []SyncEnvironmentCertificate) []SyncEnvironmentCertificate
+	}{
+		{
+			name: "changed certificate",
+			mutate: func(_ SyncAuthority, environments []SyncEnvironmentCertificate) []SyncEnvironmentCertificate {
+				environments[0].CertificateBytes[0] ^= 0xff
+				return append(environments, SyncEnvironmentCertificate{
+					EnvironmentID:            "environment-c",
+					CertificateID:            sha256.Sum256([]byte("same-arrival-valid-join")),
+					CertificateBytes:         []byte("same arrival valid join"),
+					Mode:                     SyncEnvironmentTrusted,
+					JoinMembershipGeneration: 4,
+				})
+			},
+		},
+		{
+			name: "changed terminal retirement",
+			mutate: func(_ SyncAuthority, environments []SyncEnvironmentCertificate) []SyncEnvironmentCertificate {
+				environments[0].Retirement.RetirementBytes[0] ^= 0xff
+				return append(environments, SyncEnvironmentCertificate{
+					EnvironmentID:            "environment-c",
+					CertificateID:            sha256.Sum256([]byte("same-arrival-valid-join")),
+					CertificateBytes:         []byte("same arrival valid join"),
+					Mode:                     SyncEnvironmentTrusted,
+					JoinMembershipGeneration: 4,
+				})
+			},
+		},
+		{
+			name: "new join at canonical generation",
+			mutate: func(_ SyncAuthority, environments []SyncEnvironmentCertificate) []SyncEnvironmentCertificate {
+				return append(environments, SyncEnvironmentCertificate{
+					EnvironmentID:            "environment-c",
+					CertificateID:            sha256.Sum256([]byte("same-arrival-old-join")),
+					CertificateBytes:         []byte("same arrival old join"),
+					Mode:                     SyncEnvironmentTrusted,
+					JoinMembershipGeneration: 3,
+				})
+			},
+		},
+		{
+			name: "new retirement at canonical generation",
+			mutate: func(canonical SyncAuthority, environments []SyncEnvironmentCertificate) []SyncEnvironmentCertificate {
+				environments[1].Retirement = &SyncEnvironmentRetirement{
+					RelayGeneration:      canonical.RelayGeneration,
+					MembershipGeneration: 3,
+					RetirementID:         sha256.Sum256([]byte("same-arrival-old-retirement")),
+					RetirementBytes:      []byte("same arrival old retirement"),
+				}
+				return environments
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := openSyncStore(t, "authority-candidate-same-arrival-refusal-"+syncSlug(test.name))
+			projectID := continuity.ProjectID("project-authority-candidate-same-arrival-refusal-" + syncSlug(test.name))
+			canonical := testSyncAuthority()
+			if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, canonical); err != nil {
+				t.Fatalf("InstallVerifiedSyncAuthority() error = %v", err)
+			}
+			baseDigest, err := frozenSyncAuthorityDigestV1(projectID, canonical)
+			if err != nil {
+				t.Fatalf("frozenSyncAuthorityDigestV1() error = %v", err)
+			}
+			snapshot := syncAuthoritySnapshotFromAuthorityV2(canonical, 1, baseDigest)
+			snapshot.MembershipGeneration = 4
+			target := test.mutate(canonical, cloneSyncAuthorityCandidateEnvironmentsV2(canonical.Environments))
+			before, err := store.CurrentSyncAuthority(context.Background(), projectID)
+			if err != nil {
+				t.Fatalf("CurrentSyncAuthority(before) error = %v", err)
+			}
+
+			if _, err := store.StageVerifiedSyncAuthorityCandidatePage(
+				context.Background(), projectID, snapshot, syncAuthorityCandidatePageV2("", target, false),
+			); err == nil {
+				t.Fatal("non-append same-arrival candidate error = nil")
+			}
+			after, err := store.CurrentSyncAuthority(context.Background(), projectID)
+			if err != nil {
+				t.Fatalf("CurrentSyncAuthority(after) error = %v", err)
+			}
+			if !syncAuthorityEqual(after, before) {
+				t.Fatalf("refused candidate changed canonical authority: got %#v, want %#v", after, before)
+			}
+			if _, found, err := store.CurrentSyncAuthorityCandidate(context.Background(), projectID); err != nil || found {
+				t.Fatalf("refused candidate persisted = (_, %v, %v)", found, err)
+			}
+		})
 	}
 }
 

@@ -103,7 +103,7 @@ SELECT EXISTS (
         OR (
           canonical.retirement_id IS NULL
           AND candidate.retirement_id IS NOT NULL
-          AND ? = 1 AND ? = 1
+          AND ? = 1
           AND candidate.retirement_membership_generation > ?
         )
       )
@@ -198,9 +198,6 @@ func validateSyncAuthorityCandidateHeaderAgainstCanonicalV2(snapshot SyncAuthori
 	if snapshot.InventoryArrivalHead < base.authority.InventoryArrivalHead {
 		return syncProblem(SyncErrorConflict, "inventory_arrival_head", "regressed below the canonical authority")
 	}
-	if snapshot.InventoryArrivalHead == base.authority.InventoryArrivalHead && snapshot.MembershipGeneration != base.authority.MembershipGeneration {
-		return syncProblem(SyncErrorConflict, "membership_generation", "changes authority at the same arrival head")
-	}
 	return nil
 }
 
@@ -265,7 +262,7 @@ func validateSyncAuthorityCandidatePageAgainstCanonicalV2(
 		switch {
 		case syncEnvironmentCertificateEqual(canonicalEnvironment, candidateEnvironment):
 		case canonicalEnvironment.Retirement == nil && candidateEnvironment.Retirement != nil:
-			if snapshot.InventoryArrivalHead == base.authority.InventoryArrivalHead || snapshot.MembershipGeneration <= base.authority.MembershipGeneration ||
+			if snapshot.MembershipGeneration <= base.authority.MembershipGeneration ||
 				candidateEnvironment.Retirement.MembershipGeneration <= base.authority.MembershipGeneration {
 				rows.Close()
 				return syncProblem(SyncErrorConflict, "retirement", "does not append after canonical membership")
@@ -286,9 +283,6 @@ func validateSyncAuthorityCandidatePageAgainstCanonicalV2(
 	for _, environment := range page.Environments {
 		if _, exists := canonicalInPage[environment.EnvironmentID]; exists {
 			continue
-		}
-		if snapshot.InventoryArrivalHead == base.authority.InventoryArrivalHead {
-			return syncProblem(SyncErrorConflict, "environments", "changes inventory at the same arrival head")
 		}
 		if environment.JoinMembershipGeneration <= base.authority.MembershipGeneration {
 			return syncProblem(SyncErrorConflict, "join_membership_generation", "new environment does not follow canonical membership")
@@ -406,10 +400,9 @@ func validateReadySyncAuthorityCandidateInventoryAgainstCanonicalV2(ctx context.
 		return syncProblem(SyncErrorConflict, "environments", "omits a canonical environment from the staged prefix")
 	}
 	var changed int
-	headAdvanced := candidate.candidate.Snapshot.InventoryArrivalHead > base.authority.InventoryArrivalHead
 	membershipAdvanced := candidate.candidate.Snapshot.MembershipGeneration > base.authority.MembershipGeneration
 	if err := tx.QueryRowContext(ctx, syncAuthorityCandidateChangedCanonicalInventoryQueryV2,
-		string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(headAdvanced), boolIntV2(membershipAdvanced), base.authority.MembershipGeneration,
+		string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(membershipAdvanced), base.authority.MembershipGeneration,
 	).Scan(&changed); err != nil {
 		return syncTransactionProblem(ctx)
 	}
@@ -418,7 +411,7 @@ func validateReadySyncAuthorityCandidateInventoryAgainstCanonicalV2(ctx context.
 	}
 	var invalidNew int
 	if err := tx.QueryRowContext(ctx, syncAuthorityCandidateInvalidNewInventoryQueryV2,
-		string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(headAdvanced), base.authority.MembershipGeneration,
+		string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(membershipAdvanced), base.authority.MembershipGeneration,
 	).Scan(&invalidNew); err != nil {
 		return syncTransactionProblem(ctx)
 	}
