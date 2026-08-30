@@ -14,7 +14,7 @@ import (
 const (
 	applicationID = 1280267825
 	schemaLine    = "vnext"
-	schemaVersion = 7
+	schemaVersion = 8
 )
 
 const schemaTableV1SQL = `CREATE TABLE continuity_schema (
@@ -77,10 +77,20 @@ const schemaTableV6SQL = `CREATE TABLE continuity_schema (
   )
 ) STRICT`
 
-const schemaTableSQL = `CREATE TABLE continuity_schema (
+const schemaTableV7SQL = `CREATE TABLE continuity_schema (
   singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
   schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
   schema_version INTEGER NOT NULL CHECK (schema_version = 7),
+  schema_checksum TEXT NOT NULL CHECK (
+    length(schema_checksum) = 64
+    AND schema_checksum NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT`
+
+const schemaTableSQL = `CREATE TABLE continuity_schema (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 8),
   schema_checksum TEXT NOT NULL CHECK (
     length(schema_checksum) = 64
     AND schema_checksum NOT GLOB '*[^0-9a-f]*'
@@ -233,7 +243,7 @@ const syncProjectsTableSQL = `CREATE TABLE continuity_sync_projects (
   CHECK (downloaded_cursor <= relay_head)
 ) STRICT, WITHOUT ROWID`
 
-const syncRelayWatermarksTableSQL = `CREATE TABLE continuity_sync_relay_watermarks (
+const syncRelayWatermarksTableV1SQL = `CREATE TABLE continuity_sync_relay_watermarks (
   project_id TEXT NOT NULL CHECK (
     length(project_id) BETWEEN 1 AND 128
     AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
@@ -248,6 +258,30 @@ const syncRelayWatermarksTableSQL = `CREATE TABLE continuity_sync_relay_watermar
     length(admin_public_key) = 32 AND admin_public_key <> zeroblob(32)
   ),
   relay_head INTEGER NOT NULL CHECK (relay_head >= 0),
+  PRIMARY KEY (project_id, channel_id, relay_generation)
+) STRICT, WITHOUT ROWID`
+
+const syncRelayWatermarksTableSQL = `CREATE TABLE continuity_sync_relay_watermarks (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  channel_id BLOB NOT NULL CHECK (
+    length(channel_id) = 32 AND channel_id <> zeroblob(32)
+  ),
+  relay_generation BLOB NOT NULL CHECK (
+    length(relay_generation) = 32 AND relay_generation <> zeroblob(32)
+  ),
+  admin_public_key BLOB NOT NULL CHECK (
+    length(admin_public_key) = 32 AND admin_public_key <> zeroblob(32)
+  ),
+  membership_generation INTEGER NOT NULL CHECK (
+    membership_generation BETWEEN 0 AND 4294967295
+  ),
+  relay_head INTEGER NOT NULL CHECK (relay_head >= 0),
+  membership_floor_known INTEGER NOT NULL CHECK (
+    membership_floor_known IN (0, 1)
+  ),
   PRIMARY KEY (project_id, channel_id, relay_generation)
 ) STRICT, WITHOUT ROWID`
 
@@ -1252,7 +1286,7 @@ const schemaV5DDL = schemaTableV5SQL + ";\n" +
 	projectIdentityTriggerSQL + ";\n" +
 	syncSchemaV3DDL +
 	syncAuthorityCandidateSchemaV5DDL +
-	syncRelayWatermarksTableSQL + ";\n"
+	syncRelayWatermarksTableV1SQL + ";\n"
 
 const schemaV6DDL = schemaTableV6SQL + ";\n" +
 	factsTableSQL + ";\n" +
@@ -1262,7 +1296,17 @@ const schemaV6DDL = schemaTableV6SQL + ";\n" +
 	projectIdentityTriggerSQL + ";\n" +
 	syncSchemaV3DDL +
 	syncAuthorityCandidateSchemaV6DDL +
-	syncRelayWatermarksTableSQL + ";\n"
+	syncRelayWatermarksTableV1SQL + ";\n"
+
+const schemaV7DDL = schemaTableV7SQL + ";\n" +
+	factsTableSQL + ";\n" +
+	projectIdentityIndexSQL + ";\n" +
+	projectOrderIndexSQL + ";\n" +
+	subjectOrderIndexSQL + ";\n" +
+	projectIdentityTriggerSQL + ";\n" +
+	syncSchemaV3DDL +
+	syncAuthorityCandidateSchemaDDL +
+	syncRelayWatermarksTableV1SQL + ";\n"
 
 const schemaDDL = schemaTableSQL + ";\n" +
 	factsTableSQL + ";\n" +
@@ -1313,6 +1357,19 @@ func expectedSchemaObjects() []schemaObject {
 	}
 }
 
+func expectedSchemaV7Objects() []schemaObject {
+	objects := expectedSchemaObjects()
+	for index := range objects {
+		switch objects[index].name {
+		case "continuity_schema":
+			objects[index].sql = schemaTableV7SQL
+		case "continuity_sync_relay_watermarks":
+			objects[index].sql = syncRelayWatermarksTableV1SQL
+		}
+	}
+	return objects
+}
+
 func expectedSchemaV6Objects() []schemaObject {
 	return []schemaObject{
 		{kind: "index", name: "ix_continuity_facts_project_order", table: "continuity_facts", sql: projectOrderIndexSQL},
@@ -1336,7 +1393,7 @@ func expectedSchemaV6Objects() []schemaObject {
 		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", sql: syncOutboxTableSQL},
 		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", sql: syncProjectsTableSQL},
 		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
-		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableSQL},
+		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableV1SQL},
 		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
 		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
@@ -1365,7 +1422,7 @@ func expectedSchemaV5Objects() []schemaObject {
 		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", sql: syncOutboxTableSQL},
 		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", sql: syncProjectsTableSQL},
 		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
-		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableSQL},
+		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableV1SQL},
 		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
 		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
 		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
@@ -1455,6 +1512,10 @@ func checksumSchema() string {
 	return checksumDDL(schemaDDL)
 }
 
+func checksumSchemaV7() string {
+	return checksumDDL(schemaV7DDL)
+}
+
 func checksumSchemaV6() string {
 	return checksumDDL(schemaV6DDL)
 }
@@ -1515,7 +1576,7 @@ func initializeSchemaIfEmpty(db *sql.DB) (bool, error) {
 	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
 		return false, fmt.Errorf("set continuity application id: %w", err)
 	}
-	if _, err := tx.Exec(`PRAGMA user_version = 7`); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
 		return false, fmt.Errorf("set continuity schema version: %w", err)
 	}
 	if _, err := tx.Exec(
@@ -1636,8 +1697,12 @@ func migrateSchema(db *sql.DB) error {
 			if err := migrateSchemaV6ToV7(db); err != nil {
 				return err
 			}
+		case 7:
+			if err := migrateSchemaV7ToV8(db); err != nil {
+				return err
+			}
 		default:
-			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, 6, or %d", version, schemaVersion)
+			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, 6, 7, or %d", version, schemaVersion)
 		}
 	}
 }
@@ -1937,7 +2002,7 @@ func migrateSchemaV4ToV5(db *sql.DB) error {
 	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
 		return fmt.Errorf("drop continuity v4 schema identity: %w", err)
 	}
-	if _, err := tx.Exec(schemaTableV5SQL + ";\n" + syncRelayWatermarksTableSQL + ";\n"); err != nil {
+	if _, err := tx.Exec(schemaTableV5SQL + ";\n" + syncRelayWatermarksTableV1SQL + ";\n"); err != nil {
 		return fmt.Errorf("create continuity v5 relay watermark schema: %w", err)
 	}
 	if err := insertV5SyncRelayWatermarkSeeds(tx, seeds); err != nil {
@@ -2066,7 +2131,7 @@ func migrateSchemaV6ToV7(db *sql.DB) error {
 	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("recheck continuity v6 schema version in migration: %w", err)
 	}
-	if version == schemaVersion {
+	if version > 6 && version <= schemaVersion {
 		if err := validateKnownSchemaVersion(tx, version); err != nil {
 			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
 		}
@@ -2111,7 +2176,7 @@ FROM continuity_sync_authority_recovery_transitions_v6`); err != nil {
 	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
 		return fmt.Errorf("drop continuity v6 schema identity: %w", err)
 	}
-	if _, err := tx.Exec(schemaTableSQL); err != nil {
+	if _, err := tx.Exec(schemaTableV7SQL); err != nil {
 		return fmt.Errorf("create continuity v7 schema identity: %w", err)
 	}
 	if _, err := tx.Exec(`PRAGMA user_version = 7`); err != nil {
@@ -2120,12 +2185,12 @@ FROM continuity_sync_authority_recovery_transitions_v6`); err != nil {
 	if _, err := tx.Exec(
 		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
 		schemaLine,
-		schemaVersion,
-		checksumSchema(),
+		7,
+		checksumSchemaV7(),
 	); err != nil {
 		return fmt.Errorf("record continuity v7 schema identity: %w", err)
 	}
-	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+	if err := validateSchemaVersion(tx, 7, checksumSchemaV7(), expectedSchemaV7Objects()); err != nil {
 		return fmt.Errorf("validate continuity v7 migration: %w", err)
 	}
 	if err := validateForeignKeys(tx); err != nil {
@@ -2133,6 +2198,104 @@ FROM continuity_sync_authority_recovery_transitions_v6`); err != nil {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit continuity v7 migration: %w", err)
+	}
+	return nil
+}
+
+func migrateSchemaV7ToV8(db *sql.DB) error {
+	advanced, err := validateMigrationPreflight(db, 7)
+	if err != nil {
+		return fmt.Errorf("validate continuity v7 before migration: %w", err)
+	}
+	if advanced {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin continuity v8 migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	var version int
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("recheck continuity v7 schema version in migration: %w", err)
+	}
+	if version == schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
+		return nil
+	}
+	if version != 7 {
+		return fmt.Errorf("continuity schema changed during v8 migration")
+	}
+	if err := validateSchemaVersion(tx, 7, checksumSchemaV7(), expectedSchemaV7Objects()); err != nil {
+		return fmt.Errorf("revalidate continuity v7 in migration: %w", err)
+	}
+
+	seeds, err := collectV7SyncRelayWatermarkSeeds(tx)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE continuity_sync_relay_watermarks RENAME TO continuity_sync_relay_watermarks_v7`); err != nil {
+		return fmt.Errorf("rename continuity v7 relay watermarks: %w", err)
+	}
+	if _, err := tx.Exec(syncRelayWatermarksTableSQL); err != nil {
+		return fmt.Errorf("create continuity v8 relay frontiers: %w", err)
+	}
+	if err := insertV8SyncRelayWatermarkSeeds(tx, seeds); err != nil {
+		return err
+	}
+	if err := validateV8SyncRelayWatermarkSeeds(tx, seeds); err != nil {
+		return err
+	}
+	var invalidLegacyRows int64
+	if err := tx.QueryRow(`
+SELECT COUNT(*)
+FROM continuity_sync_relay_watermarks_v7 AS legacy
+LEFT JOIN continuity_sync_relay_watermarks AS frontier
+  ON frontier.project_id = legacy.project_id
+ AND frontier.channel_id = legacy.channel_id
+ AND frontier.relay_generation = legacy.relay_generation
+WHERE frontier.project_id IS NULL
+   OR frontier.admin_public_key <> legacy.admin_public_key
+   OR frontier.relay_head < legacy.relay_head
+   OR frontier.membership_floor_known <> 0`).Scan(&invalidLegacyRows); err != nil {
+		return fmt.Errorf("validate continuity v8 legacy relay frontier copy: %w", err)
+	}
+	if invalidLegacyRows != 0 {
+		return fmt.Errorf("continuity v8 relay frontier copy changed %d legacy observations", invalidLegacyRows)
+	}
+	if _, err := tx.Exec(`DROP TABLE continuity_sync_relay_watermarks_v7`); err != nil {
+		return fmt.Errorf("drop continuity v7 relay watermarks: %w", err)
+	}
+
+	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
+		return fmt.Errorf("drop continuity v7 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(schemaTableSQL); err != nil {
+		return fmt.Errorf("create continuity v8 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 8`); err != nil {
+		return fmt.Errorf("set continuity v8 schema version: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
+		schemaLine,
+		schemaVersion,
+		checksumSchema(),
+	); err != nil {
+		return fmt.Errorf("record continuity v8 schema identity: %w", err)
+	}
+	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+		return fmt.Errorf("validate continuity v8 migration: %w", err)
+	}
+	if err := validateForeignKeys(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit continuity v8 migration: %w", err)
 	}
 	return nil
 }
@@ -2285,6 +2448,8 @@ func validateKnownSchemaVersion(db schemaQuerier, version int) error {
 		return validateSchemaVersion(db, 5, checksumSchemaV5(), expectedSchemaV5Objects())
 	case 6:
 		return validateSchemaVersion(db, 6, checksumSchemaV6(), expectedSchemaV6Objects())
+	case 7:
+		return validateSchemaVersion(db, 7, checksumSchemaV7(), expectedSchemaV7Objects())
 	case schemaVersion:
 		return validateSchemaVersion(db, schemaVersion, checksumSchema(), expectedSchemaObjects())
 	default:

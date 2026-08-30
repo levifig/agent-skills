@@ -153,6 +153,11 @@ func (store *Store) StageVerifiedSyncAuthorityCandidatePage(
 		if prepared.AfterEnvironmentID != current.candidate.ThroughEnvironmentID {
 			return SyncAuthorityCandidate{}, syncProblem(SyncErrorConflict, "after_environment_id", "is not the active candidate cursor")
 		}
+		if err := requireKnownExactSyncRelayWatermarkV1(
+			ctx, tx, syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot),
+		); err != nil {
+			return SyncAuthorityCandidate{}, err
+		}
 		if err := validateSyncAuthorityCandidatePageAgainstCanonicalV2(ctx, tx, projectID, snapshot, prepared, canonicalBase, !prepared.More); err != nil {
 			return SyncAuthorityCandidate{}, err
 		}
@@ -164,6 +169,11 @@ func (store *Store) StageVerifiedSyncAuthorityCandidatePage(
 			return SyncAuthorityCandidate{}, syncProblem(SyncErrorInvalid, "after_environment_id", "must be empty for the first page")
 		}
 		if err := validateSyncAuthorityCandidatePageAgainstCanonicalV2(ctx, tx, projectID, snapshot, prepared, canonicalBase, !prepared.More); err != nil {
+			return SyncAuthorityCandidate{}, err
+		}
+		if err := advanceVerifiedSyncRelayWatermarkObservationV1(
+			ctx, tx, syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, snapshot),
+		); err != nil {
 			return SyncAuthorityCandidate{}, err
 		}
 		if err := insertFirstSyncAuthorityCandidatePageV2(ctx, tx, projectID, candidateID, snapshot, prepared, headerDigest); err != nil {

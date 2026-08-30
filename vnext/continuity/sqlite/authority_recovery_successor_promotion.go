@@ -93,8 +93,8 @@ func (store *Store) PromoteSyncAuthorityRecoverySuccessor(
 	if err != nil {
 		return SyncAuthorityRecoveryTerminalReceipt{}, err
 	}
-	if current.successor.candidate.Snapshot.InventoryArrivalHead < floor {
-		return SyncAuthorityRecoveryTerminalReceipt{}, syncProblem(SyncErrorCursor, "inventory_arrival_head", "is stale relative to the retained relay watermark")
+	if err := requireSyncAuthoritySnapshotAtExactWatermarkV1(current.successor.candidate.Snapshot, floor); err != nil {
+		return SyncAuthorityRecoveryTerminalReceipt{}, err
 	}
 	watermarkKey := syncRelayWatermarkKeyFromValueV1(
 		syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, current.successor.candidate.Snapshot),

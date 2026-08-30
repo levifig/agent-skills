@@ -88,6 +88,11 @@ func (store *Store) PromoteSyncAuthorityCandidate(
 	if !found || !candidate.candidate.Ready || candidate.candidate.Checkpoint() != expected {
 		return SyncAuthorityCandidateReceipt{}, syncProblem(SyncErrorConflict, "checkpoint", "does not match the active ready authority candidate")
 	}
+	if err := requireKnownExactSyncRelayWatermarkV1(
+		ctx, tx, syncAuthorityRecoveryWatermarkFromSnapshotV1(projectID, candidate.candidate.Snapshot),
+	); err != nil {
+		return SyncAuthorityCandidateReceipt{}, err
+	}
 	base, err := readCanonicalSyncAuthorityBaseV2(ctx, tx, projectID)
 	if err != nil {
 		return SyncAuthorityCandidateReceipt{}, err

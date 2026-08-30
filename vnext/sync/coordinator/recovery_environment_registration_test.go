@@ -155,8 +155,13 @@ func TestRegisterPreparedRecoveryEnvironmentSealsHigherInventoryHead(t *testing.
 	if remote.classifyCalls != 2 || remote.registerCalls != 1 {
 		t.Fatalf("higher inventory head calls classify/register = %d/%d, want 2/1", remote.classifyCalls, remote.registerCalls)
 	}
-	_, err = store.AdvanceSyncRelayWatermark(context.Background(), testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 20))
-	assertSyncWatermarkError(t, err, continuitysqlite.SyncErrorCursor)
+	wantFrontier := testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 6, 21)
+	if got, err := store.AdvanceSyncRelayWatermark(
+		context.Background(),
+		testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 6, 20),
+	); err != nil || got != wantFrontier {
+		t.Fatalf("lower relay-head observation = (%#v, %v), want retained %#v", got, err, wantFrontier)
+	}
 }
 
 func TestRegisterPreparedRecoveryEnvironmentFreshFirstMembership(t *testing.T) {
@@ -205,7 +210,7 @@ func TestRegisterPreparedRecoveryEnvironmentFirstMembershipMissingChannelCannotR
 	remote := emptyInventoryRemote(recovery)
 	coordinator := mustCoordinator(t, store, remote)
 	registration := bindGuardRegistration(t, coordinator, recovery, writerID, 1)
-	if _, err := store.AdvanceSyncRelayWatermark(context.Background(), testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 5)); err != nil {
+	if _, err := store.AdvanceSyncRelayWatermark(context.Background(), testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 1, 5)); err != nil {
 		t.Fatalf("seed retained relay head: %v", err)
 	}
 	remote.classify = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
@@ -237,7 +242,7 @@ func TestRegisterPreparedRecoveryEnvironmentCrossProcessFinalWatermarkAdvancePre
 		if remote.classifyCalls == 2 {
 			if _, err := concurrentStore.AdvanceSyncRelayWatermark(
 				context.Background(),
-				testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 100),
+				testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 5, 100),
 			); err != nil {
 				t.Fatalf("concurrent final relay-head advance: %v", err)
 			}
@@ -256,6 +261,46 @@ func TestRegisterPreparedRecoveryEnvironmentCrossProcessFinalWatermarkAdvancePre
 	candidate, found, readErr := store.CurrentSyncAuthorityCandidate(context.Background(), recovery.ProjectID)
 	if readErr != nil || !found || !candidate.Ready || candidate.Snapshot.InventoryArrivalHead != snapshot.ArrivalHead {
 		t.Fatalf("guard after failed final watermark = (%#v, %v, %v)", candidate, found, readErr)
+	}
+}
+
+func TestRegisterPreparedRecoveryEnvironmentCrossProcessMembershipAdvancePreventsRegister(t *testing.T) {
+	root := t.TempDir()
+	writerID := testEnvironmentID(200)
+	store := openCoordinatorStoreAt(t, root, writerID)
+	concurrentStore := openCoordinatorStoreAt(t, root, writerID)
+	recovery := testBindableRecoveryCredential(t)
+	snapshot := relay.EnvironmentInventorySnapshot{MembershipGeneration: 5, ArrivalHead: 19}
+	remote := inventoryRemote(recovery, snapshot, testGuardInventoryRecords(t, recovery))
+	coordinator := mustCoordinator(t, store, remote)
+	registration := bindGuardRegistration(t, coordinator, recovery, writerID, 6)
+	remote.classify = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
+		if remote.classifyCalls == 2 {
+			if _, err := concurrentStore.AdvanceSyncRelayWatermark(
+				context.Background(),
+				testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 6, 19),
+			); err != nil {
+				t.Fatalf("concurrent membership advance: %v", err)
+			}
+		}
+		return relay.EnvironmentRegistrationStatus{
+			Disposition: relay.EnvironmentRegistrationAbsent,
+			State:       registrationChannelState(recovery, 5, 19),
+		}, nil
+	}
+
+	got, err := coordinator.registerPreparedRecoveryEnvironment(context.Background(), recovery.ProjectID, recovery, registration)
+	if !reflect.DeepEqual(got, completedRecoveryRegistration{}) {
+		t.Fatalf("stale membership classification returned completion %#v", got)
+	}
+	assertProblem(t, err, CodeRemote, PhaseEnvironmentRegistration, ActionRestartRecovery)
+	if remote.registerCalls != 0 {
+		t.Fatalf("stale membership classification reached register %d times", remote.registerCalls)
+	}
+	candidate, found, readErr := store.CurrentSyncAuthorityCandidate(context.Background(), recovery.ProjectID)
+	if readErr != nil || !found || !candidate.Ready ||
+		candidate.Snapshot.MembershipGeneration != 5 || candidate.Snapshot.InventoryArrivalHead != 19 {
+		t.Fatalf("guard after membership advance = (%#v, %v, %v)", candidate, found, readErr)
 	}
 }
 
@@ -317,7 +362,7 @@ func TestRegisterPreparedRecoveryEnvironmentCrossProcessWatermarkAdvanceAcceptsC
 	remote.register = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.ChannelState, error) {
 		if _, err := concurrentStore.AdvanceSyncRelayWatermark(
 			context.Background(),
-			testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 100),
+			testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 5, 100),
 		); err != nil {
 			t.Fatalf("concurrent relay-head advance: %v", err)
 		}
@@ -331,11 +376,14 @@ func TestRegisterPreparedRecoveryEnvironmentCrossProcessWatermarkAdvanceAcceptsC
 	if remote.classifyCalls != 2 || remote.registerCalls != 1 {
 		t.Fatalf("concurrent current-head calls classify/register = %d/%d, want 2/1", remote.classifyCalls, remote.registerCalls)
 	}
-	_, err = store.AdvanceSyncRelayWatermark(
+	wantFrontier := testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 6, 100)
+	gotFrontier, err := store.AdvanceSyncRelayWatermark(
 		context.Background(),
-		testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 20),
+		testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 6, 20),
 	)
-	assertSyncWatermarkError(t, err, continuitysqlite.SyncErrorCursor)
+	if err != nil || gotFrontier != wantFrontier {
+		t.Fatalf("lower current-response frontier = (%#v, %v), want retained %#v", gotFrontier, err, wantFrontier)
+	}
 }
 
 func TestRegisterPreparedRecoveryEnvironmentCrossProcessWatermarkAdvanceRejectsStaleResponseAndRetry(t *testing.T) {
@@ -357,7 +405,7 @@ func TestRegisterPreparedRecoveryEnvironmentCrossProcessWatermarkAdvanceRejectsS
 	remote.register = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.ChannelState, error) {
 		if _, err := concurrentStore.AdvanceSyncRelayWatermark(
 			context.Background(),
-			testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 100),
+			testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 5, 100),
 		); err != nil {
 			t.Fatalf("concurrent relay-head advance: %v", err)
 		}
@@ -413,7 +461,7 @@ func TestRegisterPreparedRecoveryEnvironmentCrossProcessUnknownOutcomeRetainsHea
 	remote.register = func(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.ChannelState, error) {
 		if _, err := concurrentStore.AdvanceSyncRelayWatermark(
 			context.Background(),
-			testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 100),
+			testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 5, 100),
 		); err != nil {
 			t.Fatalf("concurrent relay-head advance: %v", err)
 		}
@@ -552,8 +600,13 @@ func TestRegisterPreparedRecoveryEnvironmentUnknownBeforeCommitSurvivesHeadAdvan
 	}
 	allRequests := append(append([]relay.RegisterEnvironmentRequest(nil), remote.classifyRequests...), remote.registerRequests...)
 	assertExactRegistrationRequests(t, allRequests, recovery, registration)
-	_, err = store.AdvanceSyncRelayWatermark(context.Background(), testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 10))
-	assertSyncWatermarkError(t, err, continuitysqlite.SyncErrorCursor)
+	wantFrontier := testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 6, 101)
+	if got, err := store.AdvanceSyncRelayWatermark(
+		context.Background(),
+		testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 6, 10),
+	); err != nil || got != wantFrontier {
+		t.Fatalf("lower retry frontier = (%#v, %v), want retained %#v", got, err, wantFrontier)
+	}
 }
 
 func TestRegisterPreparedRecoveryEnvironmentLostResponseRetainsFinalHeadAcrossReopen(t *testing.T) {
@@ -663,7 +716,7 @@ func TestRegisterPreparedRecoveryEnvironmentRegeneratedCertificateCannotResetRet
 	if _, err := coordinator.stageRecoveryRegistrationGuard(context.Background(), recovery.ProjectID, recovery, original); err != nil {
 		t.Fatalf("stage original guard: %v", err)
 	}
-	if _, err := store.AdvanceSyncRelayWatermark(context.Background(), testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 100)); err != nil {
+	if _, err := store.AdvanceSyncRelayWatermark(context.Background(), testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 5, 100)); err != nil {
 		t.Fatalf("seed retained relay head: %v", err)
 	}
 	regenerated := regenerateRecoveryRegistrationCertificate(t, recovery, original)
@@ -1389,10 +1442,10 @@ func TestRegisterPreparedRecoveryEnvironmentMapsRegisterSentinelWithoutLoop(t *t
 	}
 }
 
-func TestRecoveryRegistrationWatermarkContainsOnlyPublicRelayIdentityAndHead(t *testing.T) {
+func TestRecoveryRegistrationWatermarkContainsOnlyPublicRelayIdentityAndFrontier(t *testing.T) {
 	recovery := testBindableRecoveryCredential(t)
-	got := recoveryRegistrationWatermark(recovery.ProjectID, recovery, 42)
-	want := testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 42)
+	got := recoveryRegistrationWatermark(recovery.ProjectID, recovery, 7, 42)
+	want := testRecoveryRegistrationWatermark(recovery.ProjectID, recovery, 7, 42)
 	if got != want {
 		t.Fatalf("recovery registration watermark = %#v, want %#v", got, want)
 	}
@@ -1405,6 +1458,7 @@ func TestRecoveryRegistrationWatermarkContainsOnlyPublicRelayIdentityAndHead(t *
 		{name: "ChannelID", typeOf: reflect.TypeOf(continuitysqlite.SyncChannelID{})},
 		{name: "RelayGeneration", typeOf: reflect.TypeOf([32]byte{})},
 		{name: "AdminPublicKey", typeOf: reflect.TypeOf([32]byte{})},
+		{name: "MembershipGeneration", typeOf: reflect.TypeOf(uint32(0))},
 		{name: "RelayHead", typeOf: reflect.TypeOf(int64(0))},
 	}
 	if typeOf.NumField() != len(wantFields) {
@@ -1448,14 +1502,16 @@ func TestRecoveryRegistrationWatermarkErrorsMapStatically(t *testing.T) {
 func testRecoveryRegistrationWatermark(
 	projectID continuity.ProjectID,
 	recovery credential.ProjectRecoveryCredential,
+	membershipGeneration uint32,
 	head int64,
 ) continuitysqlite.SyncRelayWatermark {
 	return continuitysqlite.SyncRelayWatermark{
-		ProjectID:       projectID,
-		ChannelID:       continuitysqlite.SyncChannelID(recovery.ChannelID),
-		RelayGeneration: [32]byte(recovery.RelayGeneration),
-		AdminPublicKey:  [32]byte(crypto.AdminPublicKey(recovery.AdminSeed)),
-		RelayHead:       head,
+		ProjectID:            projectID,
+		ChannelID:            continuitysqlite.SyncChannelID(recovery.ChannelID),
+		RelayGeneration:      [32]byte(recovery.RelayGeneration),
+		AdminPublicKey:       [32]byte(crypto.AdminPublicKey(recovery.AdminSeed)),
+		MembershipGeneration: membershipGeneration,
+		RelayHead:            head,
 	}
 }
 
