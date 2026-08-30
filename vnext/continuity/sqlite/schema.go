@@ -14,7 +14,7 @@ import (
 const (
 	applicationID = 1280267825
 	schemaLine    = "vnext"
-	schemaVersion = 4
+	schemaVersion = 5
 )
 
 const schemaTableV1SQL = `CREATE TABLE continuity_schema (
@@ -47,10 +47,20 @@ const schemaTableV3SQL = `CREATE TABLE continuity_schema (
   )
 ) STRICT`
 
-const schemaTableSQL = `CREATE TABLE continuity_schema (
+const schemaTableV4SQL = `CREATE TABLE continuity_schema (
   singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
   schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
   schema_version INTEGER NOT NULL CHECK (schema_version = 4),
+  schema_checksum TEXT NOT NULL CHECK (
+    length(schema_checksum) = 64
+    AND schema_checksum NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT`
+
+const schemaTableSQL = `CREATE TABLE continuity_schema (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 5),
   schema_checksum TEXT NOT NULL CHECK (
     length(schema_checksum) = 64
     AND schema_checksum NOT GLOB '*[^0-9a-f]*'
@@ -201,6 +211,24 @@ const syncProjectsTableSQL = `CREATE TABLE continuity_sync_projects (
   relay_head INTEGER NOT NULL CHECK (relay_head >= 0),
   CHECK (applied_cursor <= downloaded_cursor),
   CHECK (downloaded_cursor <= relay_head)
+) STRICT, WITHOUT ROWID`
+
+const syncRelayWatermarksTableSQL = `CREATE TABLE continuity_sync_relay_watermarks (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  channel_id BLOB NOT NULL CHECK (
+    length(channel_id) = 32 AND channel_id <> zeroblob(32)
+  ),
+  relay_generation BLOB NOT NULL CHECK (
+    length(relay_generation) = 32 AND relay_generation <> zeroblob(32)
+  ),
+  admin_public_key BLOB NOT NULL CHECK (
+    length(admin_public_key) = 32 AND admin_public_key <> zeroblob(32)
+  ),
+  relay_head INTEGER NOT NULL CHECK (relay_head >= 0),
+  PRIMARY KEY (project_id, channel_id, relay_generation)
 ) STRICT, WITHOUT ROWID`
 
 const syncInboxTableV2SQL = `CREATE TABLE continuity_sync_inbox (
@@ -903,7 +931,7 @@ const syncAuthorityCandidateSchemaDDL = syncAuthoritiesTableSQL + ";\n" +
 	syncAuthorityCandidatesActiveIndexSQL + ";\n" +
 	syncAuthorityCandidatePagesFinalIndexSQL + ";\n"
 
-const schemaDDL = schemaTableSQL + ";\n" +
+const schemaV4DDL = schemaTableV4SQL + ";\n" +
 	factsTableSQL + ";\n" +
 	projectIdentityIndexSQL + ";\n" +
 	projectOrderIndexSQL + ";\n" +
@@ -911,6 +939,16 @@ const schemaDDL = schemaTableSQL + ";\n" +
 	projectIdentityTriggerSQL + ";\n" +
 	syncSchemaV3DDL +
 	syncAuthorityCandidateSchemaDDL
+
+const schemaDDL = schemaTableSQL + ";\n" +
+	factsTableSQL + ";\n" +
+	projectIdentityIndexSQL + ";\n" +
+	projectOrderIndexSQL + ";\n" +
+	subjectOrderIndexSQL + ";\n" +
+	projectIdentityTriggerSQL + ";\n" +
+	syncSchemaV3DDL +
+	syncAuthorityCandidateSchemaDDL +
+	syncRelayWatermarksTableSQL + ";\n"
 
 type schemaObject struct {
 	kind  string
@@ -929,6 +967,35 @@ func expectedSchemaObjects() []schemaObject {
 		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesStagingIndexSQL},
 		{kind: "table", name: "continuity_facts", table: "continuity_facts", sql: factsTableSQL},
 		{kind: "table", name: "continuity_schema", table: "continuity_schema", sql: schemaTableSQL},
+		{kind: "table", name: "continuity_sync_authorities", table: "continuity_sync_authorities", sql: syncAuthoritiesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_environments", table: "continuity_sync_authority_candidate_environments", sql: syncAuthorityCandidateEnvironmentsTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", sql: syncAuthorityCandidateMembershipEventsTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_pages", table: "continuity_sync_authority_candidate_pages", sql: syncAuthorityCandidatePagesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidates", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesTableSQL},
+		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", sql: syncEnvironmentCertificatesTableSQL},
+		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", sql: syncEnvironmentHeadsTableSQL},
+		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", sql: syncInboxTableSQL},
+		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", sql: syncOutboxTableSQL},
+		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", sql: syncProjectsTableSQL},
+		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
+		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableSQL},
+		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
+		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
+	}
+}
+
+func expectedSchemaV4Objects() []schemaObject {
+	return []schemaObject{
+		{kind: "index", name: "ix_continuity_facts_project_order", table: "continuity_facts", sql: projectOrderIndexSQL},
+		{kind: "index", name: "ix_continuity_facts_subject_order", table: "continuity_facts", sql: subjectOrderIndexSQL},
+		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", sql: projectIdentityIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_authority_candidate_pages_final", table: "continuity_sync_authority_candidate_pages", sql: syncAuthorityCandidatePagesFinalIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_authority_candidates_active_project", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesActiveIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesStagingIndexSQL},
+		{kind: "table", name: "continuity_facts", table: "continuity_facts", sql: factsTableSQL},
+		{kind: "table", name: "continuity_schema", table: "continuity_schema", sql: schemaTableV4SQL},
 		{kind: "table", name: "continuity_sync_authorities", table: "continuity_sync_authorities", sql: syncAuthoritiesTableSQL},
 		{kind: "table", name: "continuity_sync_authority_candidate_environments", table: "continuity_sync_authority_candidate_environments", sql: syncAuthorityCandidateEnvironmentsTableSQL},
 		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", sql: syncAuthorityCandidateMembershipEventsTableSQL},
@@ -1001,6 +1068,10 @@ func checksumSchema() string {
 	return checksumDDL(schemaDDL)
 }
 
+func checksumSchemaV4() string {
+	return checksumDDL(schemaV4DDL)
+}
+
 func checksumSchemaV3() string {
 	return checksumDDL(schemaV3DDL)
 }
@@ -1049,7 +1120,7 @@ func initializeSchemaIfEmpty(db *sql.DB) (bool, error) {
 	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
 		return false, fmt.Errorf("set continuity application id: %w", err)
 	}
-	if _, err := tx.Exec(`PRAGMA user_version = 4`); err != nil {
+	if _, err := tx.Exec(`PRAGMA user_version = 5`); err != nil {
 		return false, fmt.Errorf("set continuity schema version: %w", err)
 	}
 	if _, err := tx.Exec(
@@ -1158,8 +1229,12 @@ func migrateSchema(db *sql.DB) error {
 			if err := migrateSchemaV3ToV4(db); err != nil {
 				return err
 			}
+		case 4:
+			if err := migrateSchemaV4ToV5(db); err != nil {
+				return err
+			}
 		default:
-			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, or %d", version, schemaVersion)
+			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, or %d", version, schemaVersion)
 		}
 	}
 }
@@ -1392,7 +1467,7 @@ func migrateSchemaV3ToV4(db *sql.DB) error {
 	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
 		return fmt.Errorf("drop continuity v3 schema identity: %w", err)
 	}
-	if _, err := tx.Exec(schemaTableSQL + ";\n" + syncAuthorityCandidateSchemaDDL); err != nil {
+	if _, err := tx.Exec(schemaTableV4SQL + ";\n" + syncAuthorityCandidateSchemaDDL); err != nil {
 		return fmt.Errorf("create continuity v4 authority candidate schema: %w", err)
 	}
 	if err := seedV3SyncAuthorityMetadata(tx); err != nil {
@@ -1404,12 +1479,12 @@ func migrateSchemaV3ToV4(db *sql.DB) error {
 	if _, err := tx.Exec(
 		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
 		schemaLine,
-		schemaVersion,
-		checksumSchema(),
+		4,
+		checksumSchemaV4(),
 	); err != nil {
 		return fmt.Errorf("record continuity v4 schema identity: %w", err)
 	}
-	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+	if err := validateSchemaVersion(tx, 4, checksumSchemaV4(), expectedSchemaV4Objects()); err != nil {
 		return fmt.Errorf("validate continuity v4 migration: %w", err)
 	}
 	if err := validateForeignKeys(tx); err != nil {
@@ -1417,6 +1492,73 @@ func migrateSchemaV3ToV4(db *sql.DB) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit continuity v4 migration: %w", err)
+	}
+	return nil
+}
+
+func migrateSchemaV4ToV5(db *sql.DB) error {
+	advanced, err := validateMigrationPreflight(db, 4)
+	if err != nil {
+		return fmt.Errorf("validate continuity v4 before migration: %w", err)
+	}
+	if advanced {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin continuity v5 migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	var version int
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("recheck continuity v4 schema version in migration: %w", err)
+	}
+	if version > 4 && version <= schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
+		return nil
+	}
+	if version != 4 {
+		return fmt.Errorf("continuity schema changed during v5 migration")
+	}
+	if err := validateSchemaVersion(tx, 4, checksumSchemaV4(), expectedSchemaV4Objects()); err != nil {
+		return fmt.Errorf("revalidate continuity v4 in migration: %w", err)
+	}
+	seeds, err := collectV4SyncRelayWatermarkSeeds(tx)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
+		return fmt.Errorf("drop continuity v4 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(schemaTableSQL + ";\n" + syncRelayWatermarksTableSQL + ";\n"); err != nil {
+		return fmt.Errorf("create continuity v5 relay watermark schema: %w", err)
+	}
+	if err := insertV5SyncRelayWatermarkSeeds(tx, seeds); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 5`); err != nil {
+		return fmt.Errorf("set continuity v5 schema version: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
+		schemaLine,
+		schemaVersion,
+		checksumSchema(),
+	); err != nil {
+		return fmt.Errorf("record continuity v5 schema identity: %w", err)
+	}
+	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+		return fmt.Errorf("validate continuity v5 migration: %w", err)
+	}
+	if err := validateForeignKeys(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit continuity v5 migration: %w", err)
 	}
 	return nil
 }
@@ -1516,6 +1658,8 @@ func validateKnownSchemaVersion(db schemaQuerier, version int) error {
 		return validateSchemaVersion(db, 2, checksumSchemaV2(), expectedSchemaV2Objects())
 	case 3:
 		return validateSchemaVersion(db, 3, checksumSchemaV3(), expectedSchemaV3Objects())
+	case 4:
+		return validateSchemaVersion(db, 4, checksumSchemaV4(), expectedSchemaV4Objects())
 	case schemaVersion:
 		return validateSchemaVersion(db, schemaVersion, checksumSchema(), expectedSchemaObjects())
 	default:
