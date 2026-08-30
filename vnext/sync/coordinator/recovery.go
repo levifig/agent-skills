@@ -141,6 +141,50 @@ func (coordinator *Coordinator) readRecoveryInventory(
 	writerEnvironmentID continuity.EnvironmentID,
 	createdState *relay.ChannelState,
 ) (uint32, error) {
+	result, err := coordinator.scanRecoveryInventory(
+		ctx,
+		recovery,
+		ownerAuthorization,
+		adminPublic,
+		writerEnvironmentID,
+		recoveryInventoryScanOptions{createdState: createdState},
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.snapshot.MembershipGeneration, nil
+}
+
+type verifiedRecoveryInventoryPage struct {
+	snapshot           relay.EnvironmentInventorySnapshot
+	afterEnvironmentID relay.EnvironmentID
+	environments       []relay.EnvironmentInventoryRecord
+	more               bool
+}
+
+type recoveryInventoryScanOptions struct {
+	createdState         *relay.ChannelState
+	expectedMembership   *uint32
+	firstRequestSnapshot *relay.EnvironmentInventorySnapshot
+	onPage               func(verifiedRecoveryInventoryPage) error
+}
+
+type recoveryInventoryScanResult struct {
+	snapshot relay.EnvironmentInventorySnapshot
+}
+
+// scanRecoveryInventory reads one pinned inventory through bounded pages. It
+// invokes onPage only after every object in that page has passed structural and
+// cryptographic verification. Candidate-wide membership coverage remains the
+// persistence layer's responsibility when a callback stages the verified page.
+func (coordinator *Coordinator) scanRecoveryInventory(
+	ctx context.Context,
+	recovery credential.ProjectRecoveryCredential,
+	ownerAuthorization relay.OwnerAuthorization,
+	adminPublic protocol.PublicKey,
+	writerEnvironmentID continuity.EnvironmentID,
+	options recoveryInventoryScanOptions,
+) (recoveryInventoryScanResult, error) {
 	var (
 		pinnedSnapshot relay.EnvironmentInventorySnapshot
 		haveSnapshot   bool
@@ -156,8 +200,9 @@ func (coordinator *Coordinator) readRecoveryInventory(
 
 	for {
 		if err := ctx.Err(); err != nil {
-			return 0, err
+			return recoveryInventoryScanResult{}, err
 		}
+		pageStartAfter := after
 		requestOwner := ownerAuthorization
 		request := relay.EnvironmentInventoryRequest{
 			Authorization:      relay.InventoryAuthorization{Owner: &requestOwner},
@@ -167,57 +212,67 @@ func (coordinator *Coordinator) readRecoveryInventory(
 		if haveSnapshot {
 			snapshot := pinnedSnapshot
 			request.Snapshot = &snapshot
+		} else if options.firstRequestSnapshot != nil {
+			snapshot := *options.firstRequestSnapshot
+			request.Snapshot = &snapshot
 		}
 		page, err := coordinator.remote.EnvironmentInventory(ctx, request)
 		if err != nil {
-			return 0, mapInventoryError(ctx, err)
+			return recoveryInventoryScanResult{}, mapInventoryError(ctx, err)
 		}
 		if page.Channel != wantChannel || page.Snapshot.ArrivalHead < 0 ||
 			len(page.Environments) > relay.MaxEnvironmentInventoryPage ||
 			(page.More && len(page.Environments) != relay.MaxEnvironmentInventoryPage) {
-			return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+			return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 		}
 		if !haveSnapshot {
 			pinnedSnapshot = page.Snapshot
 			haveSnapshot = true
-			if createdState != nil && (pinnedSnapshot.MembershipGeneration < createdState.MembershipGeneration ||
-				pinnedSnapshot.ArrivalHead < createdState.Head) {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+			if options.createdState != nil && (pinnedSnapshot.MembershipGeneration < options.createdState.MembershipGeneration ||
+				pinnedSnapshot.ArrivalHead < options.createdState.Head) {
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			if pinnedSnapshot.MembershipGeneration == math.MaxUint32 {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+			}
+			if options.expectedMembership != nil && pinnedSnapshot.MembershipGeneration != *options.expectedMembership {
+				return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionRestartRecovery)
+			}
+			if options.firstRequestSnapshot != nil && pinnedSnapshot != *options.firstRequestSnapshot {
+				return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionRetry)
 			}
 			if pinnedSnapshot.MembershipGeneration == 0 {
 				if pinnedSnapshot.ArrivalHead != 0 || len(page.Environments) != 0 || page.More {
-					return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+					return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 				}
-				if createdState == nil {
-					return 0, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionAuthorizeEmptyChannel)
+				if options.createdState == nil {
+					return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionAuthorizeEmptyChannel)
 				}
-				return 0, nil
+				return recoveryInventoryScanResult{snapshot: pinnedSnapshot}, nil
 			}
 		} else if page.Snapshot != pinnedSnapshot {
-			return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+			return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 		}
 		if len(page.Environments) == 0 {
-			return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+			return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 		}
 
 		pageMemberships := make(map[uint32]struct{}, len(page.Environments)*2)
+		verifiedEnvironments := make([]relay.EnvironmentInventoryRecord, 0, len(page.Environments))
 		for _, record := range page.Environments {
 			if record.EnvironmentID <= after {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			after = record.EnvironmentID
 			if record.ProducerHead < 0 || record.ProducerHead > pinnedSnapshot.ArrivalHead {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			if _, duplicate := pageMemberships[record.MembershipGeneration]; duplicate {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			pageMemberships[record.MembershipGeneration] = struct{}{}
 			if record.MembershipGeneration == 0 || record.MembershipGeneration > pinnedSnapshot.MembershipGeneration {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 
 			authority := relay.EnvironmentAuthority{
@@ -232,16 +287,16 @@ func (coordinator *Coordinator) readRecoveryInventory(
 			certificateAuthority := relay.EnvironmentCertificateAuthority(authority)
 			if err := verifier.VerifyEnvironmentCertificate(ctx, certificateAuthority); err != nil {
 				if contextErr := contextError(ctx, err); contextErr != nil {
-					return 0, contextErr
+					return recoveryInventoryScanResult{}, contextErr
 				}
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			certificate, err := protocol.ParseEnvironmentCertificate(record.CertificateBytes)
 			if err != nil || certificate.ProjectID != recovery.ProjectID {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
 			if continuity.EnvironmentID(record.EnvironmentID) == writerEnvironmentID {
-				return 0, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionUseExistingCredential)
+				return recoveryInventoryScanResult{}, newProblem(CodeConflict, PhaseEnvironmentInventory, ActionUseExistingCredential)
 			}
 			eventCount++
 
@@ -251,10 +306,10 @@ func (coordinator *Coordinator) readRecoveryInventory(
 					retirement.MembershipGeneration > pinnedSnapshot.MembershipGeneration ||
 					retirement.MembershipGeneration <= record.MembershipGeneration ||
 					record.ProducerHead != retirement.FinalEnvironmentSequence {
-					return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+					return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 				}
 				if _, duplicate := pageMemberships[retirement.MembershipGeneration]; duplicate {
-					return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+					return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 				}
 				pageMemberships[retirement.MembershipGeneration] = struct{}{}
 				relayRetirement := relay.Retirement{
@@ -270,24 +325,47 @@ func (coordinator *Coordinator) readRecoveryInventory(
 				}
 				if err := verifier.VerifyRetirement(ctx, authority, relayRetirement); err != nil {
 					if contextErr := contextError(ctx, err); contextErr != nil {
-						return 0, contextErr
+						return recoveryInventoryScanResult{}, contextErr
 					}
-					return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+					return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 				}
 				eventCount++
 			}
 			if eventCount > uint64(pinnedSnapshot.MembershipGeneration) {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
+			verifiedEnvironments = append(verifiedEnvironments, cloneRecoveryInventoryRecord(record))
 		}
 
 		if !page.More {
 			if eventCount != uint64(pinnedSnapshot.MembershipGeneration) {
-				return 0, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
+				return recoveryInventoryScanResult{}, newProblem(CodeRemote, PhaseEnvironmentInventory, ActionRestartRecovery)
 			}
-			return pinnedSnapshot.MembershipGeneration, nil
+		}
+		if options.onPage != nil {
+			if err := options.onPage(verifiedRecoveryInventoryPage{
+				snapshot:           pinnedSnapshot,
+				afterEnvironmentID: pageStartAfter,
+				environments:       verifiedEnvironments,
+				more:               page.More,
+			}); err != nil {
+				return recoveryInventoryScanResult{}, err
+			}
+		}
+		if !page.More {
+			return recoveryInventoryScanResult{snapshot: pinnedSnapshot}, nil
 		}
 	}
+}
+
+func cloneRecoveryInventoryRecord(record relay.EnvironmentInventoryRecord) relay.EnvironmentInventoryRecord {
+	record.CertificateBytes = append([]byte(nil), record.CertificateBytes...)
+	if record.Retirement != nil {
+		retirement := *record.Retirement
+		retirement.RetirementBytes = append([]byte(nil), retirement.RetirementBytes...)
+		record.Retirement = &retirement
+	}
+	return record
 }
 
 func mintRecoveryCredential(
