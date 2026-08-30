@@ -120,8 +120,8 @@ func TestContinuitySQLiteMigratesExactV1SchemaWithoutChangingFacts(t *testing.T)
 	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		t.Fatalf("read migrated user version: %v", err)
 	}
-	if userVersion != 4 {
-		t.Fatalf("user version = %d, want 4", userVersion)
+	if userVersion != schemaVersion {
+		t.Fatalf("user version = %d, want %d", userVersion, schemaVersion)
 	}
 
 	fact, err := store.ExportFact(context.Background(), "fact-project")
@@ -194,7 +194,7 @@ func TestContinuitySQLiteRefusesDriftedV1BeforeMigration(t *testing.T) {
 	}
 }
 
-func TestContinuitySQLiteV4SyncSchemaIsExactAndCredentialFree(t *testing.T) {
+func TestContinuitySQLiteV5SyncSchemaIsExactAndCredentialFree(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -235,6 +235,7 @@ ORDER BY name`)
 		"continuity_sync_outbox",
 		"continuity_sync_projects",
 		"continuity_sync_receipts",
+		"continuity_sync_relay_watermarks",
 		"continuity_sync_terminal_candidate_frames",
 		"continuity_sync_terminal_candidates",
 		"continuity_sync_tombstones",
@@ -298,7 +299,8 @@ func TestContinuitySQLiteSchemaDDLGoldenChecksums(t *testing.T) {
 		{name: "v1", ddl: schemaV1DDL, checksum: "6fcc409d4d49d1f7702e57ea96c493623ef37eec4e1aae6ec888f542532f0004", bytes: 4322},
 		{name: "v2", ddl: schemaV2DDL, checksum: "f7edc0566cc24ee50009d7b70389aeb4a6bb4558dcba89a56df0f0ddfc6a64ab", bytes: 14202},
 		{name: "v3", ddl: schemaV3DDL, checksum: "d1163e6ba25279c5b332ce19d383d7709d4dc00b49928e32e8a58ccf70aaa3af", bytes: 19161},
-		{name: "v4", ddl: schemaDDL, checksum: "150cc2b8dfcaecda0fefcfbdff02aa924644984ae7bdef4480f884dc63fe95ca", bytes: 28556},
+		{name: "v4", ddl: schemaV4DDL, checksum: "150cc2b8dfcaecda0fefcfbdff02aa924644984ae7bdef4480f884dc63fe95ca", bytes: 28556},
+		{name: "v5", ddl: schemaDDL, checksum: "4f81496ceac409a49ddd980fed0fe3f037cc7bff8e45f7b4f0a4e3a1aba985e4", bytes: 29204},
 	}
 	for _, test := range tests {
 		test := test
@@ -549,7 +551,7 @@ FROM continuity_sync_authorities
 WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &gotDigest, &arrivalHead); err != nil {
 		t.Fatalf("read migrated authority metadata: %v", err)
 	}
-	if version != 4 || digestVersion != 1 || !bytes.Equal(gotDigest, authorityDigest[:]) || arrivalHead != 0 {
+	if version != schemaVersion || digestVersion != 1 || !bytes.Equal(gotDigest, authorityDigest[:]) || arrivalHead != 0 {
 		t.Fatalf("migrated authority metadata = version %d digest-version %d digest %x head %d", version, digestVersion, gotDigest, arrivalHead)
 	}
 	got, err := store.CurrentSyncAuthority(context.Background(), projectID)
@@ -637,7 +639,7 @@ WHERE name IN (
 	}
 }
 
-func TestContinuitySQLiteFrozenV2ValidatorRejectsV3WithoutMutation(t *testing.T) {
+func TestContinuitySQLiteFrozenV2ValidatorRejectsV5WithoutMutation(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -648,15 +650,15 @@ func TestContinuitySQLiteFrozenV2ValidatorRejectsV3WithoutMutation(t *testing.T)
 
 	before := schemaIdentitySnapshot(t, store.db)
 	if err := validateSchemaVersion(store.db, 2, checksumSchemaV2(), expectedSchemaV2Objects()); err == nil {
-		t.Fatal("frozen v2 validation of v3 error = nil, want refusal")
+		t.Fatal("frozen v2 validation of v5 error = nil, want refusal")
 	}
 	after := schemaIdentitySnapshot(t, store.db)
 	if before != after {
-		t.Fatalf("frozen v2 validation mutated v3: before=%#v after=%#v", before, after)
+		t.Fatalf("frozen v2 validation mutated v5: before=%#v after=%#v", before, after)
 	}
 }
 
-func TestContinuitySQLiteFrozenV3ValidatorRejectsV4WithoutMutation(t *testing.T) {
+func TestContinuitySQLiteFrozenV3ValidatorRejectsV5WithoutMutation(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -667,11 +669,30 @@ func TestContinuitySQLiteFrozenV3ValidatorRejectsV4WithoutMutation(t *testing.T)
 
 	before := schemaIdentitySnapshot(t, store.db)
 	if err := validateSchemaVersion(store.db, 3, checksumSchemaV3(), expectedSchemaV3Objects()); err == nil {
-		t.Fatal("frozen v3 validation of v4 error = nil, want refusal")
+		t.Fatal("frozen v3 validation of v5 error = nil, want refusal")
 	}
 	after := schemaIdentitySnapshot(t, store.db)
 	if before != after {
-		t.Fatalf("frozen v3 validation mutated v4: before=%#v after=%#v", before, after)
+		t.Fatalf("frozen v3 validation mutated v5: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestContinuitySQLiteFrozenV4ValidatorRejectsV5WithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	before := schemaIdentitySnapshot(t, store.db)
+	if err := validateSchemaVersion(store.db, 4, checksumSchemaV4(), expectedSchemaV4Objects()); err == nil {
+		t.Fatal("frozen v4 validation of v5 error = nil, want refusal")
+	}
+	after := schemaIdentitySnapshot(t, store.db)
+	if before != after {
+		t.Fatalf("frozen v4 validation mutated v5: before=%#v after=%#v", before, after)
 	}
 }
 
@@ -686,6 +707,7 @@ func TestContinuitySQLiteConcurrentOpenMigratesExactSchemas(t *testing.T) {
 		{name: "v1", create: createV1ContinuityDatabase},
 		{name: "v2", create: createV2ContinuityDatabase, seedAuthority: true},
 		{name: "v3", create: createV3ContinuityDatabase, seedAuthority: true},
+		{name: "v4", create: createV4ContinuityDatabase},
 	}
 	for _, test := range tests {
 		test := test
@@ -820,7 +842,7 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		}
 	})
 
-	t.Run("v2 preflight observes exact v4", func(t *testing.T) {
+	t.Run("v2 preflight observes exact v5", func(t *testing.T) {
 		t.Parallel()
 		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
 		if err != nil {
@@ -829,11 +851,11 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		defer store.Close()
 		before := schemaIdentitySnapshot(t, store.db)
 		if err := migrateSchemaV2ToV3(store.db); err != nil {
-			t.Fatalf("migrateSchemaV2ToV3(exact v4) error = %v", err)
+			t.Fatalf("migrateSchemaV2ToV3(exact v5) error = %v", err)
 		}
 		after := schemaIdentitySnapshot(t, store.db)
 		if before != after {
-			t.Fatalf("v2 migration preflight mutated exact v4: before=%#v after=%#v", before, after)
+			t.Fatalf("v2 migration preflight mutated exact v5: before=%#v after=%#v", before, after)
 		}
 	})
 
@@ -858,6 +880,25 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 
 	t.Run("v3 preflight observes exact v4", func(t *testing.T) {
 		t.Parallel()
+		stateRoot := filepath.Join(testTempDir(t), "state")
+		databasePath := createV4ContinuityDatabase(t, stateRoot)
+		db, err := openDatabase(databasePath)
+		if err != nil {
+			t.Fatalf("open exact v4 database: %v", err)
+		}
+		defer db.Close()
+		before := schemaIdentitySnapshot(t, db)
+		if err := migrateSchemaV3ToV4(db); err != nil {
+			t.Fatalf("migrateSchemaV3ToV4(exact v4) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, db)
+		if before != after {
+			t.Fatalf("v3 migration preflight mutated exact v4: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v3 preflight observes exact v5", func(t *testing.T) {
+		t.Parallel()
 		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
 		if err != nil {
 			t.Fatalf("Open() error = %v", err)
@@ -865,11 +906,28 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 		defer store.Close()
 		before := schemaIdentitySnapshot(t, store.db)
 		if err := migrateSchemaV3ToV4(store.db); err != nil {
-			t.Fatalf("migrateSchemaV3ToV4(exact v4) error = %v", err)
+			t.Fatalf("migrateSchemaV3ToV4(exact v5) error = %v", err)
 		}
 		after := schemaIdentitySnapshot(t, store.db)
 		if before != after {
-			t.Fatalf("v3 migration preflight mutated exact v4: before=%#v after=%#v", before, after)
+			t.Fatalf("v3 migration preflight mutated exact v5: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v4 preflight observes exact v5", func(t *testing.T) {
+		t.Parallel()
+		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+		if err != nil {
+			t.Fatalf("Open() error = %v", err)
+		}
+		defer store.Close()
+		before := schemaIdentitySnapshot(t, store.db)
+		if err := migrateSchemaV4ToV5(store.db); err != nil {
+			t.Fatalf("migrateSchemaV4ToV5(exact v5) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, store.db)
+		if before != after {
+			t.Fatalf("v4 migration preflight mutated exact v5: before=%#v after=%#v", before, after)
 		}
 	})
 }
@@ -1512,6 +1570,60 @@ func createV3ContinuityDatabase(t *testing.T, stateRoot string) string {
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close v3 database: %v", err)
+	}
+	return databasePath
+}
+
+func createV4ContinuityDatabase(t *testing.T, stateRoot string) string {
+	t.Helper()
+
+	privateDirectory := filepath.Join(stateRoot, "vnext")
+	if err := os.MkdirAll(privateDirectory, 0o700); err != nil {
+		t.Fatalf("create v4 private directory: %v", err)
+	}
+	databasePath := filepath.Join(privateDirectory, databaseFileName)
+	file, err := os.OpenFile(databasePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("create v4 database: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close v4 database file: %v", err)
+	}
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v4 database: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		db.Close()
+		t.Fatalf("begin v4 schema: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schemaV4DDL); err != nil {
+		db.Close()
+		t.Fatalf("create v4 schema: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
+		db.Close()
+		t.Fatalf("set v4 application id: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 4`); err != nil {
+		db.Close()
+		t.Fatalf("set v4 user version: %v", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, 'vnext', 4, ?)`,
+		checksumSchemaV4(),
+	); err != nil {
+		db.Close()
+		t.Fatalf("record v4 schema identity: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		db.Close()
+		t.Fatalf("commit v4 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v4 database: %v", err)
 	}
 	return databasePath
 }
