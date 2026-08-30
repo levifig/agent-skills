@@ -81,6 +81,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"authority_candidate_stage.go",
 		"authority_recovery_successor.go",
 		"authority_recovery_successor_extension.go",
+		"authority_recovery_successor_promotion.go",
 		"authority_recovery_successor_reader.go",
 		"authority_recovery_successor_replay.go",
 		"authority_recovery_terminal_receipt.go",
@@ -168,6 +169,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"Store.PromoteIdeaToExternalReference",
 		"Store.PromoteSparkToIdea",
 		"Store.PromoteSyncAuthorityCandidate",
+		"Store.PromoteSyncAuthorityRecoverySuccessor",
 		"Store.PromoteTerminalCandidate",
 		"Store.RecordCheckpoint",
 		"Store.RecordFinding",
@@ -494,6 +496,11 @@ func TestContinuitySQLiteContractPinsDriverBoundary(t *testing.T) {
 		"authority_recovery_successor_extension.go": {
 			"context",
 			"database/sql",
+		},
+		"authority_recovery_successor_promotion.go": {
+			"context",
+			"database/sql",
+			"github.com/levifig/loaf/vnext/continuity",
 		},
 		"authority_recovery_successor_reader.go": {
 			"context",
@@ -1051,6 +1058,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"PromoteIdeaToExternalReference":                   "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaPromotionPayload) (continuity.AppendReceipt, error)",
 		"PromoteSparkToIdea":                               "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.SparkPromotionPayload) (continuity.AppendReceipt, error)",
 		"PromoteSyncAuthorityCandidate":                    "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityCandidateCheckpoint) (sqlite.SyncAuthorityCandidateReceipt, error)",
+		"PromoteSyncAuthorityRecoverySuccessor":            "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityRecoveryTransition, sqlite.SyncAuthorityCandidateCheckpoint) (sqlite.SyncAuthorityRecoveryTerminalReceipt, error)",
 		"PromoteTerminalCandidate":                         "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.TerminalCandidateCheckpoint) (sqlite.TerminalCandidateReceipt, error)",
 		"RecordCheckpoint":                                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.CheckpointRecordedPayload) (continuity.AppendReceipt, error)",
 		"RecordFinding":                                    "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.FindingRecordedPayload) (continuity.AppendReceipt, error)",

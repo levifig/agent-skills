@@ -51,6 +51,7 @@ func expectedPersistenceSourceDigests() map[string]string {
 		"authority_candidate_stage.go":              "865240094db36be50e80f8feec03b26e9d40deaaca049ad31ccd713668fc07a2",
 		"authority_recovery_successor.go":           "92626a965d02d4b3d7a5db1c4af2eddc6ef0b33c0d2e9dd628623bb1a6f707a7",
 		"authority_recovery_successor_extension.go": "edc596743c314016c4ef4bd5453974ec510b1018076562ec35f3539c99d11c7e",
+		"authority_recovery_successor_promotion.go": "82eee04ddc16d9bfbca583a149f88111a00079758bd3c837c324f24d509d2f13",
 		"authority_recovery_successor_reader.go":    "9f2ecb39173004e64898f55a37483b96b15b37fb2766b8997f4e4d864a3ce0f4",
 		"authority_recovery_successor_replay.go":    "fe938da3d4d411688284b437984f672d4232984ab0a0e392219ae7b20b18da28",
 		"authority_recovery_terminal_receipt.go":    "8cca55736e28ee74e881f7444cc445fd2c6abe9459e8d301b0d78a778666a5de",
@@ -291,6 +292,14 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 		},
 		"authority_recovery_successor_extension.go": {
 			"validateReadySyncAuthorityRecoverySuccessorExtensionV1": "8f7620a2fabdf2e0abb5732298f3d37b9b593e2bf53387b754dbc5f8c0294b53",
+		},
+		"authority_recovery_successor_promotion.go": {
+			"Store.PromoteSyncAuthorityRecoverySuccessor":                 "77d68c884d0ec29997d55432f4c9c8b1b6adce0efb434d7c51d2973caf6131d3",
+			"changeReadySyncAuthorityRecoverySuccessorRoleForPromotionV1": "52f9e72e8a17c72ca1dedecdb1d1ab783635f007022e405849689c62eed9abb9",
+			"deletePromotedSyncAuthorityRecoverySuccessorV1":              "c2a0cb6567937c8c203292a4b26858bf6e882c38be1a0e43674be0be8b41e23b",
+			"deleteReadySyncAuthorityRecoveryPredecessorV1":               "6a725e934d2a3acb5104f97a264abc6dad72d1cfc1eff1c058ecfd2d5cd0deb2",
+			"validateSyncAuthorityRecoveryPromotionBootstrapAbsenceV1":    "ba66d0b0a0e3fde43ec0f46d25073a67aeb284c1285620ff2f9039e9156f58a4",
+			"validateTerminatedSyncAuthorityRecoveryPromotionV1":          "942b9d5185b69f805ad182c19a73ccc8aa2a0ae8caa27a30f1784053f9bb5994",
 		},
 		"authority_recovery_successor_reader.go": {
 			"readAndValidateSyncAuthorityRecoveryStateV1":    "ee90c6856365d5767157949659bb96f884118e165b01257505f6b0c13d430d36",
