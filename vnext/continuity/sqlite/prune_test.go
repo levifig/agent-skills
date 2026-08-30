@@ -26,10 +26,52 @@ func TestApplyVerifiedPruneSuccessRetryAndStaleReplay(t *testing.T) {
 	fixture.assertPruned(t, before)
 
 	stale := fixture.frames[2]
-	if _, err := fixture.store.ApplySyncBatch(context.Background(), fixture.projectID, []VerifiedSyncFrame{stale}, 1_000, 100); err == nil {
+	if _, err := fixture.store.ApplySyncBatch(context.Background(), fixture.projectID, currentSyncAuthorityBindingForTest(t, fixture.store, fixture.projectID), []VerifiedSyncFrame{stale}, 1_000, 100); err == nil {
 		t.Fatal("ApplySyncBatch(stale pruned fact) error = nil")
 	}
 	fixture.assertPruned(t, before)
+}
+
+func TestApplyVerifiedPruneUsesTouchedAuthorityPointReads(t *testing.T) {
+	t.Run("untouched corruption does not block prune", func(t *testing.T) {
+		fixture := newPruneFixtureV1(t)
+		authority, err := fixture.store.CurrentSyncAuthority(context.Background(), fixture.projectID)
+		if err != nil {
+			t.Fatalf("CurrentSyncAuthority() error = %v", err)
+		}
+		setCanonicalSyncAuthorityMetadataV2ForBindingTest(t, fixture.store, fixture.projectID, authority)
+		execAuthorityBindingCorruptionForTest(t, fixture.store, `
+UPDATE continuity_sync_environment_certificates
+SET certificate_id = X'01'
+WHERE project_id = ? AND environment_id = 'environment-b'`, string(fixture.projectID))
+
+		if err := fixture.store.ApplyVerifiedPrune(context.Background(), fixture.projectID, fixture.plan); err != nil {
+			t.Fatalf("ApplyVerifiedPrune(untouched corrupt authority) error = %v", err)
+		}
+		if _, err := fixture.store.CurrentSyncAuthority(context.Background(), fixture.projectID); err == nil {
+			t.Fatal("CurrentSyncAuthority(corrupt untouched prune authority) error = nil")
+		} else {
+			assertSyncErrorCode(t, err, SyncErrorStore)
+		}
+	})
+
+	t.Run("touched corruption rolls back prune", func(t *testing.T) {
+		fixture := newPruneFixtureV1(t)
+		authority, err := fixture.store.CurrentSyncAuthority(context.Background(), fixture.projectID)
+		if err != nil {
+			t.Fatalf("CurrentSyncAuthority() error = %v", err)
+		}
+		setCanonicalSyncAuthorityMetadataV2ForBindingTest(t, fixture.store, fixture.projectID, authority)
+		execAuthorityBindingCorruptionForTest(t, fixture.store, `
+UPDATE continuity_sync_environment_certificates
+SET certificate_id = X'01'
+WHERE project_id = ? AND environment_id = 'environment-a'`, string(fixture.projectID))
+		before := fixture.inventory(t)
+
+		err = fixture.store.ApplyVerifiedPrune(context.Background(), fixture.projectID, fixture.plan)
+		assertSyncErrorCode(t, err, SyncErrorStore)
+		fixture.assertInventory(t, before)
+	})
 }
 
 func TestApplyVerifiedPruneBlocksLocalAppendFactIDResurrection(t *testing.T) {
@@ -522,7 +564,7 @@ func newPruneFixtureV1(t *testing.T) *pruneFixtureV1 {
 		syncScratchpadFactV1(t, projectID, "fact-close-other", "scratchpad-b", continuity.FactScratchpadClosed, "environment-a", 11, 110),
 	}
 	frames := stageSyncFacts(t, store, projectID, 1, facts)
-	if _, err := store.ApplySyncBatch(context.Background(), projectID, frames, 1_000, 100); err != nil {
+	if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100); err != nil {
 		t.Fatalf("ApplySyncBatch() error = %v", err)
 	}
 	if _, err := store.db.Exec(`UPDATE continuity_sync_projects SET activation_state = 'attached' WHERE project_id = ?`, string(projectID)); err != nil {

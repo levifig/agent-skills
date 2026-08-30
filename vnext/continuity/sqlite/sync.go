@@ -973,9 +973,17 @@ type envelopeInventoryV1 struct {
 	byGenerationNonce map[string]envelopeInventoryEntryV1
 }
 
-// ApplySyncBatch validates the complete supplied candidate union and atomically
-// advances only its contiguous non-future prefix.
-func (store *Store) ApplySyncBatch(ctx context.Context, projectID continuity.ProjectID, frames []VerifiedSyncFrame, trustedNowMillis, maxFutureSkewMillis int64) (SyncProgress, error) {
+// ApplySyncBatch validates the caller-verified authority binding and complete
+// supplied candidate union, then atomically advances only its contiguous
+// non-future prefix.
+func (store *Store) ApplySyncBatch(
+	ctx context.Context,
+	projectID continuity.ProjectID,
+	verifiedAuthority SyncAuthorityBinding,
+	frames []VerifiedSyncFrame,
+	trustedNowMillis,
+	maxFutureSkewMillis int64,
+) (SyncProgress, error) {
 	if store == nil {
 		return SyncProgress{}, syncProblem(SyncErrorStore, "", "store is closed")
 	}
@@ -1006,6 +1014,9 @@ SELECT EXISTS (
 	if activeCandidate != 0 {
 		return SyncProgress{}, syncProblem(SyncErrorTerminalHistoryRequired, "", "")
 	}
+	if err := validateSyncAuthorityBindingV2(verifiedAuthority); err != nil {
+		return SyncProgress{}, err
+	}
 	prepared, err := prepareVerifiedSyncFrames(projectID, frames, trustedNowMillis, maxFutureSkewMillis)
 	if err != nil {
 		return SyncProgress{}, err
@@ -1034,7 +1045,7 @@ SELECT EXISTS (
 	if active {
 		return SyncProgress{}, syncProblem(SyncErrorTerminalHistoryRequired, "", "")
 	}
-	authority, err := readSyncAuthorityV1(ctx, tx, projectID)
+	binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, verifiedAuthority)
 	if err != nil {
 		return SyncProgress{}, err
 	}
@@ -1045,6 +1056,14 @@ SELECT EXISTS (
 		return progress, nil
 	}
 	if err := validateStagedBindingsV1(ctx, tx, projectID, progress, prepared); err != nil {
+		return SyncProgress{}, err
+	}
+	environmentIDs := make([]continuity.EnvironmentID, len(prepared))
+	for index := range prepared {
+		environmentIDs[index] = prepared[index].fact.environmentID
+	}
+	authorityEnvironments, err := readCanonicalSyncEnvironmentCertificatesV2(ctx, tx, projectID, binding, environmentIDs)
+	if err != nil {
 		return SyncProgress{}, err
 	}
 
@@ -1078,7 +1097,7 @@ SELECT EXISTS (
 		isFirstSeenEnvelope[index] = !hasRetainedEnvelope ||
 			!sealedMetadataEqualV1(retainedEnvelope.metadata, frame.sealedEnvelopeMetadataV1)
 	}
-	if err := validateOrdinarySyncFrameAuthorityV1(authority, prepared, isFirstSeenEnvelope, trustedNowMillis); err != nil {
+	if err := validateOrdinarySyncFrameAuthorityV2(authorityEnvironments, prepared, isFirstSeenEnvelope, trustedNowMillis); err != nil {
 		return SyncProgress{}, err
 	}
 	if err := rejectConsumedReceiptsV1(ctx, tx, projectID, prepared); err != nil {

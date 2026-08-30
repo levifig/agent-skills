@@ -242,7 +242,7 @@ func TestContinuityStoreOrdinaryApplyStillGatesPrunedArrival(t *testing.T) {
 		t.Fatalf("StageSyncPage(pruned) error = %v", err)
 	}
 	fact := syncProjectFact(t, projectID, "fact-project", "environment-a", 1, 100)
-	_, err := store.ApplySyncBatch(context.Background(), projectID, []VerifiedSyncFrame{{
+	_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), []VerifiedSyncFrame{{
 		ArrivalSequence: 1,
 		EnvelopeDigest:  opaque.EnvelopeDigest,
 		CertificateID:   testSyncCertificateID("environment-a"),
@@ -296,7 +296,7 @@ func TestContinuityStoreConvergenceAppliesCompleteUnionAcrossPermutations(t *tes
 			store := openSyncStore(t, "concurrent-"+name)
 			verified := stageSyncFacts(t, store, projectID, 1, facts)
 
-			progress, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100)
+			progress, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100)
 			if err != nil {
 				t.Fatalf("ApplySyncBatch() error = %v", err)
 			}
@@ -339,7 +339,7 @@ func TestContinuityStoreAcceptsExactLocalEchoAndRejectsImmutableConflicts(t *tes
 			t.Fatalf("ExportFact() error = %v", err)
 		}
 		verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{fact})
-		progress, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100)
+		progress, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100)
 		if err != nil {
 			t.Fatalf("ApplySyncBatch(exact echo) error = %v", err)
 		}
@@ -359,7 +359,7 @@ func TestContinuityStoreAcceptsExactLocalEchoAndRejectsImmutableConflicts(t *tes
 		store, projectID := storeWithAppliedRoot(t, "fact-id-conflict")
 		conflict := syncProjectFact(t, projectID, "fact-project", "environment-b", 1, 101)
 		verified := stageSyncFacts(t, store, projectID, 2, []continuitywire.Fact{conflict})
-		_, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100)
+		_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100)
 		assertSyncErrorCode(t, err, SyncErrorConflict)
 		assertAppliedCursor(t, store, projectID, 1)
 	})
@@ -368,7 +368,7 @@ func TestContinuityStoreAcceptsExactLocalEchoAndRejectsImmutableConflicts(t *tes
 		store, projectID := storeWithAppliedRoot(t, "sequence-conflict")
 		conflict := syncProjectFact(t, projectID, "fact-other", "environment-a", 1, 100)
 		verified := stageSyncFacts(t, store, projectID, 2, []continuitywire.Fact{conflict})
-		_, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100)
+		_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100)
 		assertSyncErrorCode(t, err, SyncErrorConflict)
 		assertAppliedCursor(t, store, projectID, 1)
 	})
@@ -379,7 +379,7 @@ func TestContinuityStoreAcceptsExactLocalEchoAndRejectsImmutableConflicts(t *tes
 		projectID := continuity.ProjectID("project-b")
 		conflict := syncProjectFact(t, projectID, "fact-shared", "environment-b", 1, 101)
 		verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{conflict})
-		_, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100)
+		_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100)
 		assertSyncErrorCode(t, err, SyncErrorConflict)
 		assertAppliedCursor(t, store, projectID, 0)
 	})
@@ -428,7 +428,7 @@ func TestContinuityStoreRejectsSourceGapsAndNonIncreasingHLC(t *testing.T) {
 			store, projectID := storeWithLocalRoot(t, test.name)
 			facts := test.facts(t, projectID)
 			verified := stageSyncFacts(t, store, projectID, 1, facts)
-			_, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100)
+			_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100)
 			assertSyncErrorCode(t, err, test.code)
 			assertAppliedCursor(t, store, projectID, 0)
 			for _, fact := range facts {
@@ -448,7 +448,7 @@ func TestContinuityStoreValidatesCompleteCandidateUnionBeforeCommit(t *testing.T
 	invalid := syncIdeaRevisionFact(t, projectID, "fact-invalid", "idea-invalid", "environment-b", 2, 101, "missing", "Invalid")
 	verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{valid, invalid})
 
-	_, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100)
+	_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100)
 	assertSyncErrorCode(t, err, SyncErrorCandidate)
 	assertAppliedCursor(t, store, projectID, 0)
 	if _, err := store.ExportFact(context.Background(), valid.FactID); err == nil {
@@ -464,7 +464,7 @@ func TestContinuityStoreSkewQuarantinesFutureOnlyAndAcceptsOldOfflineFacts(t *te
 	later := syncIdeaCreatedFact(t, projectID, "fact-later", "idea-later", "environment-b", 2, 101, "Later")
 	verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{future, later})
 
-	progress, err := store.ApplySyncBatch(context.Background(), projectID, verified, 50, 10)
+	progress, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 50, 10)
 	if err != nil {
 		t.Fatalf("ApplySyncBatch(future) error = %v", err)
 	}
@@ -482,7 +482,7 @@ func TestContinuityStoreSkewQuarantinesFutureOnlyAndAcceptsOldOfflineFacts(t *te
 		t.Fatal("future fact entered continuity corpus")
 	}
 
-	progress, err = store.ApplySyncBatch(context.Background(), projectID, verified, 200, 10)
+	progress, err = store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 200, 10)
 	if err != nil {
 		t.Fatalf("ApplySyncBatch(after clock catches up) error = %v", err)
 	}
@@ -501,13 +501,13 @@ func TestContinuityStoreRejectsEnvelopeChainGapCertificateChangeAndNonceReuse(t 
 		store, projectID := storeWithLocalRoot(t, "chain")
 		first := syncIdeaCreatedFact(t, projectID, "fact-one", "idea-one", "environment-b", 1, 100, "One")
 		firstVerified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{first})
-		if _, err := store.ApplySyncBatch(context.Background(), projectID, firstVerified, 1_000, 100); err != nil {
+		if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), firstVerified, 1_000, 100); err != nil {
 			t.Fatalf("apply first envelope: %v", err)
 		}
 		second := syncIdeaCreatedFact(t, projectID, "fact-two", "idea-two", "environment-b", 2, 101, "Two")
 		secondVerified := stageSyncFacts(t, store, projectID, 2, []continuitywire.Fact{second})
 		secondVerified[0].PreviousEnvelopeDigest = sha256.Sum256([]byte("wrong previous envelope"))
-		_, err := store.ApplySyncBatch(context.Background(), projectID, secondVerified, 1_000, 100)
+		_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), secondVerified, 1_000, 100)
 		assertSyncErrorCode(t, err, SyncErrorEnvelopeChain)
 		assertAppliedCursor(t, store, projectID, 1)
 	})
@@ -516,14 +516,14 @@ func TestContinuityStoreRejectsEnvelopeChainGapCertificateChangeAndNonceReuse(t 
 		store, projectID := storeWithLocalRoot(t, "certificate")
 		first := syncIdeaCreatedFact(t, projectID, "fact-one", "idea-one", "environment-b", 1, 100, "One")
 		firstVerified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{first})
-		if _, err := store.ApplySyncBatch(context.Background(), projectID, firstVerified, 1_000, 100); err != nil {
+		if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), firstVerified, 1_000, 100); err != nil {
 			t.Fatalf("apply first certificate: %v", err)
 		}
 		second := syncIdeaCreatedFact(t, projectID, "fact-two", "idea-two", "environment-b", 2, 101, "Two")
 		secondVerified := stageSyncFacts(t, store, projectID, 2, []continuitywire.Fact{second})
 		secondVerified[0].PreviousEnvelopeDigest = firstVerified[0].EnvelopeDigest
 		secondVerified[0].CertificateID = sha256.Sum256([]byte("different certificate"))
-		_, err := store.ApplySyncBatch(context.Background(), projectID, secondVerified, 1_000, 100)
+		_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), secondVerified, 1_000, 100)
 		assertSyncErrorCode(t, err, SyncErrorCertificate)
 		assertAppliedCursor(t, store, projectID, 1)
 	})
@@ -532,13 +532,13 @@ func TestContinuityStoreRejectsEnvelopeChainGapCertificateChangeAndNonceReuse(t 
 		store, projectID := storeWithLocalRoot(t, "nonce")
 		first := syncIdeaCreatedFact(t, projectID, "fact-one", "idea-one", "environment-b", 1, 100, "One")
 		firstVerified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{first})
-		if _, err := store.ApplySyncBatch(context.Background(), projectID, firstVerified, 1_000, 100); err != nil {
+		if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), firstVerified, 1_000, 100); err != nil {
 			t.Fatalf("apply first nonce: %v", err)
 		}
 		second := syncIdeaCreatedFact(t, projectID, "fact-two", "idea-two", "environment-a", 1, 101, "Two")
 		secondVerified := stageSyncFacts(t, store, projectID, 2, []continuitywire.Fact{second})
 		secondVerified[0].Nonce = firstVerified[0].Nonce
-		_, err := store.ApplySyncBatch(context.Background(), projectID, secondVerified, 1_000, 100)
+		_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), secondVerified, 1_000, 100)
 		assertSyncErrorCode(t, err, SyncErrorNonceReuse)
 		assertAppliedCursor(t, store, projectID, 1)
 	})
@@ -554,13 +554,13 @@ func TestContinuityStoreRejectsZeroEnvelopeDigestAndCertificateID(t *testing.T) 
 
 	zeroDigest := append([]VerifiedSyncFrame(nil), verified...)
 	zeroDigest[0].EnvelopeDigest = [32]byte{}
-	_, err := store.ApplySyncBatch(context.Background(), projectID, zeroDigest, 1_000, 100)
+	_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), zeroDigest, 1_000, 100)
 	assertSyncErrorCode(t, err, SyncErrorInvalid)
 	assertAppliedCursor(t, store, projectID, 0)
 
 	zeroCertificate := append([]VerifiedSyncFrame(nil), verified...)
 	zeroCertificate[0].CertificateID = [32]byte{}
-	_, err = store.ApplySyncBatch(context.Background(), projectID, zeroCertificate, 1_000, 100)
+	_, err = store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), zeroCertificate, 1_000, 100)
 	assertSyncErrorCode(t, err, SyncErrorInvalid)
 	assertAppliedCursor(t, store, projectID, 0)
 }
@@ -608,7 +608,7 @@ func TestContinuityStoreStageRetryRecoversAfterAppliedResponseLoss(t *testing.T)
 	if err != nil {
 		t.Fatalf("PendingSyncFrames() error = %v", err)
 	}
-	if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
+	if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100); err != nil {
 		t.Fatalf("ApplySyncBatch() error = %v", err)
 	}
 	replayed, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 1, staged)
@@ -673,7 +673,7 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		} else {
 			assertSyncErrorCode(t, err, SyncErrorActivation)
 		}
-		if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
+		if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100); err != nil {
 			t.Fatalf("ApplySyncBatch() error = %v", err)
 		}
 		progress, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a"))
@@ -702,7 +702,7 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 1, math.MaxInt64, nil); err != nil {
 			t.Fatalf("StageSyncPage(hostile head) error = %v", err)
 		}
-		if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
+		if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100); err != nil {
 			t.Fatalf("ApplySyncBatch() error = %v", err)
 		}
 		progress, err := store.ActivateStagedSync(context.Background(), projectID, testSyncChannelID("channel-a"))
@@ -740,7 +740,7 @@ func TestContinuityStoreConvergenceInsertsCanonicalRootBeforeLaterArrival(t *tes
 	idea := syncIdeaCreatedFact(t, projectID, "fact-idea", "idea-one", "environment-b", 1, 101, "Idea")
 	root := syncProjectFact(t, projectID, "fact-project", "environment-a", 1, 102)
 	verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{idea, root})
-	if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
+	if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100); err != nil {
 		t.Fatalf("ApplySyncBatch(root arrived later) error = %v", err)
 	}
 	if _, err := store.Snapshot(context.Background(), projectID, continuity.SnapshotRequest{}); err != nil {
@@ -838,7 +838,7 @@ func TestContinuityStorePersistsLocalEnvelopeOnceAndConsumesEcho(t *testing.T) {
 		Nonce:                  outbox.Nonce,
 		Fact:                   fact,
 	}
-	if _, err := store.ApplySyncBatch(context.Background(), projectID, []VerifiedSyncFrame{verified}, 1_000, 100); err != nil {
+	if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), []VerifiedSyncFrame{verified}, 1_000, 100); err != nil {
 		t.Fatalf("apply local echo: %v", err)
 	}
 	var outboxRows, inboxRows, receiptRows int
@@ -933,7 +933,7 @@ func storeWithAppliedRoot(t *testing.T, suffix string) (*Store, continuity.Proje
 	projectID := continuity.ProjectID("project-" + syncSlug(suffix))
 	root := syncProjectFact(t, projectID, "fact-project", "environment-a", 1, 100)
 	verified := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{root})
-	if _, err := store.ApplySyncBatch(context.Background(), projectID, verified, 1_000, 100); err != nil {
+	if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), verified, 1_000, 100); err != nil {
 		t.Fatalf("apply root: %v", err)
 	}
 	return store, projectID
@@ -1005,7 +1005,7 @@ func TestActiveTerminalCandidateGuardsOrdinaryApplyAndStagedDiscard(t *testing.T
 	t.Parallel()
 
 	_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-sync-guards", 2)
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("StageVerifiedTerminalCandidateChunk() error = %v", err)
 	}
@@ -1022,7 +1022,7 @@ func TestActiveTerminalCandidateGuardsOrdinaryApplyAndStagedDiscard(t *testing.T
 		"oversized":     oversized,
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := store.ApplySyncBatch(context.Background(), projectID, guardedFrames, 1_000, 100)
+			_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), guardedFrames, 1_000, 100)
 			assertSyncErrorCode(t, err, SyncErrorTerminalHistoryRequired)
 			var problem *SyncError
 			if !errors.As(err, &problem) || problem.Field != "" || problem.Detail != "" {

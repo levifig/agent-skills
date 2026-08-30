@@ -740,7 +740,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 	pointerType := reflect.TypeOf((*continuitysqlite.Store)(nil))
 	wantMethods := map[string]string{
 		"ActivateStagedSync":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncChannelID) (sqlite.SyncProgress, error)",
-		"ApplySyncBatch":                          "func(*sqlite.Store, context.Context, continuity.ProjectID, []sqlite.VerifiedSyncFrame, int64, int64) (sqlite.SyncProgress, error)",
+		"ApplySyncBatch":                          "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityBinding, []sqlite.VerifiedSyncFrame, int64, int64) (sqlite.SyncProgress, error)",
 		"ApplyVerifiedPrune":                      "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.VerifiedPrunePlan) error",
 		"ArchiveIdea":                             "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.IdeaArchivePayload) (continuity.AppendReceipt, error)",
 		"AttachExternalReference":                 "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExternalReferenceAttachmentPayload) (continuity.AppendReceipt, error)",
@@ -793,7 +793,7 @@ func TestContinuitySQLiteContractPinsStoreRepresentation(t *testing.T) {
 		"Snapshot":                                "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.SnapshotRequest) (continuity.Snapshot, error)",
 		"StageSyncPage":                           "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncChannelID, int64, int64, []sqlite.OpaqueSyncFrame) (sqlite.SyncProgress, error)",
 		"StageVerifiedSyncAuthorityCandidatePage": "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthoritySnapshot, sqlite.SyncAuthorityPage) (sqlite.SyncAuthorityCandidate, error)",
-		"StageVerifiedTerminalCandidateChunk":     "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthority, []sqlite.VerifiedTerminalCandidateFrame, int64, int64) (sqlite.TerminalCandidate, error)",
+		"StageVerifiedTerminalCandidateChunk":     "func(*sqlite.Store, context.Context, continuity.ProjectID, sqlite.SyncAuthorityBinding, []sqlite.VerifiedTerminalCandidateFrame, int64, int64) (sqlite.TerminalCandidate, error)",
 		"StartExploration":                        "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.ExplorationStartedPayload) (continuity.AppendReceipt, error)",
 		"SupersedeDecision":                       "func(*sqlite.Store, context.Context, continuity.ProjectID, continuity.FactID, continuity.SubjectID, continuity.DecisionSupersessionPayload) (continuity.AppendReceipt, error)",
 	}

@@ -17,7 +17,7 @@ func TestPromoteTerminalCandidateMixedSuccessAndExactRetry(t *testing.T) {
 	t.Parallel()
 
 	_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-mixed", 2)
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("StageVerifiedTerminalCandidateChunk() error = %v", err)
 	}
@@ -95,8 +95,8 @@ func TestPromoteTerminalCandidateExactRetryRejectsCorruptReceiptState(t *testing
 	t.Parallel()
 
 	t.Run("header binding", func(t *testing.T) {
-		_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-corrupt-header", 2)
-		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+		_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-corrupt-header", 2)
+		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 		if err != nil {
 			t.Fatalf("stage candidate: %v", err)
 		}
@@ -116,8 +116,8 @@ WHERE project_id = ? AND candidate_id = ?`, corruptDigest[:], string(projectID),
 	})
 
 	t.Run("applied cursor regression", func(t *testing.T) {
-		_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-regressed-applied", 2)
-		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+		_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-regressed-applied", 2)
+		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 		if err != nil {
 			t.Fatalf("stage candidate: %v", err)
 		}
@@ -136,8 +136,8 @@ WHERE project_id = ?`, string(projectID)); err != nil {
 	})
 
 	t.Run("retained child", func(t *testing.T) {
-		_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-retained-child", 2)
-		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+		_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-retained-child", 2)
+		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 		if err != nil {
 			t.Fatalf("stage candidate: %v", err)
 		}
@@ -171,8 +171,8 @@ func TestPromoteTerminalCandidateRejectsCheckpointAuthorityAndIncompleteFenceWit
 	t.Parallel()
 
 	t.Run("wrong checkpoint", func(t *testing.T) {
-		_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-wrong-checkpoint", 2)
-		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+		_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-wrong-checkpoint", 2)
+		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 		if err != nil {
 			t.Fatalf("stage candidate: %v", err)
 		}
@@ -185,7 +185,7 @@ func TestPromoteTerminalCandidateRejectsCheckpointAuthorityAndIncompleteFenceWit
 
 	t.Run("authority drift", func(t *testing.T) {
 		_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-authority-drift", 2)
-		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 		if err != nil {
 			t.Fatalf("stage candidate: %v", err)
 		}
@@ -207,8 +207,8 @@ func TestPromoteTerminalCandidateRejectsCheckpointAuthorityAndIncompleteFenceWit
 	})
 
 	t.Run("incomplete touched retirement", func(t *testing.T) {
-		_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-incomplete-fence", 3)
-		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames[:1], 1_000, 100)
+		_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-incomplete-fence", 3)
+		candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames[:1], 1_000, 100)
 		if err != nil {
 			t.Fatalf("stage candidate prefix: %v", err)
 		}
@@ -268,8 +268,8 @@ WHERE project_id = ? AND arrival_sequence = 1`, frameBytes, string(projectID)); 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-corrupt-"+test.name, 2)
-			candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+			_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-corrupt-"+test.name, 2)
+			candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 			if err != nil {
 				t.Fatalf("stage candidate: %v", err)
 			}
@@ -295,8 +295,8 @@ func TestPromoteTerminalCandidateAllowsActivePartialAndIgnoresUntouchedRetiremen
 		{name: "untouched retired producer", suffix: "untouched-retired", retireEnvironment: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			store, projectID, authority, frame := terminalCandidatePrunedWithLocalRootV1(t, "terminal-candidate-promotion-"+test.suffix, test.retireEnvironment)
-			candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, []VerifiedTerminalCandidateFrame{frame}, 1_000, 100)
+			store, projectID, _, frame := terminalCandidatePrunedWithLocalRootV1(t, "terminal-candidate-promotion-"+test.suffix, test.retireEnvironment)
+			candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), []VerifiedTerminalCandidateFrame{frame}, 1_000, 100)
 			if err != nil {
 				t.Fatalf("stage candidate: %v", err)
 			}
@@ -339,11 +339,11 @@ func TestPromoteTerminalCandidateInvalidResultingFoldRollsBack(t *testing.T) {
 	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, opaque); err != nil {
 		t.Fatalf("StageSyncPage() error = %v", err)
 	}
-	authority, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	_, err := store.CurrentSyncAuthority(context.Background(), projectID)
 	if err != nil {
 		t.Fatalf("CurrentSyncAuthority() error = %v", err)
 	}
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("stage candidate: %v", err)
 	}
@@ -431,11 +431,11 @@ func TestPromoteTerminalCandidateConsumesExactOutboxEchoWithoutTouchingDuplicate
 	}
 	retireSyncEnvironmentForGateV1(t, store, projectID, "environment-a", 1, remoteDigest)
 	retireSyncEnvironmentForGateV1(t, store, projectID, "environment-b", 3, sha256.Sum256([]byte("unseen retired endpoint")))
-	authority, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	_, err = store.CurrentSyncAuthority(context.Background(), projectID)
 	if err != nil {
 		t.Fatalf("CurrentSyncAuthority() error = %v", err)
 	}
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, []VerifiedTerminalCandidateFrame{
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), []VerifiedTerminalCandidateFrame{
 		{Inbox: remoteInbox, Sealed: &remote},
 		{Inbox: rootInbox, Sealed: &rootEcho},
 	}, 1_000, 100)
@@ -469,8 +469,8 @@ func TestPromoteTerminalCandidateConsumesExactOutboxEchoWithoutTouchingDuplicate
 func TestPromoteTerminalCandidateConcurrentExactRetry(t *testing.T) {
 	t.Parallel()
 
-	_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-concurrent", 2)
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-concurrent", 2)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("stage candidate: %v", err)
 	}
@@ -507,11 +507,11 @@ func TestPromoteTerminalCandidateRejectsPrunedLiveFactWithoutMutation(t *testing
 	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, []OpaqueSyncFrame{frames[0].Inbox, frames[1].Inbox}); err != nil {
 		t.Fatalf("StageSyncPage() error = %v", err)
 	}
-	authority, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	_, err := store.CurrentSyncAuthority(context.Background(), projectID)
 	if err != nil {
 		t.Fatalf("CurrentSyncAuthority() error = %v", err)
 	}
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("stage candidate: %v", err)
 	}
@@ -543,11 +543,11 @@ func TestPromoteTerminalCandidateSealedTombstoneDuplicateDoesNotResurrect(t *tes
 	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, []OpaqueSyncFrame{frames[0].Inbox, frames[1].Inbox}); err != nil {
 		t.Fatalf("StageSyncPage() error = %v", err)
 	}
-	authority, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	_, err := store.CurrentSyncAuthority(context.Background(), projectID)
 	if err != nil {
 		t.Fatalf("CurrentSyncAuthority() error = %v", err)
 	}
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("stage candidate: %v", err)
 	}
@@ -596,8 +596,8 @@ INSERT INTO continuity_sync_tombstones(
 func TestPromoteTerminalCandidateRejectsSealedFactTombstonedForAnotherProject(t *testing.T) {
 	t.Parallel()
 
-	_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-cross-project-tombstone", 2)
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	_, store, projectID, _, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-promotion-cross-project-tombstone", 2)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("stage candidate: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestPromoteTerminalCandidateRejectsRepeatedSealedReceiptAtDifferentArrival(
 	projectID := continuity.ProjectID("project-terminal-candidate-promotion-repeated-receipt")
 	root := syncProjectFact(t, projectID, "fact-terminal-candidate-repeated-root", "environment-a", 1, 100)
 	appliedFrames := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{root})
-	if _, err := store.ApplySyncBatch(context.Background(), projectID, appliedFrames, 1_000, 100); err != nil {
+	if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), appliedFrames, 1_000, 100); err != nil {
 		t.Fatalf("apply original sealed frame: %v", err)
 	}
 
@@ -657,11 +657,11 @@ SET downloaded_cursor = 3, relay_head = 3
 WHERE project_id = ? AND applied_cursor = 1 AND downloaded_cursor = 1`, string(projectID)); err != nil {
 		t.Fatalf("advance repeated relay download cursor: %v", err)
 	}
-	authority, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	_, err := store.CurrentSyncAuthority(context.Background(), projectID)
 	if err != nil {
 		t.Fatalf("CurrentSyncAuthority() error = %v", err)
 	}
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
 	if err != nil {
 		t.Fatalf("stage repeated candidate: %v", err)
 	}
@@ -745,7 +745,7 @@ func TestPromoteTerminalCandidateHasNoLifetimeFrameCap(t *testing.T) {
 		}
 	}
 	retireSyncEnvironmentForGateV1(t, store, projectID, "environment-a", frameCount, previousDigest)
-	authority, err := store.CurrentSyncAuthority(context.Background(), projectID)
+	_, err := store.CurrentSyncAuthority(context.Background(), projectID)
 	if err != nil {
 		t.Fatalf("CurrentSyncAuthority() error = %v", err)
 	}
@@ -755,7 +755,7 @@ func TestPromoteTerminalCandidateHasNoLifetimeFrameCap(t *testing.T) {
 		if end > len(frames) {
 			end = len(frames)
 		}
-		candidate, err = store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames[offset:end], frameCount+1_000, 100)
+		candidate, err = store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames[offset:end], frameCount+1_000, 100)
 		if err != nil {
 			t.Fatalf("StageVerifiedTerminalCandidateChunk(%d:%d) error = %v", offset, end, err)
 		}

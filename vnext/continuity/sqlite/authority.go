@@ -532,6 +532,121 @@ WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &digestBytes, &bi
 	return binding, nil
 }
 
+const canonicalSyncEnvironmentCertificatePointQueryV2 = `
+SELECT
+  environment_id,
+  certificate_id,
+  certificate_bytes,
+  mode,
+  expires_at_millis,
+  join_membership_generation,
+  retirement_relay_generation,
+  retirement_membership_generation,
+  retirement_final_environment_sequence,
+  retirement_final_envelope_digest,
+  retirement_id,
+  retirement_bytes
+FROM continuity_sync_environment_certificates
+WHERE project_id = ? AND environment_id = ?`
+
+func requireExactCanonicalSyncAuthorityBindingV2(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	expected SyncAuthorityBinding,
+) (SyncAuthorityBinding, error) {
+	current, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
+	}
+	if err != nil {
+		return SyncAuthorityBinding{}, err
+	}
+	if current != expected {
+		return SyncAuthorityBinding{}, syncProblem(SyncErrorConflict, "sync_authority", "does not match the pinned authority binding")
+	}
+	return current, nil
+}
+
+func readCanonicalSyncEnvironmentCertificateV2(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	binding SyncAuthorityBinding,
+	environmentID continuity.EnvironmentID,
+) (SyncEnvironmentCertificate, bool, error) {
+	// Hot paths intentionally audit only environments touched by the bounded
+	// operation. CurrentSyncAuthority remains the explicit full-inventory digest
+	// and structural audit for the trusted local canonical database.
+	environment, err := scanSyncEnvironmentCertificateV1(tx.QueryRowContext(
+		ctx,
+		canonicalSyncEnvironmentCertificatePointQueryV2,
+		string(projectID),
+		string(environmentID),
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return SyncEnvironmentCertificate{}, false, nil
+	}
+	if err != nil {
+		return SyncEnvironmentCertificate{}, false, err
+	}
+	if environment.EnvironmentID != string(environmentID) {
+		return SyncEnvironmentCertificate{}, false, syncProblem(SyncErrorStore, "sync_authority", "environment certificate identity is corrupt")
+	}
+	if err := validateSyncAuthorityCandidateEnvironmentV2(environment, -1); err != nil {
+		return SyncEnvironmentCertificate{}, false, syncProblem(SyncErrorStore, "sync_authority", "environment certificate is corrupt")
+	}
+	if environment.JoinMembershipGeneration > binding.MembershipGeneration {
+		return SyncEnvironmentCertificate{}, false, syncProblem(SyncErrorStore, "sync_authority", "environment certificate exceeds the pinned membership generation")
+	}
+	if environment.Retirement != nil &&
+		(environment.Retirement.RelayGeneration != binding.RelayGeneration ||
+			environment.Retirement.MembershipGeneration > binding.MembershipGeneration) {
+		return SyncEnvironmentCertificate{}, false, syncProblem(SyncErrorStore, "sync_authority", "environment retirement exceeds the pinned authority binding")
+	}
+	return environment, true, nil
+}
+
+func readCanonicalSyncEnvironmentCertificatesV2(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	binding SyncAuthorityBinding,
+	environmentIDs []continuity.EnvironmentID,
+) (map[continuity.EnvironmentID]SyncEnvironmentCertificate, error) {
+	environments := make(map[continuity.EnvironmentID]SyncEnvironmentCertificate, len(environmentIDs))
+	seenCertificateIDs := make(map[[32]byte]continuity.EnvironmentID, len(environmentIDs))
+	seenMembershipEvents := make(map[uint32]continuity.EnvironmentID, len(environmentIDs)*2)
+	for _, environmentID := range environmentIDs {
+		if _, loaded := environments[environmentID]; loaded {
+			continue
+		}
+		environment, found, err := readCanonicalSyncEnvironmentCertificateV2(ctx, tx, projectID, binding, environmentID)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, syncProblem(SyncErrorCertificate, "certificate_id", "environment is not in pinned authority")
+		}
+		if previous, duplicate := seenCertificateIDs[environment.CertificateID]; duplicate {
+			return nil, syncProblem(SyncErrorStore, "sync_authority", fmt.Sprintf("touched environments %q and %q share a certificate identity", previous, environmentID))
+		}
+		seenCertificateIDs[environment.CertificateID] = environmentID
+		if previous, duplicate := seenMembershipEvents[environment.JoinMembershipGeneration]; duplicate {
+			return nil, syncProblem(SyncErrorStore, "sync_authority", fmt.Sprintf("touched environments %q and %q share a membership event", previous, environmentID))
+		}
+		seenMembershipEvents[environment.JoinMembershipGeneration] = environmentID
+		if environment.Retirement != nil {
+			if previous, duplicate := seenMembershipEvents[environment.Retirement.MembershipGeneration]; duplicate {
+				return nil, syncProblem(SyncErrorStore, "sync_authority", fmt.Sprintf("touched environments %q and %q share a membership event", previous, environmentID))
+			}
+			seenMembershipEvents[environment.Retirement.MembershipGeneration] = environmentID
+		}
+		environments[environmentID] = environment
+	}
+	return environments, nil
+}
+
 func readLegacySyncAuthorityV3(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (SyncAuthority, error) {
 	var authority SyncAuthority
 	var channelID, relayGeneration, adminPublicKey []byte
@@ -617,7 +732,9 @@ func scanSyncEnvironmentCertificateV1(scanner interface {
 		&retirementFinalDigest,
 		&retirementID,
 		&retirementBytes,
-	); err != nil {
+	); errors.Is(err, sql.ErrNoRows) {
+		return SyncEnvironmentCertificate{}, sql.ErrNoRows
+	} else if err != nil {
 		return SyncEnvironmentCertificate{}, syncTransactionProblem(nil)
 	}
 	if len(certificateID) != len(environment.CertificateID) || len(certificateBytes) < 1 || len(certificateBytes) > maximumEnvironmentCertificateBytes ||

@@ -38,7 +38,7 @@ func TestApplySyncBatchRejectsFirstSeenTerminalProducerWithoutMutation(t *testin
 				retireSyncEnvironmentForGateV1(t, store, projectID, test.environmentID, 1, frames[0].EnvelopeDigest)
 			}
 			before := captureTerminalMutationStateV1(t, store, projectID)
-			_, err := store.ApplySyncBatch(context.Background(), projectID, frames, test.trustedNowMillis, 100)
+			_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, test.trustedNowMillis, 100)
 			assertContentFreeSyncCodeV1(t, err, SyncErrorTerminalHistoryRequired)
 			assertTerminalMutationStateV1(t, store, projectID, before)
 		})
@@ -75,7 +75,7 @@ func TestApplySyncBatchGatesFirstSeenEnvelopeWhenPlaintextAlreadyExists(t *testi
 	}
 	retireSyncEnvironmentForGateV1(t, store, projectID, "environment-local", 1, digest)
 	before := captureTerminalMutationStateV1(t, store, projectID)
-	_, err = store.ApplySyncBatch(context.Background(), projectID, []VerifiedSyncFrame{frame}, 1_000, 100)
+	_, err = store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), []VerifiedSyncFrame{frame}, 1_000, 100)
 	assertContentFreeSyncCodeV1(t, err, SyncErrorTerminalHistoryRequired)
 	assertTerminalMutationStateV1(t, store, projectID, before)
 }
@@ -103,7 +103,7 @@ func TestApplySyncBatchBindsEveryFrameToPinnedCertificateInventory(t *testing.T)
 				frames[0].CertificateID = sha256.Sum256([]byte("wrong pinned certificate"))
 			}
 			before := captureTerminalMutationStateV1(t, store, projectID)
-			if _, err := store.ApplySyncBatch(context.Background(), projectID, frames, 1_000, 100); err == nil {
+			if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100); err == nil {
 				t.Fatal("ApplySyncBatch() error = nil")
 			} else {
 				assertSyncErrorCode(t, err, SyncErrorCertificate)
@@ -152,7 +152,7 @@ func TestApplySyncBatchAllowsExactRetainedSealedEnvelopeFromRetiredProducer(t *t
 		Nonce:                  outbox.Nonce,
 		Fact:                   fact,
 	}
-	progress, err := store.ApplySyncBatch(context.Background(), projectID, []VerifiedSyncFrame{frame}, 1_000, 100)
+	progress, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), []VerifiedSyncFrame{frame}, 1_000, 100)
 	if err != nil {
 		t.Fatalf("ApplySyncBatch(exact retained sealed echo) error = %v", err)
 	}
@@ -194,7 +194,7 @@ func TestApplySyncBatchTreatsAlteredRetainedTerminalEnvelopeAsFirstSeen(t *testi
 			projectID := continuity.ProjectID("project-terminal-altered-retained-" + syncSlug(test.name))
 			fact := syncProjectFact(t, projectID, "fact-project", test.environmentID, 1, 100)
 			retained := stageSyncFacts(t, store, projectID, 1, []continuitywire.Fact{fact})
-			if _, err := store.ApplySyncBatch(context.Background(), projectID, retained, test.initialNowMillis, 100); err != nil {
+			if _, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), retained, test.initialNowMillis, 100); err != nil {
 				t.Fatalf("ApplySyncBatch(retained) error = %v", err)
 			}
 			if test.retire {
@@ -219,7 +219,7 @@ func TestApplySyncBatchTreatsAlteredRetainedTerminalEnvelopeAsFirstSeen(t *testi
 				Fact:            fact,
 			}
 			before := captureTerminalMutationStateV1(t, store, projectID)
-			_, err := store.ApplySyncBatch(context.Background(), projectID, []VerifiedSyncFrame{candidate}, test.terminalNowMillis, 100)
+			_, err := store.ApplySyncBatch(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), []VerifiedSyncFrame{candidate}, test.terminalNowMillis, 100)
 			assertContentFreeSyncCodeV1(t, err, SyncErrorTerminalHistoryRequired)
 			assertTerminalMutationStateV1(t, store, projectID, before)
 		})
@@ -502,6 +502,8 @@ func terminalLogicalRowsV1(t *testing.T, store *Store, projectID continuity.Proj
 		{table: "continuity_sync_outbox", order: "fact_id"},
 		{table: "continuity_sync_tombstones", order: "arrival_sequence"},
 		{table: "continuity_sync_environment_certificates", order: "environment_id"},
+		{table: "continuity_sync_terminal_candidates", order: "candidate_id"},
+		{table: "continuity_sync_terminal_candidate_frames", order: "candidate_id, arrival_sequence"},
 	}
 	result := make([]string, 0)
 	for _, query := range queries {
