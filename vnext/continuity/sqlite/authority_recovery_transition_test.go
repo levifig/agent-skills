@@ -44,7 +44,7 @@ func TestSyncAuthorityRecoveryTransitionSchemaIsSecretFreeAndForeignKeyed(t *tes
 		t.Fatalf("close transition columns: %v", err)
 	}
 	wantColumns := []string{
-		"project_id", "predecessor_candidate_id", "successor_candidate_id",
+		"project_id", "attempt_id", "predecessor_candidate_id", "successor_candidate_id",
 		"writer_environment_id", "writer_certificate_id", "target_membership_generation",
 	}
 	if strings.Join(columns, ",") != strings.Join(wantColumns, ",") {
@@ -71,7 +71,7 @@ func TestSyncAuthorityRecoveryTransitionSchemaIsSecretFreeAndForeignKeyed(t *tes
 	}
 	if violations.Next() {
 		violations.Close()
-		t.Fatal("fresh v6 schema has a foreign-key violation")
+		t.Fatal("fresh v7 schema has a foreign-key violation")
 	}
 	if err := violations.Close(); err != nil {
 		t.Fatalf("close foreign-key check: %v", err)
@@ -369,12 +369,13 @@ func insertRawRecoveryTransitionV1(
 		predecessorValue = predecessor[:]
 	}
 	writerCertificateID := recoveryDigestV1(seed)
+	attemptID := recoveryDigestV1(seed + 0x40)
 	if _, err := store.db.Exec(`
 INSERT INTO continuity_sync_authority_recovery_transitions(
-  project_id, predecessor_candidate_id, successor_candidate_id,
+  project_id, attempt_id, predecessor_candidate_id, successor_candidate_id,
   writer_environment_id, writer_certificate_id, target_membership_generation
-) VALUES(?, ?, ?, 'environment-writer', ?, ?)`,
-		string(projectID), predecessorValue, successor[:], writerCertificateID[:], targetMembershipGeneration,
+) VALUES(?, ?, ?, ?, 'environment-writer', ?, ?)`,
+		string(projectID), attemptID[:], predecessorValue, successor[:], writerCertificateID[:], targetMembershipGeneration,
 	); err != nil {
 		t.Fatalf("insert raw recovery transition: %v", err)
 	}
@@ -395,7 +396,7 @@ FROM (
 	}
 	if err := store.db.QueryRow(`
 SELECT COALESCE(group_concat(
-  COALESCE(hex(predecessor_candidate_id), 'NULL') || ':' || hex(successor_candidate_id) || ':' ||
+  hex(attempt_id) || ':' || COALESCE(hex(predecessor_candidate_id), 'NULL') || ':' || hex(successor_candidate_id) || ':' ||
   writer_environment_id || ':' || hex(writer_certificate_id) || ':' || target_membership_generation, ','), '')
 FROM continuity_sync_authority_recovery_transitions
 WHERE project_id = ?`, string(projectID)).Scan(&transitions); err != nil {

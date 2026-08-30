@@ -14,7 +14,7 @@ import (
 const (
 	applicationID = 1280267825
 	schemaLine    = "vnext"
-	schemaVersion = 6
+	schemaVersion = 7
 )
 
 const schemaTableV1SQL = `CREATE TABLE continuity_schema (
@@ -67,10 +67,20 @@ const schemaTableV5SQL = `CREATE TABLE continuity_schema (
   )
 ) STRICT`
 
-const schemaTableSQL = `CREATE TABLE continuity_schema (
+const schemaTableV6SQL = `CREATE TABLE continuity_schema (
   singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
   schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
   schema_version INTEGER NOT NULL CHECK (schema_version = 6),
+  schema_checksum TEXT NOT NULL CHECK (
+    length(schema_checksum) = 64
+    AND schema_checksum NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT`
+
+const schemaTableSQL = `CREATE TABLE continuity_schema (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 7),
   schema_checksum TEXT NOT NULL CHECK (
     length(schema_checksum) = 64
     AND schema_checksum NOT GLOB '*[^0-9a-f]*'
@@ -971,7 +981,7 @@ const syncAuthorityCandidatesRecoveryPredecessorIndexSQL = `CREATE UNIQUE INDEX 
 ON continuity_sync_authority_candidates(project_id)
 WHERE state = 'ready' AND role = 'recovery-predecessor'`
 
-const syncAuthorityRecoveryTransitionsTableSQL = `CREATE TABLE continuity_sync_authority_recovery_transitions (
+const syncAuthorityRecoveryTransitionsTableV6SQL = `CREATE TABLE continuity_sync_authority_recovery_transitions (
   project_id TEXT NOT NULL PRIMARY KEY CHECK (
     length(project_id) BETWEEN 1 AND 128
     AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
@@ -1013,6 +1023,141 @@ const syncAuthorityRecoveryTransitionsTableSQL = `CREATE TABLE continuity_sync_a
   FOREIGN KEY (project_id, successor_candidate_id)
     REFERENCES continuity_sync_authority_candidates(project_id, candidate_id)
     ON DELETE RESTRICT
+) STRICT, WITHOUT ROWID`
+
+const syncAuthorityRecoveryTransitionsTableSQL = `CREATE TABLE continuity_sync_authority_recovery_transitions (
+  project_id TEXT NOT NULL PRIMARY KEY CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  attempt_id BLOB NOT NULL CHECK (
+    length(attempt_id) = 32
+    AND attempt_id <> zeroblob(32)
+  ),
+  predecessor_candidate_id BLOB CHECK (
+    predecessor_candidate_id IS NULL
+    OR (
+      length(predecessor_candidate_id) = 32
+      AND predecessor_candidate_id <> zeroblob(32)
+    )
+  ),
+  successor_candidate_id BLOB NOT NULL CHECK (
+    length(successor_candidate_id) = 32
+    AND successor_candidate_id <> zeroblob(32)
+  ),
+  writer_environment_id TEXT NOT NULL CHECK (
+    length(writer_environment_id) BETWEEN 1 AND 128
+    AND writer_environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  writer_certificate_id BLOB NOT NULL CHECK (
+    length(writer_certificate_id) = 32
+    AND writer_certificate_id <> zeroblob(32)
+  ),
+  target_membership_generation INTEGER NOT NULL CHECK (
+    target_membership_generation BETWEEN 1 AND 4294967295
+  ),
+  CHECK (
+    (predecessor_candidate_id IS NULL AND target_membership_generation = 1)
+    OR
+    (predecessor_candidate_id IS NOT NULL AND target_membership_generation >= 2)
+  ),
+  CHECK (
+    predecessor_candidate_id IS NULL
+    OR predecessor_candidate_id <> successor_candidate_id
+  ),
+  FOREIGN KEY (project_id, predecessor_candidate_id)
+    REFERENCES continuity_sync_authority_candidates(project_id, candidate_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (project_id, successor_candidate_id)
+    REFERENCES continuity_sync_authority_candidates(project_id, candidate_id)
+    ON DELETE RESTRICT
+) STRICT, WITHOUT ROWID`
+
+const syncAuthorityRecoveryTerminalReceiptsTableSQL = `CREATE TABLE continuity_sync_authority_recovery_terminal_receipts (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  attempt_id BLOB NOT NULL CHECK (
+    length(attempt_id) = 32
+    AND attempt_id <> zeroblob(32)
+  ),
+  outcome TEXT NOT NULL CHECK (
+    outcome IN ('aborted', 'promoted')
+  ),
+  predecessor_candidate_id BLOB CHECK (
+    predecessor_candidate_id IS NULL
+    OR (
+      length(predecessor_candidate_id) = 32
+      AND predecessor_candidate_id <> zeroblob(32)
+    )
+  ),
+  successor_candidate_id BLOB NOT NULL CHECK (
+    length(successor_candidate_id) = 32
+    AND successor_candidate_id <> zeroblob(32)
+  ),
+  writer_environment_id TEXT NOT NULL CHECK (
+    length(writer_environment_id) BETWEEN 1 AND 128
+    AND writer_environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  writer_certificate_id BLOB NOT NULL CHECK (
+    length(writer_certificate_id) = 32
+    AND writer_certificate_id <> zeroblob(32)
+  ),
+  target_membership_generation INTEGER NOT NULL CHECK (
+    target_membership_generation BETWEEN 1 AND 4294967295
+  ),
+  successor_page_count INTEGER NOT NULL CHECK (
+    successor_page_count BETWEEN 1 AND 2305843009213693951
+  ),
+  successor_environment_count INTEGER NOT NULL CHECK (
+    successor_environment_count >= successor_page_count
+    AND successor_environment_count <= successor_page_count * 4
+  ),
+  successor_through_environment_id TEXT NOT NULL CHECK (
+    length(successor_through_environment_id) BETWEEN 1 AND 128
+    AND successor_through_environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  successor_rolling_environment_digest BLOB NOT NULL CHECK (
+    length(successor_rolling_environment_digest) = 32
+    AND successor_rolling_environment_digest <> zeroblob(32)
+  ),
+  successor_ready INTEGER NOT NULL CHECK (
+    successor_ready IN (0, 1)
+  ),
+  successor_authority_digest BLOB CHECK (
+    successor_authority_digest IS NULL
+    OR (
+      length(successor_authority_digest) = 32
+      AND successor_authority_digest <> zeroblob(32)
+    )
+  ),
+  receipt_digest_version INTEGER NOT NULL CHECK (
+    receipt_digest_version = 1
+  ),
+  receipt_digest BLOB NOT NULL CHECK (
+    length(receipt_digest) = 32
+    AND receipt_digest <> zeroblob(32)
+  ),
+  CHECK (
+    (predecessor_candidate_id IS NULL AND target_membership_generation = 1)
+    OR
+    (predecessor_candidate_id IS NOT NULL AND target_membership_generation >= 2)
+  ),
+  CHECK (
+    predecessor_candidate_id IS NULL
+    OR predecessor_candidate_id <> successor_candidate_id
+  ),
+  CHECK (
+    (outcome = 'aborted'
+      AND successor_ready = 0
+      AND successor_authority_digest IS NULL)
+    OR
+    (outcome = 'promoted'
+      AND successor_ready = 1
+      AND successor_authority_digest IS NOT NULL)
+  ),
+  PRIMARY KEY (project_id, attempt_id)
 ) STRICT, WITHOUT ROWID`
 
 const syncAuthorityCandidatePagesFinalIndexSQL = `CREATE UNIQUE INDEX ux_continuity_sync_authority_candidate_pages_final
@@ -1069,6 +1214,16 @@ const syncAuthorityCandidateSchemaV5DDL = syncAuthoritiesTableSQL + ";\n" +
 	syncAuthorityCandidatesActiveIndexV5SQL + ";\n" +
 	syncAuthorityCandidatePagesFinalIndexSQL + ";\n"
 
+const syncAuthorityCandidateSchemaV6DDL = syncAuthoritiesTableSQL + ";\n" +
+	syncAuthorityCandidatesTableSQL + ";\n" +
+	syncAuthorityCandidatePagesTableSQL + ";\n" +
+	syncAuthorityCandidateEnvironmentsTableSQL + ";\n" +
+	syncAuthorityCandidateMembershipEventsTableSQL + ";\n" +
+	syncAuthorityCandidatesActiveIndexSQL + ";\n" +
+	syncAuthorityCandidatesRecoveryPredecessorIndexSQL + ";\n" +
+	syncAuthorityCandidatePagesFinalIndexSQL + ";\n" +
+	syncAuthorityRecoveryTransitionsTableV6SQL + ";\n"
+
 const syncAuthorityCandidateSchemaDDL = syncAuthoritiesTableSQL + ";\n" +
 	syncAuthorityCandidatesTableSQL + ";\n" +
 	syncAuthorityCandidatePagesTableSQL + ";\n" +
@@ -1077,7 +1232,8 @@ const syncAuthorityCandidateSchemaDDL = syncAuthoritiesTableSQL + ";\n" +
 	syncAuthorityCandidatesActiveIndexSQL + ";\n" +
 	syncAuthorityCandidatesRecoveryPredecessorIndexSQL + ";\n" +
 	syncAuthorityCandidatePagesFinalIndexSQL + ";\n" +
-	syncAuthorityRecoveryTransitionsTableSQL + ";\n"
+	syncAuthorityRecoveryTransitionsTableSQL + ";\n" +
+	syncAuthorityRecoveryTerminalReceiptsTableSQL + ";\n"
 
 const schemaV4DDL = schemaTableV4SQL + ";\n" +
 	factsTableSQL + ";\n" +
@@ -1096,6 +1252,16 @@ const schemaV5DDL = schemaTableV5SQL + ";\n" +
 	projectIdentityTriggerSQL + ";\n" +
 	syncSchemaV3DDL +
 	syncAuthorityCandidateSchemaV5DDL +
+	syncRelayWatermarksTableSQL + ";\n"
+
+const schemaV6DDL = schemaTableV6SQL + ";\n" +
+	factsTableSQL + ";\n" +
+	projectIdentityIndexSQL + ";\n" +
+	projectOrderIndexSQL + ";\n" +
+	subjectOrderIndexSQL + ";\n" +
+	projectIdentityTriggerSQL + ";\n" +
+	syncSchemaV3DDL +
+	syncAuthorityCandidateSchemaV6DDL +
 	syncRelayWatermarksTableSQL + ";\n"
 
 const schemaDDL = schemaTableSQL + ";\n" +
@@ -1131,7 +1297,39 @@ func expectedSchemaObjects() []schemaObject {
 		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", sql: syncAuthorityCandidateMembershipEventsTableSQL},
 		{kind: "table", name: "continuity_sync_authority_candidate_pages", table: "continuity_sync_authority_candidate_pages", sql: syncAuthorityCandidatePagesTableSQL},
 		{kind: "table", name: "continuity_sync_authority_candidates", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_recovery_terminal_receipts", table: "continuity_sync_authority_recovery_terminal_receipts", sql: syncAuthorityRecoveryTerminalReceiptsTableSQL},
 		{kind: "table", name: "continuity_sync_authority_recovery_transitions", table: "continuity_sync_authority_recovery_transitions", sql: syncAuthorityRecoveryTransitionsTableSQL},
+		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", sql: syncEnvironmentCertificatesTableSQL},
+		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", sql: syncEnvironmentHeadsTableSQL},
+		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", sql: syncInboxTableSQL},
+		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", sql: syncOutboxTableSQL},
+		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", sql: syncProjectsTableSQL},
+		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
+		{kind: "table", name: "continuity_sync_relay_watermarks", table: "continuity_sync_relay_watermarks", sql: syncRelayWatermarksTableSQL},
+		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
+		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
+	}
+}
+
+func expectedSchemaV6Objects() []schemaObject {
+	return []schemaObject{
+		{kind: "index", name: "ix_continuity_facts_project_order", table: "continuity_facts", sql: projectOrderIndexSQL},
+		{kind: "index", name: "ix_continuity_facts_subject_order", table: "continuity_facts", sql: subjectOrderIndexSQL},
+		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", sql: projectIdentityIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_authority_candidate_pages_final", table: "continuity_sync_authority_candidate_pages", sql: syncAuthorityCandidatePagesFinalIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_authority_candidates_active_project", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesActiveIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_authority_candidates_recovery_predecessor_project", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesRecoveryPredecessorIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesStagingIndexSQL},
+		{kind: "table", name: "continuity_facts", table: "continuity_facts", sql: factsTableSQL},
+		{kind: "table", name: "continuity_schema", table: "continuity_schema", sql: schemaTableV6SQL},
+		{kind: "table", name: "continuity_sync_authorities", table: "continuity_sync_authorities", sql: syncAuthoritiesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_environments", table: "continuity_sync_authority_candidate_environments", sql: syncAuthorityCandidateEnvironmentsTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", sql: syncAuthorityCandidateMembershipEventsTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_pages", table: "continuity_sync_authority_candidate_pages", sql: syncAuthorityCandidatePagesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidates", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_recovery_transitions", table: "continuity_sync_authority_recovery_transitions", sql: syncAuthorityRecoveryTransitionsTableV6SQL},
 		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", sql: syncEnvironmentCertificatesTableSQL},
 		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", sql: syncEnvironmentHeadsTableSQL},
 		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", sql: syncInboxTableSQL},
@@ -1257,6 +1455,10 @@ func checksumSchema() string {
 	return checksumDDL(schemaDDL)
 }
 
+func checksumSchemaV6() string {
+	return checksumDDL(schemaV6DDL)
+}
+
 func checksumSchemaV5() string {
 	return checksumDDL(schemaV5DDL)
 }
@@ -1313,7 +1515,7 @@ func initializeSchemaIfEmpty(db *sql.DB) (bool, error) {
 	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
 		return false, fmt.Errorf("set continuity application id: %w", err)
 	}
-	if _, err := tx.Exec(`PRAGMA user_version = 6`); err != nil {
+	if _, err := tx.Exec(`PRAGMA user_version = 7`); err != nil {
 		return false, fmt.Errorf("set continuity schema version: %w", err)
 	}
 	if _, err := tx.Exec(
@@ -1430,8 +1632,12 @@ func migrateSchema(db *sql.DB) error {
 			if err := migrateSchemaV5ToV6(db); err != nil {
 				return err
 			}
+		case 6:
+			if err := migrateSchemaV6ToV7(db); err != nil {
+				return err
+			}
 		default:
-			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, or %d", version, schemaVersion)
+			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, 6, or %d", version, schemaVersion)
 		}
 	}
 }
@@ -1779,7 +1985,7 @@ func migrateSchemaV5ToV6(db *sql.DB) error {
 	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("recheck continuity v5 schema version in migration: %w", err)
 	}
-	if version == schemaVersion {
+	if version >= 6 && version <= schemaVersion {
 		if err := validateKnownSchemaVersion(tx, version); err != nil {
 			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
 		}
@@ -1808,14 +2014,14 @@ ADD COLUMN role TEXT NOT NULL DEFAULT 'ordinary' CHECK (
 	if _, err := tx.Exec(
 		syncAuthorityCandidatesActiveIndexSQL + ";\n" +
 			syncAuthorityCandidatesRecoveryPredecessorIndexSQL + ";\n" +
-			syncAuthorityRecoveryTransitionsTableSQL + ";\n",
+			syncAuthorityRecoveryTransitionsTableV6SQL + ";\n",
 	); err != nil {
 		return fmt.Errorf("create continuity v6 recovery transition schema: %w", err)
 	}
 	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
 		return fmt.Errorf("drop continuity v5 schema identity: %w", err)
 	}
-	if _, err := tx.Exec(schemaTableSQL); err != nil {
+	if _, err := tx.Exec(schemaTableV6SQL); err != nil {
 		return fmt.Errorf("create continuity v6 schema identity: %w", err)
 	}
 	if _, err := tx.Exec(`PRAGMA user_version = 6`); err != nil {
@@ -1824,12 +2030,12 @@ ADD COLUMN role TEXT NOT NULL DEFAULT 'ordinary' CHECK (
 	if _, err := tx.Exec(
 		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
 		schemaLine,
-		schemaVersion,
-		checksumSchema(),
+		6,
+		checksumSchemaV6(),
 	); err != nil {
 		return fmt.Errorf("record continuity v6 schema identity: %w", err)
 	}
-	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+	if err := validateSchemaVersion(tx, 6, checksumSchemaV6(), expectedSchemaV6Objects()); err != nil {
 		return fmt.Errorf("validate continuity v6 migration: %w", err)
 	}
 	if err := validateForeignKeys(tx); err != nil {
@@ -1837,6 +2043,143 @@ ADD COLUMN role TEXT NOT NULL DEFAULT 'ordinary' CHECK (
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit continuity v6 migration: %w", err)
+	}
+	return nil
+}
+
+func migrateSchemaV6ToV7(db *sql.DB) error {
+	advanced, err := validateMigrationPreflight(db, 6)
+	if err != nil {
+		return fmt.Errorf("validate continuity v6 before migration: %w", err)
+	}
+	if advanced {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin continuity v7 migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	var version int
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("recheck continuity v6 schema version in migration: %w", err)
+	}
+	if version == schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
+		return nil
+	}
+	if version != 6 {
+		return fmt.Errorf("continuity schema changed during v7 migration")
+	}
+	if err := validateSchemaVersion(tx, 6, checksumSchemaV6(), expectedSchemaV6Objects()); err != nil {
+		return fmt.Errorf("revalidate continuity v6 in migration: %w", err)
+	}
+
+	var legacyCount int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM continuity_sync_authority_recovery_transitions`).Scan(&legacyCount); err != nil {
+		return fmt.Errorf("count continuity v6 recovery transitions: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE continuity_sync_authority_recovery_transitions RENAME TO continuity_sync_authority_recovery_transitions_v6`); err != nil {
+		return fmt.Errorf("rename continuity v6 recovery transitions: %w", err)
+	}
+	if _, err := tx.Exec(syncAuthorityRecoveryTransitionsTableSQL + ";\n" + syncAuthorityRecoveryTerminalReceiptsTableSQL + ";\n"); err != nil {
+		return fmt.Errorf("create continuity v7 recovery persistence schema: %w", err)
+	}
+	if _, err := tx.Exec(`
+INSERT INTO continuity_sync_authority_recovery_transitions(
+  project_id, attempt_id, predecessor_candidate_id, successor_candidate_id,
+  writer_environment_id, writer_certificate_id, target_membership_generation
+)
+SELECT
+  project_id, successor_candidate_id, predecessor_candidate_id,
+  successor_candidate_id, writer_environment_id, writer_certificate_id,
+  target_membership_generation
+FROM continuity_sync_authority_recovery_transitions_v6`); err != nil {
+		return fmt.Errorf("copy continuity v6 recovery transitions: %w", err)
+	}
+	if err := validateV6RecoveryTransitionCopy(tx, legacyCount); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE continuity_sync_authority_recovery_transitions_v6`); err != nil {
+		return fmt.Errorf("drop continuity v6 recovery transitions: %w", err)
+	}
+
+	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
+		return fmt.Errorf("drop continuity v6 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(schemaTableSQL); err != nil {
+		return fmt.Errorf("create continuity v7 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 7`); err != nil {
+		return fmt.Errorf("set continuity v7 schema version: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
+		schemaLine,
+		schemaVersion,
+		checksumSchema(),
+	); err != nil {
+		return fmt.Errorf("record continuity v7 schema identity: %w", err)
+	}
+	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+		return fmt.Errorf("validate continuity v7 migration: %w", err)
+	}
+	if err := validateForeignKeys(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit continuity v7 migration: %w", err)
+	}
+	return nil
+}
+
+func validateV6RecoveryTransitionCopy(tx *sql.Tx, legacyCount int64) error {
+	var migratedCount, mismatchedAttemptCount, receiptCount int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM continuity_sync_authority_recovery_transitions`).Scan(&migratedCount); err != nil {
+		return fmt.Errorf("count continuity v7 recovery transitions: %w", err)
+	}
+	if migratedCount != legacyCount {
+		return fmt.Errorf("continuity v7 recovery transition rows = %d, want %d", migratedCount, legacyCount)
+	}
+	if err := tx.QueryRow(`
+SELECT COUNT(*)
+FROM continuity_sync_authority_recovery_transitions
+WHERE attempt_id <> successor_candidate_id`).Scan(&mismatchedAttemptCount); err != nil {
+		return fmt.Errorf("validate continuity v7 recovery attempt backfill: %w", err)
+	}
+	if mismatchedAttemptCount != 0 {
+		return fmt.Errorf("continuity v7 recovery attempt backfill changed %d identities", mismatchedAttemptCount)
+	}
+
+	const legacyColumns = `project_id, predecessor_candidate_id, successor_candidate_id,
+       writer_environment_id, writer_certificate_id, target_membership_generation`
+	var missingCount, extraCount int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM (
+SELECT ` + legacyColumns + ` FROM continuity_sync_authority_recovery_transitions_v6
+EXCEPT
+SELECT ` + legacyColumns + ` FROM continuity_sync_authority_recovery_transitions
+)`).Scan(&missingCount); err != nil {
+		return fmt.Errorf("compare continuity v6 recovery transition source rows: %w", err)
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM (
+SELECT ` + legacyColumns + ` FROM continuity_sync_authority_recovery_transitions
+EXCEPT
+SELECT ` + legacyColumns + ` FROM continuity_sync_authority_recovery_transitions_v6
+)`).Scan(&extraCount); err != nil {
+		return fmt.Errorf("compare continuity v7 recovery transition destination rows: %w", err)
+	}
+	if missingCount != 0 || extraCount != 0 {
+		return fmt.Errorf("continuity v7 recovery transition copy differs: missing=%d extra=%d", missingCount, extraCount)
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM continuity_sync_authority_recovery_terminal_receipts`).Scan(&receiptCount); err != nil {
+		return fmt.Errorf("count continuity v7 recovery terminal receipts: %w", err)
+	}
+	if receiptCount != 0 {
+		return fmt.Errorf("continuity v7 migration synthesized %d recovery terminal receipts", receiptCount)
 	}
 	return nil
 }
@@ -1940,6 +2283,8 @@ func validateKnownSchemaVersion(db schemaQuerier, version int) error {
 		return validateSchemaVersion(db, 4, checksumSchemaV4(), expectedSchemaV4Objects())
 	case 5:
 		return validateSchemaVersion(db, 5, checksumSchemaV5(), expectedSchemaV5Objects())
+	case 6:
+		return validateSchemaVersion(db, 6, checksumSchemaV6(), expectedSchemaV6Objects())
 	case schemaVersion:
 		return validateSchemaVersion(db, schemaVersion, checksumSchema(), expectedSchemaObjects())
 	default:
