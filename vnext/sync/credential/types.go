@@ -203,8 +203,11 @@ func (credential TrustedProjectCredential) Validate() error {
 }
 
 // EphemeralProjectCredential carries only explicit finite generation keys, one
-// typed deletion-anchor bootstrap key, and one expiring environment identity.
-// It cannot derive a future generation or mint/recover project authority.
+// deterministic write-generation selector, one typed deletion-anchor bootstrap
+// key, and one expiring environment identity. The selector must name exactly
+// one carried key authorized by the certificate; inbound opening still selects
+// the exact generation named by each envelope header. It cannot derive a future
+// generation or mint/recover project authority.
 type EphemeralProjectCredential struct {
 	ProjectID                     continuity.ProjectID
 	RelayURL                      string
@@ -215,6 +218,7 @@ type EphemeralProjectCredential struct {
 	EnvironmentSeed               synccrypto.EnvironmentSeed
 	EnvironmentRelayAuthorization RelayBearer
 	RelayTokenExpiresAtMillis     int64
+	WriteGeneration               uint32
 	PruneBootstrapPurposeVersion  uint16
 	PruneBootstrapKey             synccrypto.PruneBootstrapKey
 	GenerationKeys                []synccrypto.GenerationKey
@@ -240,10 +244,10 @@ func (credential EphemeralProjectCredential) Validate() error {
 	if err := validateCommon(credential.ProjectID, credential.RelayURL, credential.RelayGeneration, credential.ChannelID); err != nil {
 		return err
 	}
-	if !credential.EnvironmentRelayAuthorization.valid() || credential.RelayTokenExpiresAtMillis < 1 {
+	if !credential.EnvironmentRelayAuthorization.valid() || credential.RelayTokenExpiresAtMillis < 1 || credential.WriteGeneration < 1 {
 		return ErrInvalidCredential
 	}
-	if credential.Certificate.Mode != protocol.EnvironmentEphemeral || credential.Certificate.ExpiresAtMillis < 1 || credential.RelayTokenExpiresAtMillis > credential.Certificate.ExpiresAtMillis {
+	if credential.Certificate.Mode != protocol.EnvironmentEphemeral || credential.Certificate.ExpiresAtMillis < 1 || credential.RelayTokenExpiresAtMillis > credential.Certificate.ExpiresAtMillis || !credential.Certificate.AllowsGeneration(credential.WriteGeneration) {
 		return ErrInvalidCredential
 	}
 	if err := validateCertificateAuthority(credential.ProjectID, credential.ChannelID, credential.AdminPublicKey, credential.Certificate, credential.EnvironmentSeed); err != nil {
@@ -267,6 +271,7 @@ func (credential EphemeralProjectCredential) Validate() error {
 	if len(credential.GenerationKeys) != len(credential.Certificate.AllowedKeyGenerations) || len(credential.GenerationKeys) < 1 {
 		return ErrInvalidCredential
 	}
+	matchingWriteGenerationKeys := 0
 	for index, key := range credential.GenerationKeys {
 		if key.ProjectID() != credential.ProjectID || key.CipherSuite() != credential.Certificate.CipherSuite || key.Generation() != credential.Certificate.AllowedKeyGenerations[index] {
 			return ErrInvalidCredential
@@ -275,6 +280,12 @@ func (credential EphemeralProjectCredential) Validate() error {
 		if _, err := synccrypto.NewGenerationKey(credential.ProjectID, key.Generation(), keyBytes); err != nil {
 			return ErrInvalidCredential
 		}
+		if key.Generation() == credential.WriteGeneration {
+			matchingWriteGenerationKeys++
+		}
+	}
+	if matchingWriteGenerationKeys != 1 {
+		return ErrInvalidCredential
 	}
 	return nil
 }
