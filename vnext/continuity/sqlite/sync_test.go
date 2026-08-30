@@ -1001,6 +1001,45 @@ func testOpaquePrunedFrame(arrival int64, value string) OpaqueSyncFrame {
 	}
 }
 
+func TestActiveTerminalCandidateGuardsOrdinaryApplyAndStagedDiscard(t *testing.T) {
+	t.Parallel()
+
+	_, store, projectID, authority, frames := terminalCandidateMixedFixtureV1(t, "terminal-candidate-sync-guards", 2)
+	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, authority, frames, 1_000, 100)
+	if err != nil {
+		t.Fatalf("StageVerifiedTerminalCandidateChunk() error = %v", err)
+	}
+	malformed := VerifiedSyncFrame{ArrivalSequence: -1}
+	crossProject := *frames[0].Sealed
+	crossProject.Fact.ProjectID = "project-other"
+	maximumSized := make([]VerifiedSyncFrame, maximumSyncPageFrames)
+	oversized := make([]VerifiedSyncFrame, maximumSyncPageFrames+1)
+	for name, guardedFrames := range map[string][]VerifiedSyncFrame{
+		"empty":         nil,
+		"malformed":     {malformed},
+		"cross-project": {crossProject},
+		"maximum-sized": maximumSized,
+		"oversized":     oversized,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := store.ApplySyncBatch(context.Background(), projectID, guardedFrames, 1_000, 100)
+			assertSyncErrorCode(t, err, SyncErrorTerminalHistoryRequired)
+			var problem *SyncError
+			if !errors.As(err, &problem) || problem.Field != "" || problem.Detail != "" {
+				t.Fatalf("ApplySyncBatch() error = %#v, want content-free terminal guard", err)
+			}
+		})
+	}
+	err = store.DiscardStagedSync(context.Background(), projectID, authority.ChannelID)
+	assertSyncErrorCode(t, err, SyncErrorConflict)
+	if err := store.DiscardTerminalCandidate(context.Background(), projectID, terminalCandidateCheckpointV1(candidate)); err != nil {
+		t.Fatalf("DiscardTerminalCandidate() error = %v", err)
+	}
+	if err := store.DiscardStagedSync(context.Background(), projectID, authority.ChannelID); err != nil {
+		t.Fatalf("DiscardStagedSync(after candidate discard) error = %v", err)
+	}
+}
+
 func opaqueSyncFrameEqual(left, right OpaqueSyncFrame) bool {
 	return left.ArrivalSequence == right.ArrivalSequence &&
 		left.EnvelopeDigest == right.EnvelopeDigest &&
