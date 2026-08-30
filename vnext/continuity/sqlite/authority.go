@@ -114,13 +114,19 @@ func (store *Store) InstallVerifiedSyncAuthority(ctx context.Context, projectID 
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
-
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
 		return SyncProgress{}, err
 	}
 	if !found {
-		_, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
+		activeCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
+		if err != nil {
+			return SyncProgress{}, err
+		}
+		if activeCandidate {
+			return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority_candidate", "must be promoted or discarded before compatibility install")
+		}
+		_, err = readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
@@ -177,18 +183,26 @@ INSERT INTO continuity_sync_authorities(
 		if err != nil {
 			return SyncProgress{}, err
 		}
-		if err := reconcileSyncAuthorityV1(ctx, tx, projectID, persisted, authority); err != nil {
-			return SyncProgress{}, err
-		}
-		persistedDigest, err := frozenSyncAuthorityDigestV1(projectID, persisted)
-		if err != nil {
-			return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata cannot be rederived")
-		}
-		candidateDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
-		if err != nil {
-			return SyncProgress{}, syncProblem(SyncErrorInvalid, "sync_authority", "cannot be encoded by the frozen authority codec")
-		}
-		result, err := tx.ExecContext(ctx, `
+		if !sameSyncAuthorityV1(persisted, authority) {
+			activeCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
+			if err != nil {
+				return SyncProgress{}, err
+			}
+			if activeCandidate {
+				return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority_candidate", "must be promoted or discarded before compatibility install")
+			}
+			if err := reconcileSyncAuthorityV1(ctx, tx, projectID, persisted, authority); err != nil {
+				return SyncProgress{}, err
+			}
+			persistedDigest, err := frozenSyncAuthorityDigestV1(projectID, persisted)
+			if err != nil {
+				return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata cannot be rederived")
+			}
+			candidateDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
+			if err != nil {
+				return SyncProgress{}, syncProblem(SyncErrorInvalid, "sync_authority", "cannot be encoded by the frozen authority codec")
+			}
+			result, err := tx.ExecContext(ctx, `
 UPDATE continuity_sync_authorities
 SET digest_version = 1,
     authority_digest = ?,
@@ -197,11 +211,12 @@ WHERE project_id = ?
   AND digest_version = 1
   AND authority_digest = ?
   AND inventory_arrival_head = 0`, candidateDigest[:], string(projectID), persistedDigest[:])
-		if err != nil {
-			return SyncProgress{}, syncTransactionProblem(ctx)
-		}
-		if err := requireOneAffectedV1(result, ctx); err != nil {
-			return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata changed during reconciliation")
+			if err != nil {
+				return SyncProgress{}, syncTransactionProblem(ctx)
+			}
+			if err := requireOneAffectedV1(result, ctx); err != nil {
+				return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata changed during reconciliation")
+			}
 		}
 	}
 
@@ -209,6 +224,20 @@ WHERE project_id = ?
 		return SyncProgress{}, syncProblem(SyncErrorStore, "", "sync authority commit outcome is unknown")
 	}
 	return progress, nil
+}
+
+func sameSyncAuthorityV1(left, right SyncAuthority) bool {
+	if left.ChannelID != right.ChannelID || left.RelayGeneration != right.RelayGeneration ||
+		left.AdminPublicKey != right.AdminPublicKey || left.MembershipGeneration != right.MembershipGeneration ||
+		left.InventoryArrivalHead != right.InventoryArrivalHead || len(left.Environments) != len(right.Environments) {
+		return false
+	}
+	for index, environment := range left.Environments {
+		if !syncEnvironmentCertificateEqual(environment, right.Environments[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 // CurrentSyncAuthority returns a defensive copy of the project's pinned

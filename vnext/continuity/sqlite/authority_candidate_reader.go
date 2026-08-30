@@ -47,6 +47,19 @@ const syncAuthorityCandidateFirstPageByCursorQueryV2 = syncAuthorityCandidatePag
 const syncAuthorityCandidateSubsequentPageByCursorQueryV2 = syncAuthorityCandidatePageByCursorSelectV2 + `
   AND after_environment_id = ?`
 
+const syncAuthorityCandidateMembershipEventStreamQueryV2 = `
+SELECT
+  event.membership_generation, event.event_kind, event.environment_id,
+  environment.join_membership_generation,
+  environment.retirement_membership_generation
+FROM continuity_sync_authority_candidate_membership_events AS event
+LEFT JOIN continuity_sync_authority_candidate_environments AS environment
+  ON environment.project_id = event.project_id
+ AND environment.candidate_id = event.candidate_id
+ AND environment.environment_id = event.environment_id
+WHERE event.project_id = ? AND event.candidate_id = ?
+ORDER BY event.membership_generation`
+
 func readActiveSyncAuthorityCandidateHeaderV2(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (persistedSyncAuthorityCandidateV2, bool, error) {
 	rows, err := tx.QueryContext(ctx, `
 SELECT
@@ -551,18 +564,9 @@ func samePersistedSyncAuthorityCandidatePageHeaderV2(left, right persistedSyncAu
 }
 
 func streamAndValidateSyncAuthorityCandidateEventsV2(ctx context.Context, tx *sql.Tx, persisted persistedSyncAuthorityCandidateV2) error {
-	rows, err := tx.QueryContext(ctx, `
-SELECT
-  event.membership_generation, event.event_kind, event.environment_id,
-  environment.join_membership_generation,
-  environment.retirement_membership_generation
-FROM continuity_sync_authority_candidate_membership_events AS event
-LEFT JOIN continuity_sync_authority_candidate_environments AS environment
-  ON environment.project_id = event.project_id
- AND environment.candidate_id = event.candidate_id
- AND environment.environment_id = event.environment_id
-WHERE event.project_id = ? AND event.candidate_id = ?
-ORDER BY event.membership_generation`, string(persisted.candidate.ProjectID), persisted.candidate.CandidateID[:])
+	rows, err := tx.QueryContext(ctx, syncAuthorityCandidateMembershipEventStreamQueryV2,
+		string(persisted.candidate.ProjectID), persisted.candidate.CandidateID[:],
+	)
 	if err != nil {
 		return syncTransactionProblem(ctx)
 	}

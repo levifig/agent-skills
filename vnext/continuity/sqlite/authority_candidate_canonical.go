@@ -46,6 +46,82 @@ const canonicalSyncAuthoritySubsequentFinalPageRangeQueryV2 = canonicalSyncAutho
 ORDER BY environment_id
 LIMIT ?`
 
+const canonicalSyncAuthorityInventoryQueryV2 = `
+SELECT
+  environment_id, certificate_id, certificate_bytes, mode, expires_at_millis,
+  join_membership_generation, retirement_relay_generation,
+  retirement_membership_generation, retirement_final_environment_sequence,
+  retirement_final_envelope_digest, retirement_id, retirement_bytes
+FROM continuity_sync_environment_certificates
+WHERE project_id = ?
+ORDER BY environment_id`
+
+const canonicalSyncAuthorityLegacyInventoryQueryV2 = canonicalSyncAuthorityInventoryQueryV2 + `
+LIMIT ?`
+
+const syncAuthorityCandidateOmittedCanonicalInventoryQueryV2 = `
+SELECT EXISTS (
+  SELECT 1
+  FROM continuity_sync_environment_certificates AS canonical
+  LEFT JOIN continuity_sync_authority_candidate_environments AS candidate
+    ON candidate.project_id = ?
+   AND candidate.candidate_id = ?
+   AND candidate.environment_id = canonical.environment_id
+  WHERE canonical.project_id = ?
+    AND candidate.environment_id IS NULL
+    AND (? = 1 OR canonical.environment_id <= ?)
+)`
+
+const syncAuthorityCandidateChangedCanonicalInventoryQueryV2 = `
+SELECT EXISTS (
+  SELECT 1
+  FROM continuity_sync_authority_candidate_environments AS candidate
+  JOIN continuity_sync_environment_certificates AS canonical
+    ON canonical.project_id = candidate.project_id
+   AND canonical.environment_id = candidate.environment_id
+  WHERE candidate.project_id = ? AND candidate.candidate_id = ?
+    AND (
+      NOT (
+        candidate.certificate_id IS canonical.certificate_id
+        AND candidate.certificate_bytes IS canonical.certificate_bytes
+        AND candidate.mode = canonical.mode
+        AND candidate.expires_at_millis = canonical.expires_at_millis
+        AND candidate.join_membership_generation = canonical.join_membership_generation
+      )
+      OR NOT (
+        (canonical.retirement_id IS NULL AND candidate.retirement_id IS NULL)
+        OR (
+          canonical.retirement_id IS NOT NULL
+          AND candidate.retirement_id IS NOT NULL
+          AND candidate.retirement_relay_generation IS canonical.retirement_relay_generation
+          AND candidate.retirement_membership_generation = canonical.retirement_membership_generation
+          AND candidate.retirement_final_environment_sequence = canonical.retirement_final_environment_sequence
+          AND candidate.retirement_final_envelope_digest IS canonical.retirement_final_envelope_digest
+          AND candidate.retirement_id IS canonical.retirement_id
+          AND candidate.retirement_bytes IS canonical.retirement_bytes
+        )
+        OR (
+          canonical.retirement_id IS NULL
+          AND candidate.retirement_id IS NOT NULL
+          AND ? = 1 AND ? = 1
+          AND candidate.retirement_membership_generation > ?
+        )
+      )
+    )
+)`
+
+const syncAuthorityCandidateInvalidNewInventoryQueryV2 = `
+SELECT EXISTS (
+  SELECT 1
+  FROM continuity_sync_authority_candidate_environments AS candidate
+  LEFT JOIN continuity_sync_environment_certificates AS canonical
+    ON canonical.project_id = candidate.project_id
+   AND canonical.environment_id = candidate.environment_id
+  WHERE candidate.project_id = ? AND candidate.candidate_id = ?
+    AND canonical.environment_id IS NULL
+    AND (? = 0 OR candidate.join_membership_generation <= ?)
+)`
+
 func readCanonicalSyncAuthorityBaseV2(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (canonicalSyncAuthorityBaseV2, error) {
 	var base canonicalSyncAuthorityBaseV2
 	var channelID, relayGeneration, adminPublicKey []byte
@@ -221,7 +297,27 @@ func validateSyncAuthorityCandidatePageAgainstCanonicalV2(
 	return nil
 }
 
-func validateCanonicalSyncAuthorityForCandidateV2(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, base canonicalSyncAuthorityBaseV2) error {
+// validateReadySyncAuthorityCandidateAgainstCanonicalV2 is the load-bearing
+// composite proof for a fully validated persisted READY candidate. Candidate
+// event coverage supplies the exact membership-generation stream; the two
+// canonical passes below prove that every canonical event is retained and that
+// only joins and terminal retirements after the canonical base are appended.
+func validateReadySyncAuthorityCandidateAgainstCanonicalV2(
+	ctx context.Context,
+	tx *sql.Tx,
+	candidate persistedSyncAuthorityCandidateV2,
+	base canonicalSyncAuthorityBaseV2,
+) error {
+	if candidate.state != "ready" || !candidate.candidate.Ready {
+		return corruptSyncAuthorityCandidateV2("composite validation requires a ready candidate")
+	}
+	if err := validateCanonicalSyncAuthorityStructureAndDigestV2(ctx, tx, candidate.candidate.ProjectID, base); err != nil {
+		return err
+	}
+	return validateReadySyncAuthorityCandidateInventoryAgainstCanonicalV2(ctx, tx, candidate, base)
+}
+
+func validateCanonicalSyncAuthorityStructureAndDigestV2(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, base canonicalSyncAuthorityBaseV2) error {
 	if !base.found {
 		return nil
 	}
@@ -244,15 +340,7 @@ func validateCanonicalSyncAuthorityForCandidateV2(ctx context.Context, tx *sql.T
 	if err != nil {
 		return syncProblem(SyncErrorStore, "sync_authority", "pinned v2 authority rolling seed cannot be derived")
 	}
-	rows, err := tx.QueryContext(ctx, `
-SELECT
-  environment_id, certificate_id, certificate_bytes, mode, expires_at_millis,
-  join_membership_generation, retirement_relay_generation,
-  retirement_membership_generation, retirement_final_environment_sequence,
-  retirement_final_envelope_digest, retirement_id, retirement_bytes
-FROM continuity_sync_environment_certificates
-WHERE project_id = ?
-ORDER BY environment_id`, string(projectID))
+	rows, err := tx.QueryContext(ctx, canonicalSyncAuthorityInventoryQueryV2, string(projectID))
 	if err != nil {
 		return syncTransactionProblem(ctx)
 	}
@@ -293,26 +381,6 @@ ORDER BY environment_id`, string(projectID))
 	if environmentCount < 1 {
 		return syncProblem(SyncErrorStore, "sync_authority", "pinned v2 authority inventory is empty")
 	}
-	var eventCount, distinctEvents int64
-	var firstEvent, lastEvent sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `
-WITH membership_events(generation) AS (
-  SELECT join_membership_generation
-  FROM continuity_sync_environment_certificates
-  WHERE project_id = ?
-  UNION ALL
-  SELECT retirement_membership_generation
-  FROM continuity_sync_environment_certificates
-  WHERE project_id = ? AND retirement_membership_generation IS NOT NULL
-)
-SELECT COUNT(*), COUNT(DISTINCT generation), MIN(generation), MAX(generation)
-FROM membership_events`, string(projectID), string(projectID)).Scan(&eventCount, &distinctEvents, &firstEvent, &lastEvent); err != nil {
-		return syncTransactionProblem(ctx)
-	}
-	if eventCount != int64(base.authority.MembershipGeneration) || distinctEvents != eventCount || !firstEvent.Valid || firstEvent.Int64 != 1 ||
-		!lastEvent.Valid || lastEvent.Int64 != eventCount {
-		return syncProblem(SyncErrorStore, "sync_authority", "pinned v2 authority membership coverage is corrupt")
-	}
 	digest, err := finalizeSyncAuthorityDigestV2(headerDigest, environmentCount, rolling)
 	if err != nil || digest != base.digest {
 		return syncProblem(SyncErrorStore, "sync_authority", "pinned v2 authority metadata is stale")
@@ -320,7 +388,7 @@ FROM membership_events`, string(projectID), string(projectID)).Scan(&eventCount,
 	return nil
 }
 
-func validateFullSyncAuthorityCandidateAgainstCanonicalV2(ctx context.Context, tx *sql.Tx, candidate persistedSyncAuthorityCandidateV2, base canonicalSyncAuthorityBaseV2) error {
+func validateReadySyncAuthorityCandidateInventoryAgainstCanonicalV2(ctx context.Context, tx *sql.Tx, candidate persistedSyncAuthorityCandidateV2, base canonicalSyncAuthorityBaseV2) error {
 	if !base.found {
 		return nil
 	}
@@ -328,18 +396,7 @@ func validateFullSyncAuthorityCandidateAgainstCanonicalV2(ctx context.Context, t
 		return err
 	}
 	var omitted int
-	if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1
-  FROM continuity_sync_environment_certificates AS canonical
-  LEFT JOIN continuity_sync_authority_candidate_environments AS candidate
-    ON candidate.project_id = ?
-   AND candidate.candidate_id = ?
-   AND candidate.environment_id = canonical.environment_id
-  WHERE canonical.project_id = ?
-    AND candidate.environment_id IS NULL
-    AND (? = 1 OR canonical.environment_id <= ?)
-)`,
+	if err := tx.QueryRowContext(ctx, syncAuthorityCandidateOmittedCanonicalInventoryQueryV2,
 		string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], string(candidate.candidate.ProjectID),
 		boolIntV2(candidate.candidate.Ready), candidate.candidate.ThroughEnvironmentID,
 	).Scan(&omitted); err != nil {
@@ -351,60 +408,18 @@ SELECT EXISTS (
 	var changed int
 	headAdvanced := candidate.candidate.Snapshot.InventoryArrivalHead > base.authority.InventoryArrivalHead
 	membershipAdvanced := candidate.candidate.Snapshot.MembershipGeneration > base.authority.MembershipGeneration
-	if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1
-  FROM continuity_sync_authority_candidate_environments AS candidate
-  JOIN continuity_sync_environment_certificates AS canonical
-    ON canonical.project_id = candidate.project_id
-   AND canonical.environment_id = candidate.environment_id
-  WHERE candidate.project_id = ? AND candidate.candidate_id = ?
-    AND (
-      NOT (
-        candidate.certificate_id IS canonical.certificate_id
-        AND candidate.certificate_bytes IS canonical.certificate_bytes
-        AND candidate.mode = canonical.mode
-        AND candidate.expires_at_millis = canonical.expires_at_millis
-        AND candidate.join_membership_generation = canonical.join_membership_generation
-      )
-      OR NOT (
-        (canonical.retirement_id IS NULL AND candidate.retirement_id IS NULL)
-        OR (
-          canonical.retirement_id IS NOT NULL
-          AND candidate.retirement_id IS NOT NULL
-          AND candidate.retirement_relay_generation IS canonical.retirement_relay_generation
-          AND candidate.retirement_membership_generation = canonical.retirement_membership_generation
-          AND candidate.retirement_final_environment_sequence = canonical.retirement_final_environment_sequence
-          AND candidate.retirement_final_envelope_digest IS canonical.retirement_final_envelope_digest
-          AND candidate.retirement_id IS canonical.retirement_id
-          AND candidate.retirement_bytes IS canonical.retirement_bytes
-        )
-        OR (
-          canonical.retirement_id IS NULL
-          AND candidate.retirement_id IS NOT NULL
-          AND ? = 1 AND ? = 1
-          AND candidate.retirement_membership_generation > ?
-        )
-      )
-    )
-)`, string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(headAdvanced), boolIntV2(membershipAdvanced), base.authority.MembershipGeneration).Scan(&changed); err != nil {
+	if err := tx.QueryRowContext(ctx, syncAuthorityCandidateChangedCanonicalInventoryQueryV2,
+		string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(headAdvanced), boolIntV2(membershipAdvanced), base.authority.MembershipGeneration,
+	).Scan(&changed); err != nil {
 		return syncTransactionProblem(ctx)
 	}
 	if changed != 0 {
 		return syncProblem(SyncErrorConflict, "environment", "changes a canonical environment or retirement")
 	}
 	var invalidNew int
-	if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1
-  FROM continuity_sync_authority_candidate_environments AS candidate
-  LEFT JOIN continuity_sync_environment_certificates AS canonical
-    ON canonical.project_id = candidate.project_id
-   AND canonical.environment_id = candidate.environment_id
-  WHERE candidate.project_id = ? AND candidate.candidate_id = ?
-    AND canonical.environment_id IS NULL
-    AND (? = 0 OR candidate.join_membership_generation <= ?)
-)`, string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(headAdvanced), base.authority.MembershipGeneration).Scan(&invalidNew); err != nil {
+	if err := tx.QueryRowContext(ctx, syncAuthorityCandidateInvalidNewInventoryQueryV2,
+		string(candidate.candidate.ProjectID), candidate.candidate.CandidateID[:], boolIntV2(headAdvanced), base.authority.MembershipGeneration,
+	).Scan(&invalidNew); err != nil {
 		return syncTransactionProblem(ctx)
 	}
 	if invalidNew != 0 {
@@ -461,15 +476,13 @@ WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &digestBytes, &au
 	}
 	var digest [32]byte
 	copy(digest[:], digestBytes)
-	rows, err := tx.QueryContext(ctx, `
-SELECT
-  environment_id, certificate_id, certificate_bytes, mode, expires_at_millis,
-  join_membership_generation, retirement_relay_generation,
-  retirement_membership_generation, retirement_final_environment_sequence,
-  retirement_final_envelope_digest, retirement_id, retirement_bytes
-FROM continuity_sync_environment_certificates
-WHERE project_id = ?
-ORDER BY environment_id`, string(projectID))
+	inventoryQuery := canonicalSyncAuthorityInventoryQueryV2
+	inventoryArguments := []any{string(projectID)}
+	if digestVersion == 1 {
+		inventoryQuery = canonicalSyncAuthorityLegacyInventoryQueryV2
+		inventoryArguments = append(inventoryArguments, maximumSyncAuthorityEnvironments+1)
+	}
+	rows, err := tx.QueryContext(ctx, inventoryQuery, inventoryArguments...)
 	if err != nil {
 		return SyncAuthority{}, 0, [32]byte{}, false, syncTransactionProblem(ctx)
 	}
@@ -481,6 +494,10 @@ ORDER BY environment_id`, string(projectID))
 		if err != nil {
 			rows.Close()
 			return SyncAuthority{}, 0, [32]byte{}, false, err
+		}
+		if digestVersion == 1 && len(authority.Environments) == maximumSyncAuthorityEnvironments {
+			rows.Close()
+			return SyncAuthority{}, 0, [32]byte{}, false, syncProblem(SyncErrorStore, "sync_authority", "pinned v1 authority inventory exceeds the fixed bound")
 		}
 		if err := validateSyncAuthorityCandidateEnvironmentV2(environment, len(authority.Environments)); err != nil ||
 			environment.EnvironmentID <= previousEnvironmentID || environment.JoinMembershipGeneration > authority.MembershipGeneration ||

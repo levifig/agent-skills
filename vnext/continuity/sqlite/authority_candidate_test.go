@@ -523,7 +523,7 @@ func TestSyncAuthorityCandidateResumesMultiPageCanonicalBaseAfterReopen(t *testi
 	}
 }
 
-func TestCurrentAndDiscardSyncAuthorityCandidateRecoverAfterCanonicalAdvance(t *testing.T) {
+func TestCurrentAndDiscardSyncAuthorityCandidatePermitCanonicalAdvanceAfterDiscard(t *testing.T) {
 	stateRoot := filepath.Join(testTempDir(t), "authority-candidate-stale-base-recovery")
 	store, err := Open(stateRoot, "environment-local")
 	if err != nil {
@@ -557,8 +557,10 @@ func TestCurrentAndDiscardSyncAuthorityCandidateRecoverAfterCanonicalAdvance(t *
 	advancedCanonical := cloneSyncAuthority(canonical)
 	advancedCanonical.MembershipGeneration = 4
 	advancedCanonical.Environments = target
-	if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, advancedCanonical); err != nil {
-		t.Fatalf("InstallVerifiedSyncAuthority(advance) error = %v", err)
+	if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, advancedCanonical); err == nil {
+		t.Fatal("InstallVerifiedSyncAuthority(active candidate) error = nil")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorConflict)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -570,22 +572,16 @@ func TestCurrentAndDiscardSyncAuthorityCandidateRecoverAfterCanonicalAdvance(t *
 	t.Cleanup(func() { store.Close() })
 	current, found, err := store.CurrentSyncAuthorityCandidate(context.Background(), projectID)
 	if err != nil || !found || current != first {
-		t.Fatalf("CurrentSyncAuthorityCandidate(stale base) = (%#v, %v, %v), want (%#v, true, nil)", current, found, err, first)
+		t.Fatalf("CurrentSyncAuthorityCandidate(after rejected advance) = (%#v, %v, %v), want (%#v, true, nil)", current, found, err, first)
 	}
-	if _, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, firstPage); err == nil {
-		t.Fatal("exact replay against stale base error = nil")
-	} else {
-		assertSyncErrorCode(t, err, SyncErrorConflict)
-	}
-	if _, err := store.StageVerifiedSyncAuthorityCandidatePage(
-		context.Background(), projectID, snapshot, syncAuthorityCandidatePageV2(first.ThroughEnvironmentID, target[1:], false),
-	); err == nil {
-		t.Fatal("resume against stale base error = nil")
-	} else {
-		assertSyncErrorCode(t, err, SyncErrorConflict)
+	if replayed, err := store.StageVerifiedSyncAuthorityCandidatePage(context.Background(), projectID, snapshot, firstPage); err != nil || replayed != first {
+		t.Fatalf("exact replay after rejected advance = (%#v, %v), want (%#v, nil)", replayed, err, first)
 	}
 	if err := store.DiscardSyncAuthorityCandidate(context.Background(), projectID, first.Checkpoint()); err != nil {
-		t.Fatalf("DiscardSyncAuthorityCandidate(stale base) error = %v", err)
+		t.Fatalf("DiscardSyncAuthorityCandidate() error = %v", err)
+	}
+	if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, advancedCanonical); err != nil {
+		t.Fatalf("InstallVerifiedSyncAuthority(after discard) error = %v", err)
 	}
 	persistedCanonical, err := store.CurrentSyncAuthority(context.Background(), projectID)
 	if err != nil || !syncAuthorityEqual(persistedCanonical, advancedCanonical) {

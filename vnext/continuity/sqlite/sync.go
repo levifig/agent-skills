@@ -254,6 +254,13 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 		}
 		return progress, nil
 	}
+	activeAuthorityCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
+	if err != nil {
+		return SyncProgress{}, err
+	}
+	if activeAuthorityCandidate {
+		return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority_candidate", "must be promoted or discarded before activation")
+	}
 	if progress.DownloadedCursor != progress.AppliedCursor {
 		return SyncProgress{}, syncProblem(SyncErrorActivation, "cursor", "downloaded and applied cursors must agree")
 	}
@@ -338,6 +345,13 @@ func (store *Store) DiscardStagedSync(ctx context.Context, projectID continuity.
 	}
 	if progress.ActivationState != SyncActivationStaging {
 		return syncProblem(SyncErrorConflict, "activation_state", "attached channel binding is terminal")
+	}
+	authorityCandidate, err := anySyncAuthorityCandidateExistsV2(ctx, tx, projectID)
+	if err != nil {
+		return err
+	}
+	if authorityCandidate {
+		return syncProblem(SyncErrorConflict, "sync_authority_candidate", "permanent authority candidate state prevents staged sync discard")
 	}
 	activeCandidate, err := activeTerminalCandidateExistsV1(ctx, tx, projectID)
 	if err != nil {
