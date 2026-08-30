@@ -109,14 +109,8 @@ func (store *Store) RegisterEnvironment(ctx context.Context, request relay.Regis
 	if err := validateContext(ctx); err != nil {
 		return relay.ChannelState{}, err
 	}
-	if err := request.Authorization.Validate(); err != nil {
+	if err := validateEnvironmentRegistrationRequest(request); err != nil {
 		return relay.ChannelState{}, err
-	}
-	if err := request.Environment.Validate(); err != nil {
-		return relay.ChannelState{}, err
-	}
-	if request.Authorization.ChannelID != request.Environment.ChannelID {
-		return relay.ChannelState{}, fmt.Errorf("%w: channel binding", relay.ErrInvalidArgument)
 	}
 	if err := store.readLock(); err != nil {
 		return relay.ChannelState{}, err
@@ -129,91 +123,17 @@ func (store *Store) RegisterEnvironment(ctx context.Context, request relay.Regis
 		if err != nil {
 			return err
 		}
-		var certificateID, certificateBytes, tokenID, tokenHash []byte
-		var mode string
-		var expiresAtMillis, tokenExpiresAtMillis int64
-		var joinedGeneration uint32
-		var retiredAt sql.NullInt64
-		err = tx.QueryRowContext(ctx, `
-SELECT certificate_id, certificate_bytes, mode, expires_at_millis,
-       membership_generation, token_id, token_hash, token_expires_at_millis, retired_at_millis
-FROM relay_environments
-WHERE channel_id = ? AND environment_id = ?`,
-			request.Environment.ChannelID[:], string(request.Environment.EnvironmentID),
-		).Scan(
-			&certificateID,
-			&certificateBytes,
-			&mode,
-			&expiresAtMillis,
-			&joinedGeneration,
-			&tokenID,
-			&tokenHash,
-			&tokenExpiresAtMillis,
-			&retiredAt,
-		)
-		switch {
-		case err == nil:
-			if !bytes.Equal(certificateID, request.Environment.CertificateID[:]) ||
-				!bytes.Equal(certificateBytes, request.Environment.CertificateBytes) ||
-				mode != string(request.Environment.Mode) || expiresAtMillis != request.Environment.ExpiresAtMillis ||
-				joinedGeneration != request.Environment.MembershipGeneration ||
-				!bytes.Equal(tokenID, request.Environment.Token.TokenID[:]) ||
-				!bytes.Equal(tokenHash, request.Environment.Token.TokenHash[:]) ||
-				tokenExpiresAtMillis != request.Environment.RelayTokenExpiresAtMillis {
-				return relay.ErrImmutableConflict
-			}
-			// A lost-response retry proves the immutable registration already
-			// committed, but it must not imply that a now-retired or now-expired
-			// identity remains usable.
-			if retiredAt.Valid {
-				return relay.ErrRetired
-			}
-			nowMillis := store.now().UTC().UnixMilli()
-			if (expiresAtMillis != 0 && nowMillis >= expiresAtMillis) ||
-				(tokenExpiresAtMillis != 0 && nowMillis >= tokenExpiresAtMillis) {
-				return relay.ErrExpired
-			}
-			head, err := channelHead(ctx, tx, request.Environment.ChannelID)
-			if err != nil {
-				return err
-			}
-			state = relay.ChannelState{
-				ChannelID:            channel.authority.ChannelID,
-				RelayGeneration:      channel.authority.RelayGeneration,
-				MembershipGeneration: channel.membershipGeneration,
-				Head:                 head,
-				CreatedAt:            millisTime(channel.createdAtMillis),
-			}
+		classification, err := store.classifyEnvironmentRegistration(ctx, tx, channel, request.Environment)
+		if err != nil {
+			return err
+		}
+		switch classification.status.Disposition {
+		case relay.EnvironmentRegistrationExact:
+			state = classification.status.State
 			return nil
-		case !errors.Is(err, sql.ErrNoRows):
-			return fmt.Errorf("read relay environment identity: %w", err)
-		}
-		if channel.membershipGeneration == math.MaxUint32 || request.Environment.MembershipGeneration != channel.membershipGeneration+1 {
-			return relay.ErrMembershipChanged
-		}
-		nowMillis := store.now().UTC().UnixMilli()
-		if (request.Environment.ExpiresAtMillis != 0 && nowMillis >= request.Environment.ExpiresAtMillis) ||
-			(request.Environment.RelayTokenExpiresAtMillis != 0 && nowMillis >= request.Environment.RelayTokenExpiresAtMillis) {
-			return relay.ErrExpired
-		}
-		var conflictCount int
-		if err := tx.QueryRowContext(ctx, `
-SELECT (
-  SELECT COUNT(*) FROM relay_environments
-  WHERE (channel_id = ? AND (environment_id = ? OR certificate_id = ?)) OR token_id = ?
-) + (
-  SELECT COUNT(*) FROM relay_channels WHERE owner_token_id = ?
-)`,
-			request.Environment.ChannelID[:],
-			string(request.Environment.EnvironmentID),
-			request.Environment.CertificateID[:],
-			request.Environment.Token.TokenID[:],
-			request.Environment.Token.TokenID[:],
-		).Scan(&conflictCount); err != nil {
-			return fmt.Errorf("check relay environment identity: %w", err)
-		}
-		if conflictCount != 0 {
-			return relay.ErrImmutableConflict
+		case relay.EnvironmentRegistrationAbsent:
+		default:
+			return fmt.Errorf("relay environment registration classification is invalid")
 		}
 		if err := store.verifier.VerifyEnvironmentCertificate(ctx, relay.EnvironmentCertificateAuthority{
 			ChannelAuthority:     channel.authority,
@@ -258,7 +178,7 @@ INSERT INTO relay_environments(
 			request.Environment.Token.TokenID[:],
 			request.Environment.Token.TokenHash[:],
 			request.Environment.RelayTokenExpiresAtMillis,
-			nowMillis,
+			classification.nowMillis,
 		); err != nil {
 			return fmt.Errorf("insert relay environment: %w", err)
 		}
@@ -285,6 +205,211 @@ WHERE channel_id = ?`, request.Environment.MembershipGeneration, request.Environ
 		return relay.ChannelState{}, err
 	}
 	return state, nil
+}
+
+// ClassifyEnvironmentRegistration authenticates the owner and classifies the
+// complete immutable registration tuple without invoking cryptographic
+// verification or changing relay state.
+func (store *Store) ClassifyEnvironmentRegistration(ctx context.Context, request relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
+	if err := validateContext(ctx); err != nil {
+		return relay.EnvironmentRegistrationStatus{}, err
+	}
+	if err := validateEnvironmentRegistrationRequest(request); err != nil {
+		return relay.EnvironmentRegistrationStatus{}, err
+	}
+	if err := store.readLock(); err != nil {
+		return relay.EnvironmentRegistrationStatus{}, err
+	}
+	defer store.readUnlock()
+
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return relay.EnvironmentRegistrationStatus{}, fmt.Errorf("begin relay registration classification: %w", err)
+	}
+	channel, classifyErr := authenticateOwner(ctx, tx, request.Authorization)
+	var classification environmentRegistrationClassification
+	if classifyErr == nil {
+		classification, classifyErr = store.classifyEnvironmentRegistration(ctx, tx, channel, request.Environment)
+	}
+	rollbackErr := tx.Rollback()
+	if classifyErr != nil {
+		if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			return relay.EnvironmentRegistrationStatus{}, errors.Join(classifyErr, fmt.Errorf("rollback relay registration classification: %w", rollbackErr))
+		}
+		return relay.EnvironmentRegistrationStatus{}, classifyErr
+	}
+	if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+		return relay.EnvironmentRegistrationStatus{}, fmt.Errorf("rollback relay registration classification: %w", rollbackErr)
+	}
+	return classification.status, nil
+}
+
+type environmentRegistrationRecord struct {
+	certificateID             []byte
+	certificateBytes          []byte
+	mode                      string
+	expiresAtMillis           int64
+	membershipGeneration      uint32
+	tokenID                   []byte
+	tokenHash                 []byte
+	relayTokenExpiresAtMillis int64
+	retiredAt                 sql.NullInt64
+}
+
+type environmentRegistrationClassification struct {
+	status    relay.EnvironmentRegistrationStatus
+	nowMillis int64
+}
+
+func validateEnvironmentRegistrationRequest(request relay.RegisterEnvironmentRequest) error {
+	if err := request.Authorization.Validate(); err != nil {
+		return err
+	}
+	if err := request.Environment.Validate(); err != nil {
+		return err
+	}
+	if request.Authorization.ChannelID != request.Environment.ChannelID {
+		return fmt.Errorf("%w: channel binding", relay.ErrInvalidArgument)
+	}
+	return nil
+}
+
+func (store *Store) classifyEnvironmentRegistration(
+	ctx context.Context,
+	tx *sql.Tx,
+	channel channelRecord,
+	environment relay.Environment,
+) (environmentRegistrationClassification, error) {
+	record, found, err := readEnvironmentRegistration(ctx, tx, environment)
+	if err != nil {
+		return environmentRegistrationClassification{}, err
+	}
+	if found {
+		if !record.matches(environment) {
+			return environmentRegistrationClassification{}, relay.ErrImmutableConflict
+		}
+		// A lost-response retry proves the immutable registration already
+		// committed, but it must not imply that a now-retired or now-expired
+		// identity remains usable.
+		if record.retiredAt.Valid {
+			return environmentRegistrationClassification{}, relay.ErrRetired
+		}
+		nowMillis := store.now().UTC().UnixMilli()
+		if registrationExpired(record.expiresAtMillis, record.relayTokenExpiresAtMillis, nowMillis) {
+			return environmentRegistrationClassification{}, relay.ErrExpired
+		}
+		state, err := currentRegistrationChannelState(ctx, tx, channel)
+		if err != nil {
+			return environmentRegistrationClassification{}, err
+		}
+		return environmentRegistrationClassification{status: relay.EnvironmentRegistrationStatus{
+			Disposition: relay.EnvironmentRegistrationExact,
+			State:       state,
+		}}, nil
+	}
+	if channel.membershipGeneration == math.MaxUint32 || environment.MembershipGeneration != channel.membershipGeneration+1 {
+		return environmentRegistrationClassification{}, relay.ErrMembershipChanged
+	}
+	nowMillis := store.now().UTC().UnixMilli()
+	if registrationExpired(environment.ExpiresAtMillis, environment.RelayTokenExpiresAtMillis, nowMillis) {
+		return environmentRegistrationClassification{}, relay.ErrExpired
+	}
+	conflict, err := environmentRegistrationConflict(ctx, tx, environment)
+	if err != nil {
+		return environmentRegistrationClassification{}, err
+	}
+	if conflict {
+		return environmentRegistrationClassification{}, relay.ErrImmutableConflict
+	}
+	state, err := currentRegistrationChannelState(ctx, tx, channel)
+	if err != nil {
+		return environmentRegistrationClassification{}, err
+	}
+	return environmentRegistrationClassification{
+		status: relay.EnvironmentRegistrationStatus{
+			Disposition: relay.EnvironmentRegistrationAbsent,
+			State:       state,
+		},
+		nowMillis: nowMillis,
+	}, nil
+}
+
+func readEnvironmentRegistration(ctx context.Context, tx *sql.Tx, environment relay.Environment) (environmentRegistrationRecord, bool, error) {
+	var record environmentRegistrationRecord
+	err := tx.QueryRowContext(ctx, `
+SELECT certificate_id, certificate_bytes, mode, expires_at_millis,
+       membership_generation, token_id, token_hash, token_expires_at_millis, retired_at_millis
+FROM relay_environments
+WHERE channel_id = ? AND environment_id = ?`,
+		environment.ChannelID[:], string(environment.EnvironmentID),
+	).Scan(
+		&record.certificateID,
+		&record.certificateBytes,
+		&record.mode,
+		&record.expiresAtMillis,
+		&record.membershipGeneration,
+		&record.tokenID,
+		&record.tokenHash,
+		&record.relayTokenExpiresAtMillis,
+		&record.retiredAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return environmentRegistrationRecord{}, false, nil
+	}
+	if err != nil {
+		return environmentRegistrationRecord{}, false, fmt.Errorf("read relay environment identity: %w", err)
+	}
+	return record, true, nil
+}
+
+func (record environmentRegistrationRecord) matches(environment relay.Environment) bool {
+	return bytes.Equal(record.certificateID, environment.CertificateID[:]) &&
+		bytes.Equal(record.certificateBytes, environment.CertificateBytes) &&
+		record.mode == string(environment.Mode) &&
+		record.expiresAtMillis == environment.ExpiresAtMillis &&
+		record.membershipGeneration == environment.MembershipGeneration &&
+		bytes.Equal(record.tokenID, environment.Token.TokenID[:]) &&
+		bytes.Equal(record.tokenHash, environment.Token.TokenHash[:]) &&
+		record.relayTokenExpiresAtMillis == environment.RelayTokenExpiresAtMillis
+}
+
+func registrationExpired(expiresAtMillis, relayTokenExpiresAtMillis, nowMillis int64) bool {
+	return (expiresAtMillis != 0 && nowMillis >= expiresAtMillis) ||
+		(relayTokenExpiresAtMillis != 0 && nowMillis >= relayTokenExpiresAtMillis)
+}
+
+func environmentRegistrationConflict(ctx context.Context, tx *sql.Tx, environment relay.Environment) (bool, error) {
+	var conflictCount int
+	if err := tx.QueryRowContext(ctx, `
+SELECT (
+  SELECT COUNT(*) FROM relay_environments
+  WHERE (channel_id = ? AND (environment_id = ? OR certificate_id = ?)) OR token_id = ?
+) + (
+  SELECT COUNT(*) FROM relay_channels WHERE owner_token_id = ?
+)`,
+		environment.ChannelID[:],
+		string(environment.EnvironmentID),
+		environment.CertificateID[:],
+		environment.Token.TokenID[:],
+		environment.Token.TokenID[:],
+	).Scan(&conflictCount); err != nil {
+		return false, fmt.Errorf("check relay environment identity: %w", err)
+	}
+	return conflictCount != 0, nil
+}
+
+func currentRegistrationChannelState(ctx context.Context, tx *sql.Tx, channel channelRecord) (relay.ChannelState, error) {
+	head, err := channelHead(ctx, tx, channel.authority.ChannelID)
+	if err != nil {
+		return relay.ChannelState{}, err
+	}
+	return relay.ChannelState{
+		ChannelID:            channel.authority.ChannelID,
+		RelayGeneration:      channel.authority.RelayGeneration,
+		MembershipGeneration: channel.membershipGeneration,
+		Head:                 head,
+		CreatedAt:            millisTime(channel.createdAtMillis),
+	}, nil
 }
 
 func (store *Store) RetireEnvironment(ctx context.Context, request relay.RetireEnvironmentRequest) (relay.ChannelState, error) {

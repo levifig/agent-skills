@@ -20,6 +20,7 @@ type Remote interface {
 	PruneInventory(context.Context, relay.PruneInventoryRequest) (relay.PruneInventoryPage, error)
 	Page(context.Context, relay.PageRequest) (relay.Page, error)
 	CreateChannel(context.Context, relay.Channel) (relay.ChannelState, error)
+	ClassifyEnvironmentRegistration(context.Context, relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error)
 	RegisterEnvironment(context.Context, relay.RegisterEnvironmentRequest) (relay.ChannelState, error)
 }
 

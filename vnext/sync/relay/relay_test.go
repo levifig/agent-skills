@@ -3,8 +3,31 @@ package relay
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"testing"
 )
+
+func TestEnvironmentRegistrationStatusExposesOnlyDispositionAndChannelState(t *testing.T) {
+	t.Parallel()
+
+	statusType := reflect.TypeOf(EnvironmentRegistrationStatus{})
+	if statusType.NumField() != 2 {
+		t.Fatalf("EnvironmentRegistrationStatus fields = %d, want exactly disposition and state", statusType.NumField())
+	}
+	want := []struct {
+		name   string
+		typeOf reflect.Type
+	}{
+		{name: "Disposition", typeOf: reflect.TypeOf(EnvironmentRegistrationDisposition(0))},
+		{name: "State", typeOf: reflect.TypeOf(ChannelState{})},
+	}
+	for index, expected := range want {
+		field := statusType.Field(index)
+		if field.Name != expected.name || field.Type != expected.typeOf {
+			t.Fatalf("EnvironmentRegistrationStatus field %d = %s %v, want %s %v", index, field.Name, field.Type, expected.name, expected.typeOf)
+		}
+	}
+}
 
 func TestRelayTokenSecretHashRequiresHighEntropyInputAndVerifiesPresentedSecret(t *testing.T) {
 	t.Parallel()

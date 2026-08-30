@@ -916,6 +916,10 @@ func (remote *remoteFixture) RegisterEnvironment(_ context.Context, request rela
 	return relay.ChannelState{}, relay.ErrInvalidArgument
 }
 
+func (remote *remoteFixture) ClassifyEnvironmentRegistration(_ context.Context, _ relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error) {
+	return relay.EnvironmentRegistrationStatus{}, relay.ErrInvalidArgument
+}
+
 func (remote *remoteFixture) Page(_ context.Context, _ relay.PageRequest) (relay.Page, error) {
 	remote.pageCalls++
 	return relay.Page{}, relay.ErrInvalidArgument
