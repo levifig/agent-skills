@@ -48,6 +48,7 @@ func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 		"sqlite/sync.go",
 		"sqlite/terminal_candidate.go",
 		"sqlite/terminal_candidate_codec.go",
+		"sqlite/terminal_candidate_promotion.go",
 		"sqlite/terminal_history.go",
 		"sqlite/wire_v1.go",
 		"sqlite/wire_validation_v1.go",
