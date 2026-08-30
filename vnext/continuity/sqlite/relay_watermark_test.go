@@ -58,6 +58,61 @@ func TestAdvanceSyncRelayWatermarkInsertsReplaysAdvancesReopensAndRejectsLower(t
 	assertSyncRelayWatermarkRow(t, store, advanced)
 }
 
+func TestAdvanceSyncRelayWatermarkWriteFailuresAreAtomicAndFieldless(t *testing.T) {
+	const forbidden = "relay-watermark-sensitive-write-detail"
+	for _, test := range []struct {
+		name      string
+		operation string
+		seed      bool
+	}{
+		{name: "insert", operation: "INSERT"},
+		{name: "update", operation: "UPDATE", seed: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := openSyncStore(t, "relay-watermark-write-failure-"+test.name)
+			initial := testSyncRelayWatermark(continuity.ProjectID("project-relay-watermark-write-failure-"+test.name), 5)
+			if test.seed {
+				if _, err := store.AdvanceSyncRelayWatermark(context.Background(), initial); err != nil {
+					t.Fatalf("seed relay watermark: %v", err)
+				}
+			}
+			if _, err := store.db.Exec(`CREATE TRIGGER reject_relay_watermark_write
+BEFORE ` + test.operation + ` ON continuity_sync_relay_watermarks
+BEGIN SELECT RAISE(FAIL, '` + forbidden + `'); END`); err != nil {
+				t.Fatalf("install %s failure trigger: %v", test.name, err)
+			}
+
+			want := initial
+			if test.seed {
+				want.RelayHead++
+			}
+			got, err := store.AdvanceSyncRelayWatermark(context.Background(), want)
+			if !reflect.DeepEqual(got, SyncRelayWatermark{}) || err == nil {
+				t.Fatalf("AdvanceSyncRelayWatermark(%s failure) = (%#v, %v), want zero and error", test.name, got, err)
+			}
+			var problem *SyncError
+			if !errors.As(err, &problem) || problem.Code != SyncErrorStore || problem.Field != "" {
+				t.Fatalf("%s failure error = %#v, want fieldless store error", test.name, err)
+			}
+			if strings.Contains(err.Error(), forbidden) {
+				t.Fatalf("%s failure leaked SQLite detail: %v", test.name, err)
+			}
+
+			if test.seed {
+				assertSyncRelayWatermarkRow(t, store, initial)
+				return
+			}
+			var count int
+			if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_relay_watermarks`).Scan(&count); err != nil {
+				t.Fatalf("count relay watermark rows: %v", err)
+			}
+			if count != 0 {
+				t.Fatalf("failed insert retained %d relay watermark rows, want zero", count)
+			}
+		})
+	}
+}
+
 func TestAdvanceSyncRelayWatermarkRejectsAdminEquivocationAndKeepsRelayGenerationsIndependent(t *testing.T) {
 	store := openSyncStore(t, "relay-watermark-identity")
 	first := testSyncRelayWatermark("project-relay-watermark-identity", 7)

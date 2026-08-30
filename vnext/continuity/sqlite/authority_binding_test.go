@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"testing"
 
 	"github.com/levifig/loaf/vnext/continuity"
@@ -198,7 +199,10 @@ func TestCurrentSyncAuthorityBindingFailsClosedOnMalformedRows(t *testing.T) {
 			if _, err := store.CurrentSyncAuthorityBinding(context.Background(), projectID); err == nil {
 				t.Fatal("CurrentSyncAuthorityBinding(corrupt rows) error = nil")
 			} else {
-				assertSyncErrorCode(t, err, SyncErrorStore)
+				var problem *SyncError
+				if !errors.As(err, &problem) || problem.Code != SyncErrorStore || problem.Field != "sync_authority" {
+					t.Fatalf("CurrentSyncAuthorityBinding(corrupt rows) error = %#v, want fielded authority store error", err)
+				}
 			}
 		})
 	}

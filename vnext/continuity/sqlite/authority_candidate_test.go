@@ -1060,14 +1060,20 @@ func TestSyncAuthorityCandidateReadersFailClosedOnPersistedCorruption(t *testing
 			if _, found, err := store.CurrentSyncAuthorityCandidate(context.Background(), projectID); err == nil || found {
 				t.Fatalf("CurrentSyncAuthorityCandidate(corrupt) = (_, %v, %v), want (_, false, store error)", found, err)
 			} else {
-				assertSyncErrorCode(t, err, SyncErrorStore)
+				var problem *SyncError
+				if !errors.As(err, &problem) || problem.Code != SyncErrorStore || problem.Field != "sync_authority_candidate" {
+					t.Fatalf("CurrentSyncAuthorityCandidate(corrupt) error = %#v, want fielded candidate store error", err)
+				}
 			}
 			if _, err := store.StageVerifiedSyncAuthorityCandidatePage(
 				context.Background(), projectID, snapshot, syncAuthorityCandidatePageV2(first.ThroughEnvironmentID, environments[2:], false),
 			); err == nil {
 				t.Fatal("stage after corruption error = nil")
 			} else {
-				assertSyncErrorCode(t, err, SyncErrorStore)
+				var problem *SyncError
+				if !errors.As(err, &problem) || problem.Code != SyncErrorStore || problem.Field != "sync_authority_candidate" {
+					t.Fatalf("stage after corruption error = %#v, want fielded candidate store error", err)
+				}
 			}
 		})
 	}
