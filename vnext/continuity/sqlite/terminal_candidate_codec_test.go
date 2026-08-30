@@ -157,6 +157,12 @@ func TestTerminalCandidateAuthorityDigestBindsCompleteSnapshotV1(t *testing.T) {
 	if !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) || authorityDigest != ([32]byte{}) || candidateID != ([32]byte{}) {
 		t.Fatalf("invalid authority result = (%x, %x, %v), want zero content-free refusal", authorityDigest, candidateID, err)
 	}
+	invalid = cloneSyncAuthority(base)
+	invalid.InventoryArrivalHead = 1
+	authorityDigest, candidateID, err = deriveTerminalCandidateIdentityV1(projectID, invalid, 11)
+	if !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) || authorityDigest != ([32]byte{}) || candidateID != ([32]byte{}) {
+		t.Fatalf("nonzero-head v1 authority result = (%x, %x, %v), want zero content-free refusal", authorityDigest, candidateID, err)
+	}
 }
 
 func TestTerminalCandidateAuthorityTranscriptAcceptsExactMaximumInventoryV1(t *testing.T) {

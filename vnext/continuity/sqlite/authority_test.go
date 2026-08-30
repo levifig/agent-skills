@@ -65,6 +65,9 @@ func TestContinuityStoreInstallsAndReadsExactSyncAuthority(t *testing.T) {
 	if !syncAuthorityEqual(got, authority) {
 		t.Fatalf("CurrentSyncAuthority() = %#v, want %#v", got, authority)
 	}
+	if got.InventoryArrivalHead != 0 {
+		t.Fatalf("CurrentSyncAuthority().InventoryArrivalHead = %d, want compatibility head 0", got.InventoryArrivalHead)
+	}
 	if len(got.Environments) != 2 || got.Environments[0].EnvironmentID != "environment-a" || got.Environments[1].EnvironmentID != "environment-b" {
 		t.Fatalf("environment inventory order = %#v, want sorted", got.Environments)
 	}
@@ -84,6 +87,188 @@ func TestContinuityStoreInstallsAndReadsExactSyncAuthority(t *testing.T) {
 	retry, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, authority)
 	if err != nil || retry != (SyncProgress{ProjectID: projectID, ChannelID: authority.ChannelID, ActivationState: SyncActivationStaging}) {
 		t.Fatalf("InstallVerifiedSyncAuthority(exact retry) = %#v, %v", retry, err)
+	}
+}
+
+func TestContinuityStoreRejectsNonzeroCompatibilityAuthorityHead(t *testing.T) {
+	t.Parallel()
+
+	store := openSyncStore(t, "authority-nonzero-head")
+	projectID := continuity.ProjectID("project-authority-nonzero-head")
+	authority := testSyncAuthority()
+	authority.InventoryArrivalHead = 1
+
+	if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, authority); err == nil {
+		t.Fatal("InstallVerifiedSyncAuthority() error = nil, want nonzero compatibility head refusal")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorInvalid)
+		var problem *SyncError
+		if !errors.As(err, &problem) || problem.Field != "inventory_arrival_head" {
+			t.Fatalf("InstallVerifiedSyncAuthority() error = %v, want inventory_arrival_head", err)
+		}
+	}
+	if _, err := store.CurrentSyncAuthority(context.Background(), projectID); err == nil {
+		t.Fatal("nonzero-head refusal created canonical authority")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorNotFound)
+	}
+}
+
+func TestContinuityStoreRequiresExactCanonicalAuthorityMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		suffix string
+		mutate func(*testing.T, *Store, continuity.ProjectID)
+	}{
+		{
+			name:   "missing",
+			suffix: "missing",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`DELETE FROM continuity_sync_authorities WHERE project_id = ?`, string(projectID)); err != nil {
+					t.Fatalf("delete authority metadata: %v", err)
+				}
+			},
+		},
+		{
+			name:   "stale digest",
+			suffix: "stale-digest",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				staleDigest := testAuthorityDigest(0xf1)
+				if _, err := store.db.Exec(`UPDATE continuity_sync_authorities SET authority_digest = ? WHERE project_id = ?`, staleDigest[:], string(projectID)); err != nil {
+					t.Fatalf("change authority metadata digest: %v", err)
+				}
+			},
+		},
+		{
+			name:   "unsupported digest version",
+			suffix: "unsupported-version",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`PRAGMA ignore_check_constraints = ON`); err != nil {
+					t.Fatalf("enable corruption fixture: %v", err)
+				}
+				if _, err := store.db.Exec(`UPDATE continuity_sync_authorities SET digest_version = 2 WHERE project_id = ?`, string(projectID)); err != nil {
+					t.Fatalf("change authority metadata version: %v", err)
+				}
+			},
+		},
+		{
+			name:   "zero digest",
+			suffix: "zero-digest",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`PRAGMA ignore_check_constraints = ON`); err != nil {
+					t.Fatalf("enable corruption fixture: %v", err)
+				}
+				if _, err := store.db.Exec(`UPDATE continuity_sync_authorities SET authority_digest = zeroblob(32) WHERE project_id = ?`, string(projectID)); err != nil {
+					t.Fatalf("zero authority metadata digest: %v", err)
+				}
+			},
+		},
+		{
+			name:   "malformed digest",
+			suffix: "malformed-digest",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`PRAGMA ignore_check_constraints = ON`); err != nil {
+					t.Fatalf("enable corruption fixture: %v", err)
+				}
+				if _, err := store.db.Exec(`UPDATE continuity_sync_authorities SET authority_digest = zeroblob(31) WHERE project_id = ?`, string(projectID)); err != nil {
+					t.Fatalf("malform authority metadata digest: %v", err)
+				}
+			},
+		},
+		{
+			name:   "nonzero v1 head",
+			suffix: "nonzero-v1-head",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`PRAGMA ignore_check_constraints = ON`); err != nil {
+					t.Fatalf("enable corruption fixture: %v", err)
+				}
+				if _, err := store.db.Exec(`UPDATE continuity_sync_authorities SET inventory_arrival_head = 1 WHERE project_id = ?`, string(projectID)); err != nil {
+					t.Fatalf("change authority metadata head: %v", err)
+				}
+			},
+		},
+		{
+			name:   "canonical membership mutation",
+			suffix: "canonical-membership",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`UPDATE continuity_sync_projects SET membership_generation = membership_generation + 1 WHERE project_id = ?`, string(projectID)); err != nil {
+					t.Fatalf("change canonical membership: %v", err)
+				}
+			},
+		},
+		{
+			name:   "canonical certificate mutation",
+			suffix: "canonical-certificate",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`UPDATE continuity_sync_environment_certificates SET certificate_bytes = X'01' WHERE project_id = ? AND environment_id = 'environment-b'`, string(projectID)); err != nil {
+					t.Fatalf("change canonical certificate: %v", err)
+				}
+			},
+		},
+		{
+			name:   "canonical retirement mutation",
+			suffix: "canonical-retirement",
+			mutate: func(t *testing.T, store *Store, projectID continuity.ProjectID) {
+				t.Helper()
+				if _, err := store.db.Exec(`UPDATE continuity_sync_environment_certificates SET retirement_bytes = X'02' WHERE project_id = ? AND environment_id = 'environment-a'`, string(projectID)); err != nil {
+					t.Fatalf("change canonical retirement: %v", err)
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			store := openSyncStore(t, "authority-metadata-"+test.suffix)
+			projectID := continuity.ProjectID("project-authority-metadata-" + test.suffix)
+			initial := testSyncAuthority()
+			if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, initial); err != nil {
+				t.Fatalf("InstallVerifiedSyncAuthority() error = %v", err)
+			}
+			test.mutate(t, store, projectID)
+			var membershipBeforeAttempt int64
+			if err := store.db.QueryRow(`SELECT membership_generation FROM continuity_sync_projects WHERE project_id = ?`, string(projectID)).Scan(&membershipBeforeAttempt); err != nil {
+				t.Fatalf("read membership before refused advance: %v", err)
+			}
+
+			if _, err := store.CurrentSyncAuthority(context.Background(), projectID); err == nil {
+				t.Fatal("CurrentSyncAuthority() error = nil, want corrupt metadata refusal")
+			} else {
+				assertSyncErrorCode(t, err, SyncErrorStore)
+			}
+			advanced := cloneSyncAuthority(initial)
+			advanced.MembershipGeneration++
+			advanced.Environments = append(advanced.Environments, SyncEnvironmentCertificate{
+				EnvironmentID:            "environment-c",
+				CertificateID:            testAuthorityDigest(0xf2),
+				CertificateBytes:         []byte("environment-c-certificate"),
+				Mode:                     SyncEnvironmentTrusted,
+				JoinMembershipGeneration: advanced.MembershipGeneration,
+			})
+			if _, err := store.InstallVerifiedSyncAuthority(context.Background(), projectID, advanced); err == nil {
+				t.Fatal("InstallVerifiedSyncAuthority(advance) error = nil, want corrupt metadata refusal")
+			} else {
+				assertSyncErrorCode(t, err, SyncErrorStore)
+			}
+			var membership int64
+			if err := store.db.QueryRow(`SELECT membership_generation FROM continuity_sync_projects WHERE project_id = ?`, string(projectID)).Scan(&membership); err != nil {
+				t.Fatalf("read membership after refused advance: %v", err)
+			}
+			if membership != membershipBeforeAttempt {
+				t.Fatalf("membership after refused advance = %d, want unchanged %d", membership, membershipBeforeAttempt)
+			}
+		})
 	}
 }
 
@@ -445,6 +630,7 @@ func cloneSyncAuthority(value SyncAuthority) SyncAuthority {
 func syncAuthorityEqual(left, right SyncAuthority) bool {
 	if left.ChannelID != right.ChannelID || left.RelayGeneration != right.RelayGeneration ||
 		left.AdminPublicKey != right.AdminPublicKey || left.MembershipGeneration != right.MembershipGeneration ||
+		left.InventoryArrivalHead != right.InventoryArrivalHead ||
 		len(left.Environments) != len(right.Environments) {
 		return false
 	}

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -61,6 +62,7 @@ type SyncAuthority struct {
 	RelayGeneration      [32]byte
 	AdminPublicKey       [32]byte
 	MembershipGeneration uint32
+	InventoryArrivalHead int64
 	Environments         []SyncEnvironmentCertificate
 }
 
@@ -75,6 +77,9 @@ func (store *Store) InstallVerifiedSyncAuthority(ctx context.Context, projectID 
 	}
 	if err := validateSyncAuthorityIdentity(authority); err != nil {
 		return SyncProgress{}, err
+	}
+	if authority.InventoryArrivalHead != 0 {
+		return SyncProgress{}, syncProblem(SyncErrorInvalid, "inventory_arrival_head", "compatibility installs require zero until paged authority staging is available")
 	}
 	if store == nil {
 		return SyncProgress{}, syncProblem(SyncErrorStore, "", "store is closed")
@@ -105,6 +110,10 @@ func (store *Store) InstallVerifiedSyncAuthority(ctx context.Context, projectID 
 		if err := validateSyncAuthority(authority); err != nil {
 			return SyncProgress{}, err
 		}
+		authorityDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
+		if err != nil {
+			return SyncProgress{}, syncProblem(SyncErrorInvalid, "sync_authority", "cannot be encoded by the frozen authority codec")
+		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO continuity_sync_projects(
   project_id, channel_id, relay_generation, admin_public_key,
@@ -124,6 +133,12 @@ INSERT INTO continuity_sync_projects(
 				return SyncProgress{}, err
 			}
 		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO continuity_sync_authorities(
+  project_id, digest_version, authority_digest, inventory_arrival_head
+) VALUES(?, 1, ?, 0)`, string(projectID), authorityDigest[:]); err != nil {
+			return SyncProgress{}, syncTransactionProblem(ctx)
+		}
 		progress = SyncProgress{
 			ProjectID:       projectID,
 			ChannelID:       authority.ChannelID,
@@ -136,6 +151,29 @@ INSERT INTO continuity_sync_projects(
 		}
 		if err := reconcileSyncAuthorityV1(ctx, tx, projectID, persisted, authority); err != nil {
 			return SyncProgress{}, err
+		}
+		persistedDigest, err := frozenSyncAuthorityDigestV1(projectID, persisted)
+		if err != nil {
+			return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata cannot be rederived")
+		}
+		candidateDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
+		if err != nil {
+			return SyncProgress{}, syncProblem(SyncErrorInvalid, "sync_authority", "cannot be encoded by the frozen authority codec")
+		}
+		result, err := tx.ExecContext(ctx, `
+UPDATE continuity_sync_authorities
+SET digest_version = 1,
+    authority_digest = ?,
+    inventory_arrival_head = 0
+WHERE project_id = ?
+  AND digest_version = 1
+  AND authority_digest = ?
+  AND inventory_arrival_head = 0`, candidateDigest[:], string(projectID), persistedDigest[:])
+		if err != nil {
+			return SyncProgress{}, syncTransactionProblem(ctx)
+		}
+		if err := requireOneAffectedV1(result, ctx); err != nil {
+			return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata changed during reconciliation")
 		}
 	}
 
@@ -189,6 +227,17 @@ func validateSyncProjectID(projectID continuity.ProjectID) error {
 		return syncProblem(SyncErrorInvalid, "project_id", "is invalid")
 	}
 	return nil
+}
+
+func frozenSyncAuthorityDigestV1(projectID continuity.ProjectID, authority SyncAuthority) ([32]byte, error) {
+	if authority.InventoryArrivalHead != 0 {
+		return [32]byte{}, errors.New("frozen authority digest v1 requires inventory arrival head zero")
+	}
+	transcript, err := terminalCandidateAuthorityTranscriptV1(projectID, authority)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(transcript), nil
 }
 
 func validateSyncAuthority(authority SyncAuthority) error {
@@ -267,6 +316,9 @@ func validateSyncAuthorityIdentity(authority SyncAuthority) error {
 	if authority.MembershipGeneration == 0 {
 		return syncProblem(SyncErrorInvalid, "membership_generation", "must begin at one")
 	}
+	if authority.InventoryArrivalHead < 0 {
+		return syncProblem(SyncErrorInvalid, "inventory_arrival_head", "must not be negative")
+	}
 	return nil
 }
 
@@ -295,6 +347,35 @@ func validateSyncEnvironmentRetirement(authority SyncAuthority, environment Sync
 }
 
 func readSyncAuthorityV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (SyncAuthority, error) {
+	authority, err := readLegacySyncAuthorityV3(ctx, tx, projectID)
+	if err != nil {
+		return SyncAuthority{}, err
+	}
+	var digestBytes []byte
+	var digestVersion int64
+	var inventoryArrivalHead int64
+	err = tx.QueryRowContext(ctx, `
+SELECT digest_version, authority_digest, inventory_arrival_head
+FROM continuity_sync_authorities
+WHERE project_id = ?`, string(projectID)).Scan(&digestVersion, &digestBytes, &inventoryArrivalHead)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SyncAuthority{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata is missing")
+	}
+	if err != nil {
+		return SyncAuthority{}, syncTransactionProblem(ctx)
+	}
+	if digestVersion != 1 || len(digestBytes) != sha256.Size || bytes.Equal(digestBytes, make([]byte, sha256.Size)) || inventoryArrivalHead != 0 {
+		return SyncAuthority{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata is corrupt")
+	}
+	wantDigest, err := frozenSyncAuthorityDigestV1(projectID, authority)
+	if err != nil || !bytes.Equal(digestBytes, wantDigest[:]) {
+		return SyncAuthority{}, syncProblem(SyncErrorStore, "sync_authority", "pinned authority metadata is stale")
+	}
+	authority.InventoryArrivalHead = inventoryArrivalHead
+	return authority, nil
+}
+
+func readLegacySyncAuthorityV3(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID) (SyncAuthority, error) {
 	var authority SyncAuthority
 	var channelID, relayGeneration, adminPublicKey []byte
 	var membershipGeneration int64

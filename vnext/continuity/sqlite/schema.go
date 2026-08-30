@@ -1,17 +1,20 @@
 package sqlite
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/levifig/loaf/vnext/continuity"
 )
 
 const (
 	applicationID = 1280267825
 	schemaLine    = "vnext"
-	schemaVersion = 3
+	schemaVersion = 4
 )
 
 const schemaTableV1SQL = `CREATE TABLE continuity_schema (
@@ -34,10 +37,20 @@ const schemaTableV2SQL = `CREATE TABLE continuity_schema (
   )
 ) STRICT`
 
-const schemaTableSQL = `CREATE TABLE continuity_schema (
+const schemaTableV3SQL = `CREATE TABLE continuity_schema (
   singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
   schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
   schema_version INTEGER NOT NULL CHECK (schema_version = 3),
+  schema_checksum TEXT NOT NULL CHECK (
+    length(schema_checksum) = 64
+    AND schema_checksum NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT`
+
+const schemaTableSQL = `CREATE TABLE continuity_schema (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 4),
   schema_checksum TEXT NOT NULL CHECK (
     length(schema_checksum) = 64
     AND schema_checksum NOT GLOB '*[^0-9a-f]*'
@@ -582,6 +595,264 @@ const syncTerminalCandidatesStagingIndexSQL = `CREATE UNIQUE INDEX ux_continuity
 ON continuity_sync_terminal_candidates(project_id)
 WHERE state = 'staging'`
 
+const syncAuthoritiesTableSQL = `CREATE TABLE continuity_sync_authorities (
+  project_id TEXT NOT NULL PRIMARY KEY CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  digest_version INTEGER NOT NULL CHECK (digest_version IN (1, 2)),
+  authority_digest BLOB NOT NULL CHECK (
+    length(authority_digest) = 32 AND authority_digest <> zeroblob(32)
+  ),
+  inventory_arrival_head INTEGER NOT NULL CHECK (
+    inventory_arrival_head >= 0
+  ),
+  CHECK (digest_version <> 1 OR inventory_arrival_head = 0),
+  FOREIGN KEY (project_id) REFERENCES continuity_sync_projects(project_id)
+    ON DELETE CASCADE
+) STRICT, WITHOUT ROWID`
+
+const syncAuthorityCandidatesTableSQL = `CREATE TABLE continuity_sync_authority_candidates (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  candidate_id BLOB NOT NULL CHECK (
+    length(candidate_id) = 32 AND candidate_id <> zeroblob(32)
+  ),
+  state TEXT NOT NULL CHECK (state IN ('staging', 'ready', 'promoted')),
+  channel_id BLOB NOT NULL CHECK (
+    length(channel_id) = 32 AND channel_id <> zeroblob(32)
+  ),
+  relay_generation BLOB NOT NULL CHECK (
+    length(relay_generation) = 32 AND relay_generation <> zeroblob(32)
+  ),
+  admin_public_key BLOB NOT NULL CHECK (
+    length(admin_public_key) = 32 AND admin_public_key <> zeroblob(32)
+  ),
+  membership_generation INTEGER NOT NULL CHECK (
+    membership_generation BETWEEN 1 AND 4294967295
+  ),
+  inventory_arrival_head INTEGER NOT NULL CHECK (
+    inventory_arrival_head >= 0
+  ),
+  base_authority_digest_version INTEGER CHECK (
+    base_authority_digest_version IS NULL
+    OR base_authority_digest_version IN (1, 2)
+  ),
+  base_authority_digest BLOB CHECK (
+    base_authority_digest IS NULL
+    OR (
+      length(base_authority_digest) = 32
+      AND base_authority_digest <> zeroblob(32)
+    )
+  ),
+  page_count INTEGER NOT NULL CHECK (page_count > 0),
+  environment_count INTEGER NOT NULL CHECK (environment_count > 0),
+  through_environment_id TEXT NOT NULL CHECK (
+    length(through_environment_id) BETWEEN 1 AND 128
+    AND through_environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  rolling_environment_digest BLOB NOT NULL CHECK (
+    length(rolling_environment_digest) = 32
+    AND rolling_environment_digest <> zeroblob(32)
+  ),
+  authority_digest_version INTEGER NOT NULL CHECK (
+    authority_digest_version = 2
+  ),
+  authority_digest BLOB CHECK (
+    authority_digest IS NULL
+    OR (
+      length(authority_digest) = 32
+      AND authority_digest <> zeroblob(32)
+    )
+  ),
+  CHECK (
+    (base_authority_digest_version IS NULL AND base_authority_digest IS NULL)
+    OR
+    (base_authority_digest_version IS NOT NULL AND base_authority_digest IS NOT NULL)
+  ),
+  CHECK (
+    (state = 'staging' AND authority_digest IS NULL)
+    OR
+    (state IN ('ready', 'promoted') AND authority_digest IS NOT NULL)
+  ),
+  PRIMARY KEY (project_id, candidate_id)
+) STRICT, WITHOUT ROWID`
+
+const syncAuthorityCandidatePagesTableSQL = `CREATE TABLE continuity_sync_authority_candidate_pages (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  candidate_id BLOB NOT NULL CHECK (
+    length(candidate_id) = 32 AND candidate_id <> zeroblob(32)
+  ),
+  page_number INTEGER NOT NULL CHECK (page_number > 0),
+  after_environment_id TEXT CHECK (
+    after_environment_id IS NULL
+    OR (
+      length(after_environment_id) BETWEEN 1 AND 128
+      AND after_environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+    )
+  ),
+  through_environment_id TEXT NOT NULL CHECK (
+    length(through_environment_id) BETWEEN 1 AND 128
+    AND through_environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  environment_count INTEGER NOT NULL CHECK (
+    environment_count BETWEEN 1 AND 4
+  ),
+  more INTEGER NOT NULL CHECK (more IN (0, 1)),
+  page_digest BLOB NOT NULL CHECK (
+    length(page_digest) = 32 AND page_digest <> zeroblob(32)
+  ),
+  resulting_environment_count INTEGER NOT NULL CHECK (
+    resulting_environment_count >= environment_count
+  ),
+  resulting_rolling_digest BLOB NOT NULL CHECK (
+    length(resulting_rolling_digest) = 32
+    AND resulting_rolling_digest <> zeroblob(32)
+  ),
+  CHECK (
+    (page_number = 1 AND after_environment_id IS NULL)
+    OR
+    (page_number > 1 AND after_environment_id IS NOT NULL)
+  ),
+  CHECK (
+    after_environment_id IS NULL
+    OR through_environment_id > after_environment_id
+  ),
+  PRIMARY KEY (project_id, candidate_id, page_number),
+  UNIQUE (project_id, candidate_id, after_environment_id),
+  FOREIGN KEY (project_id, candidate_id)
+    REFERENCES continuity_sync_authority_candidates(project_id, candidate_id)
+    ON DELETE CASCADE
+) STRICT, WITHOUT ROWID`
+
+const syncAuthorityCandidateEnvironmentsTableSQL = `CREATE TABLE continuity_sync_authority_candidate_environments (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  candidate_id BLOB NOT NULL CHECK (
+    length(candidate_id) = 32 AND candidate_id <> zeroblob(32)
+  ),
+  environment_id TEXT NOT NULL CHECK (
+    length(environment_id) BETWEEN 1 AND 128
+    AND environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  environment_ordinal INTEGER NOT NULL CHECK (environment_ordinal > 0),
+  page_number INTEGER NOT NULL CHECK (page_number > 0),
+  certificate_id BLOB NOT NULL CHECK (
+    length(certificate_id) = 32 AND certificate_id <> zeroblob(32)
+  ),
+  certificate_bytes BLOB NOT NULL CHECK (
+    length(certificate_bytes) BETWEEN 1 AND 8192
+  ),
+  mode TEXT NOT NULL CHECK (mode IN ('trusted', 'ephemeral')),
+  expires_at_millis INTEGER NOT NULL CHECK (expires_at_millis >= 0),
+  join_membership_generation INTEGER NOT NULL CHECK (
+    join_membership_generation BETWEEN 1 AND 4294967295
+  ),
+  retirement_relay_generation BLOB CHECK (
+    retirement_relay_generation IS NULL
+    OR (
+      length(retirement_relay_generation) = 32
+      AND retirement_relay_generation <> zeroblob(32)
+    )
+  ),
+  retirement_membership_generation INTEGER CHECK (
+    retirement_membership_generation IS NULL
+    OR retirement_membership_generation BETWEEN 1 AND 4294967295
+  ),
+  retirement_final_environment_sequence INTEGER CHECK (
+    retirement_final_environment_sequence IS NULL
+    OR retirement_final_environment_sequence >= 0
+  ),
+  retirement_final_envelope_digest BLOB CHECK (
+    retirement_final_envelope_digest IS NULL
+    OR length(retirement_final_envelope_digest) = 32
+  ),
+  retirement_id BLOB CHECK (
+    retirement_id IS NULL
+    OR (length(retirement_id) = 32 AND retirement_id <> zeroblob(32))
+  ),
+  retirement_bytes BLOB CHECK (
+    retirement_bytes IS NULL
+    OR length(retirement_bytes) BETWEEN 1 AND 4096
+  ),
+  CHECK (
+    (mode = 'trusted' AND expires_at_millis = 0)
+    OR (mode = 'ephemeral' AND expires_at_millis > 0)
+  ),
+  CHECK (
+    (retirement_membership_generation IS NULL
+      AND retirement_relay_generation IS NULL
+      AND retirement_final_environment_sequence IS NULL
+      AND retirement_final_envelope_digest IS NULL
+      AND retirement_id IS NULL
+      AND retirement_bytes IS NULL)
+    OR
+    (retirement_membership_generation IS NOT NULL
+      AND retirement_relay_generation IS NOT NULL
+      AND retirement_final_environment_sequence IS NOT NULL
+      AND retirement_final_envelope_digest IS NOT NULL
+      AND retirement_id IS NOT NULL
+      AND retirement_bytes IS NOT NULL)
+  ),
+  CHECK (
+    retirement_membership_generation IS NULL
+    OR retirement_membership_generation >= join_membership_generation
+  ),
+  CHECK (
+    retirement_final_environment_sequence IS NULL
+    OR (retirement_final_environment_sequence = 0
+      AND retirement_final_envelope_digest = zeroblob(32))
+    OR (retirement_final_environment_sequence > 0
+      AND retirement_final_envelope_digest <> zeroblob(32))
+  ),
+  PRIMARY KEY (project_id, candidate_id, environment_id),
+  UNIQUE (project_id, candidate_id, environment_ordinal),
+  UNIQUE (project_id, candidate_id, certificate_id),
+  FOREIGN KEY (project_id, candidate_id, page_number)
+    REFERENCES continuity_sync_authority_candidate_pages(
+      project_id, candidate_id, page_number
+    ) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID`
+
+const syncAuthorityCandidateMembershipEventsTableSQL = `CREATE TABLE continuity_sync_authority_candidate_membership_events (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  candidate_id BLOB NOT NULL CHECK (
+    length(candidate_id) = 32 AND candidate_id <> zeroblob(32)
+  ),
+  membership_generation INTEGER NOT NULL CHECK (
+    membership_generation BETWEEN 1 AND 4294967295
+  ),
+  event_kind TEXT NOT NULL CHECK (event_kind IN ('join', 'retirement')),
+  environment_id TEXT NOT NULL CHECK (
+    length(environment_id) BETWEEN 1 AND 128
+    AND environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  PRIMARY KEY (project_id, candidate_id, membership_generation),
+  UNIQUE (project_id, candidate_id, environment_id, event_kind),
+  FOREIGN KEY (project_id, candidate_id, environment_id)
+    REFERENCES continuity_sync_authority_candidate_environments(
+      project_id, candidate_id, environment_id
+    ) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID`
+
+const syncAuthorityCandidatesActiveIndexSQL = `CREATE UNIQUE INDEX ux_continuity_sync_authority_candidates_active_project
+ON continuity_sync_authority_candidates(project_id)
+WHERE state IN ('staging', 'ready')`
+
+const syncAuthorityCandidatePagesFinalIndexSQL = `CREATE UNIQUE INDEX ux_continuity_sync_authority_candidate_pages_final
+ON continuity_sync_authority_candidate_pages(project_id, candidate_id)
+WHERE more = 0`
+
 const schemaV1DDL = schemaTableV1SQL + ";\n" +
 	factsTableSQL + ";\n" +
 	projectIdentityIndexSQL + ";\n" +
@@ -605,7 +876,7 @@ const schemaV2DDL = schemaTableV2SQL + ";\n" +
 	projectIdentityTriggerSQL + ";\n" +
 	syncSchemaV2DDL
 
-const syncSchemaDDL = syncProjectsTableSQL + ";\n" +
+const syncSchemaV3DDL = syncProjectsTableSQL + ";\n" +
 	syncInboxTableSQL + ";\n" +
 	syncReceiptsTableSQL + ";\n" +
 	syncEnvironmentHeadsTableSQL + ";\n" +
@@ -616,13 +887,30 @@ const syncSchemaDDL = syncProjectsTableSQL + ";\n" +
 	syncTerminalCandidateFramesTableSQL + ";\n" +
 	syncTerminalCandidatesStagingIndexSQL + ";\n"
 
+const schemaV3DDL = schemaTableV3SQL + ";\n" +
+	factsTableSQL + ";\n" +
+	projectIdentityIndexSQL + ";\n" +
+	projectOrderIndexSQL + ";\n" +
+	subjectOrderIndexSQL + ";\n" +
+	projectIdentityTriggerSQL + ";\n" +
+	syncSchemaV3DDL
+
+const syncAuthorityCandidateSchemaDDL = syncAuthoritiesTableSQL + ";\n" +
+	syncAuthorityCandidatesTableSQL + ";\n" +
+	syncAuthorityCandidatePagesTableSQL + ";\n" +
+	syncAuthorityCandidateEnvironmentsTableSQL + ";\n" +
+	syncAuthorityCandidateMembershipEventsTableSQL + ";\n" +
+	syncAuthorityCandidatesActiveIndexSQL + ";\n" +
+	syncAuthorityCandidatePagesFinalIndexSQL + ";\n"
+
 const schemaDDL = schemaTableSQL + ";\n" +
 	factsTableSQL + ";\n" +
 	projectIdentityIndexSQL + ";\n" +
 	projectOrderIndexSQL + ";\n" +
 	subjectOrderIndexSQL + ";\n" +
 	projectIdentityTriggerSQL + ";\n" +
-	syncSchemaDDL
+	syncSchemaV3DDL +
+	syncAuthorityCandidateSchemaDDL
 
 type schemaObject struct {
 	kind  string
@@ -636,9 +924,37 @@ func expectedSchemaObjects() []schemaObject {
 		{kind: "index", name: "ix_continuity_facts_project_order", table: "continuity_facts", sql: projectOrderIndexSQL},
 		{kind: "index", name: "ix_continuity_facts_subject_order", table: "continuity_facts", sql: subjectOrderIndexSQL},
 		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", sql: projectIdentityIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_authority_candidate_pages_final", table: "continuity_sync_authority_candidate_pages", sql: syncAuthorityCandidatePagesFinalIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_authority_candidates_active_project", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesActiveIndexSQL},
 		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesStagingIndexSQL},
 		{kind: "table", name: "continuity_facts", table: "continuity_facts", sql: factsTableSQL},
 		{kind: "table", name: "continuity_schema", table: "continuity_schema", sql: schemaTableSQL},
+		{kind: "table", name: "continuity_sync_authorities", table: "continuity_sync_authorities", sql: syncAuthoritiesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_environments", table: "continuity_sync_authority_candidate_environments", sql: syncAuthorityCandidateEnvironmentsTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_membership_events", table: "continuity_sync_authority_candidate_membership_events", sql: syncAuthorityCandidateMembershipEventsTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidate_pages", table: "continuity_sync_authority_candidate_pages", sql: syncAuthorityCandidatePagesTableSQL},
+		{kind: "table", name: "continuity_sync_authority_candidates", table: "continuity_sync_authority_candidates", sql: syncAuthorityCandidatesTableSQL},
+		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", sql: syncEnvironmentCertificatesTableSQL},
+		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", sql: syncEnvironmentHeadsTableSQL},
+		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", sql: syncInboxTableSQL},
+		{kind: "table", name: "continuity_sync_outbox", table: "continuity_sync_outbox", sql: syncOutboxTableSQL},
+		{kind: "table", name: "continuity_sync_projects", table: "continuity_sync_projects", sql: syncProjectsTableSQL},
+		{kind: "table", name: "continuity_sync_receipts", table: "continuity_sync_receipts", sql: syncReceiptsTableSQL},
+		{kind: "table", name: "continuity_sync_terminal_candidate_frames", table: "continuity_sync_terminal_candidate_frames", sql: syncTerminalCandidateFramesTableSQL},
+		{kind: "table", name: "continuity_sync_terminal_candidates", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesTableSQL},
+		{kind: "table", name: "continuity_sync_tombstones", table: "continuity_sync_tombstones", sql: syncTombstonesTableSQL},
+		{kind: "trigger", name: "continuity_facts_require_project_identity", table: "continuity_facts", sql: projectIdentityTriggerSQL},
+	}
+}
+
+func expectedSchemaV3Objects() []schemaObject {
+	return []schemaObject{
+		{kind: "index", name: "ix_continuity_facts_project_order", table: "continuity_facts", sql: projectOrderIndexSQL},
+		{kind: "index", name: "ix_continuity_facts_subject_order", table: "continuity_facts", sql: subjectOrderIndexSQL},
+		{kind: "index", name: "ux_continuity_project_identity", table: "continuity_facts", sql: projectIdentityIndexSQL},
+		{kind: "index", name: "ux_continuity_sync_terminal_candidates_staging_project", table: "continuity_sync_terminal_candidates", sql: syncTerminalCandidatesStagingIndexSQL},
+		{kind: "table", name: "continuity_facts", table: "continuity_facts", sql: factsTableSQL},
+		{kind: "table", name: "continuity_schema", table: "continuity_schema", sql: schemaTableV3SQL},
 		{kind: "table", name: "continuity_sync_environment_certificates", table: "continuity_sync_environment_certificates", sql: syncEnvironmentCertificatesTableSQL},
 		{kind: "table", name: "continuity_sync_environment_heads", table: "continuity_sync_environment_heads", sql: syncEnvironmentHeadsTableSQL},
 		{kind: "table", name: "continuity_sync_inbox", table: "continuity_sync_inbox", sql: syncInboxTableSQL},
@@ -685,6 +1001,10 @@ func checksumSchema() string {
 	return checksumDDL(schemaDDL)
 }
 
+func checksumSchemaV3() string {
+	return checksumDDL(schemaV3DDL)
+}
+
 func checksumSchemaV2() string {
 	return checksumDDL(schemaV2DDL)
 }
@@ -729,7 +1049,7 @@ func initializeSchemaIfEmpty(db *sql.DB) (bool, error) {
 	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
 		return false, fmt.Errorf("set continuity application id: %w", err)
 	}
-	if _, err := tx.Exec(`PRAGMA user_version = 3`); err != nil {
+	if _, err := tx.Exec(`PRAGMA user_version = 4`); err != nil {
 		return false, fmt.Errorf("set continuity schema version: %w", err)
 	}
 	if _, err := tx.Exec(
@@ -834,8 +1154,12 @@ func migrateSchema(db *sql.DB) error {
 			if err := migrateSchemaV2ToV3(db); err != nil {
 				return err
 			}
+		case 3:
+			if err := migrateSchemaV3ToV4(db); err != nil {
+				return err
+			}
 		default:
-			return fmt.Errorf("continuity schema version = %d, want 1, 2, or %d", version, schemaVersion)
+			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, or %d", version, schemaVersion)
 		}
 	}
 }
@@ -859,7 +1183,10 @@ func migrateSchemaV1ToV2(db *sql.DB) error {
 	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("recheck continuity v1 schema version in migration: %w", err)
 	}
-	if version == 2 || version == schemaVersion {
+	if version > 1 && version <= schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
 		return nil
 	}
 	if version != 1 {
@@ -942,7 +1269,10 @@ func migrateSchemaV2ToV3(db *sql.DB) error {
 	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("recheck continuity v2 schema version in migration: %w", err)
 	}
-	if version == schemaVersion {
+	if version > 2 && version <= schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
 		return nil
 	}
 	if version != 2 {
@@ -963,7 +1293,7 @@ func migrateSchemaV2ToV3(db *sql.DB) error {
 		return fmt.Errorf("drop continuity v2 schema identity: %w", err)
 	}
 	if _, err := tx.Exec(
-		schemaTableSQL + ";\n" +
+		schemaTableV3SQL + ";\n" +
 			syncInboxTableSQL + ";\n" +
 			syncTerminalCandidatesTableSQL + ";\n" +
 			syncTerminalCandidateFramesTableSQL + ";\n" +
@@ -1011,12 +1341,12 @@ ORDER BY project_id, arrival_sequence`)
 	if _, err := tx.Exec(
 		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
 		schemaLine,
-		schemaVersion,
-		checksumSchema(),
+		3,
+		checksumSchemaV3(),
 	); err != nil {
 		return fmt.Errorf("record continuity v3 schema identity: %w", err)
 	}
-	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+	if err := validateSchemaVersion(tx, 3, checksumSchemaV3(), expectedSchemaV3Objects()); err != nil {
 		return fmt.Errorf("validate continuity v3 migration: %w", err)
 	}
 	if err := validateForeignKeys(tx); err != nil {
@@ -1026,6 +1356,132 @@ ORDER BY project_id, arrival_sequence`)
 		return fmt.Errorf("commit continuity v3 migration: %w", err)
 	}
 	return nil
+}
+
+func migrateSchemaV3ToV4(db *sql.DB) error {
+	advanced, err := validateMigrationPreflight(db, 3)
+	if err != nil {
+		return fmt.Errorf("validate continuity v3 before migration: %w", err)
+	}
+	if advanced {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin continuity v4 migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	var version int
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("recheck continuity v3 schema version in migration: %w", err)
+	}
+	if version > 3 && version <= schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
+		return nil
+	}
+	if version != 3 {
+		return fmt.Errorf("continuity schema changed during v4 migration")
+	}
+	if err := validateSchemaVersion(tx, 3, checksumSchemaV3(), expectedSchemaV3Objects()); err != nil {
+		return fmt.Errorf("revalidate continuity v3 in migration: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
+		return fmt.Errorf("drop continuity v3 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(schemaTableSQL + ";\n" + syncAuthorityCandidateSchemaDDL); err != nil {
+		return fmt.Errorf("create continuity v4 authority candidate schema: %w", err)
+	}
+	if err := seedV3SyncAuthorityMetadata(tx); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 4`); err != nil {
+		return fmt.Errorf("set continuity v4 schema version: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
+		schemaLine,
+		schemaVersion,
+		checksumSchema(),
+	); err != nil {
+		return fmt.Errorf("record continuity v4 schema identity: %w", err)
+	}
+	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+		return fmt.Errorf("validate continuity v4 migration: %w", err)
+	}
+	if err := validateForeignKeys(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit continuity v4 migration: %w", err)
+	}
+	return nil
+}
+
+func seedV3SyncAuthorityMetadata(tx *sql.Tx) error {
+	rows, err := tx.Query(`SELECT project_id FROM continuity_sync_projects ORDER BY project_id`)
+	if err != nil {
+		return fmt.Errorf("list continuity v3 sync authorities: %w", err)
+	}
+	var projectIDs []continuity.ProjectID
+	for rows.Next() {
+		var projectID continuity.ProjectID
+		if err := rows.Scan(&projectID); err != nil {
+			return closeMigrationRows(rows, fmt.Errorf("scan continuity v3 sync project: %w", err))
+		}
+		projectIDs = append(projectIDs, projectID)
+	}
+	if err := rows.Err(); err != nil {
+		return closeMigrationRows(rows, fmt.Errorf("iterate continuity v3 sync projects: %w", err))
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close continuity v3 sync projects: %w", err)
+	}
+
+	for _, projectID := range projectIDs {
+		authority, err := readLegacySyncAuthorityV3(context.Background(), tx, projectID)
+		if err != nil {
+			return fmt.Errorf("read continuity v3 sync authority %q: %w", projectID, err)
+		}
+		digest, err := frozenSyncAuthorityDigestV1(projectID, authority)
+		if err != nil {
+			return fmt.Errorf("digest continuity v3 sync authority %q: %w", projectID, err)
+		}
+		if digest == [32]byte{} {
+			return fmt.Errorf("digest continuity v3 sync authority %q: zero digest", projectID)
+		}
+		if _, err := tx.Exec(`
+INSERT INTO continuity_sync_authorities(
+  project_id, digest_version, authority_digest, inventory_arrival_head
+) VALUES(?, 1, ?, 0)`, string(projectID), digest[:]); err != nil {
+			return fmt.Errorf("seed continuity v3 sync authority metadata %q: %w", projectID, err)
+		}
+	}
+
+	var mismatchedActiveCandidates int64
+	if err := tx.QueryRow(`
+SELECT COUNT(*)
+FROM continuity_sync_terminal_candidates AS candidate
+JOIN continuity_sync_authorities AS authority
+  ON authority.project_id = candidate.project_id
+WHERE candidate.state = 'staging'
+  AND candidate.authority_digest <> authority.authority_digest`).Scan(&mismatchedActiveCandidates); err != nil {
+		return fmt.Errorf("validate continuity v3 active terminal authority digests: %w", err)
+	}
+	if mismatchedActiveCandidates != 0 {
+		return fmt.Errorf("continuity v3 active terminal candidate authority digest does not match canonical authority")
+	}
+	return nil
+}
+
+func closeMigrationRows(rows *sql.Rows, cause error) error {
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("%v; close migration rows: %w", cause, err)
+	}
+	return cause
 }
 
 func validateMigrationPreflight(db *sql.DB, fromVersion int) (bool, error) {
@@ -1058,6 +1514,8 @@ func validateKnownSchemaVersion(db schemaQuerier, version int) error {
 		return validateSchemaVersion(db, 1, checksumSchemaV1(), expectedSchemaV1Objects())
 	case 2:
 		return validateSchemaVersion(db, 2, checksumSchemaV2(), expectedSchemaV2Objects())
+	case 3:
+		return validateSchemaVersion(db, 3, checksumSchemaV3(), expectedSchemaV3Objects())
 	case schemaVersion:
 		return validateSchemaVersion(db, schemaVersion, checksumSchema(), expectedSchemaObjects())
 	default:
@@ -1120,14 +1578,14 @@ SELECT
 func validateForeignKeys(tx *sql.Tx) error {
 	rows, err := tx.Query(`PRAGMA foreign_key_check`)
 	if err != nil {
-		return fmt.Errorf("validate continuity v3 foreign keys: %w", err)
+		return fmt.Errorf("validate continuity foreign keys: %w", err)
 	}
 	defer rows.Close()
 	if rows.Next() {
-		return fmt.Errorf("continuity v3 migration violates foreign keys")
+		return fmt.Errorf("continuity migration violates foreign keys")
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate continuity v3 foreign-key validation: %w", err)
+		return fmt.Errorf("iterate continuity foreign-key validation: %w", err)
 	}
 	return nil
 }
