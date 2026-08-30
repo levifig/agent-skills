@@ -82,6 +82,61 @@ func TestRecoveryCredentialClassesCanonicalRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEphemeralCredentialRoundTripPreservesWriteGenerationSelector(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode ephemeral: %v", err)
+	}
+	decoded, err := DecodeEphemeral(encoded)
+	if err != nil {
+		t.Fatalf("decode ephemeral: %v", err)
+	}
+	if decoded.WriteGeneration != ephemeral.WriteGeneration {
+		t.Fatalf("write generation = %d, want %d", decoded.WriteGeneration, ephemeral.WriteGeneration)
+	}
+}
+
+func TestEphemeralCredentialWriteGenerationIsSelectorNotAuthorizationSet(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	secondMaterial := ephemeral.GenerationKeys[0].Bytes()
+	secondMaterial[0] ^= 0xff
+	secondKey, err := synccrypto.NewGenerationKey(ephemeral.ProjectID, 8, secondMaterial)
+	if err != nil {
+		t.Fatalf("create second generation key: %v", err)
+	}
+	adminSeed, err := synccrypto.AdminSeedFromBytes(sequentialBytes(0x21, 32))
+	if err != nil {
+		t.Fatalf("create admin seed: %v", err)
+	}
+	certificate := ephemeral.Certificate
+	certificate.AllowedKeyGenerations = []uint32{7, 8}
+	certificate.AdminSignature = protocol.Signature{}
+	certificate, err = synccrypto.SignEnvironmentCertificate(certificate, adminSeed)
+	if err != nil {
+		t.Fatalf("sign two-generation certificate: %v", err)
+	}
+	ephemeral.Certificate = certificate
+	ephemeral.GenerationKeys = append(ephemeral.GenerationKeys, secondKey)
+	ephemeral.WriteGeneration = 7
+
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode two-generation ephemeral credential: %v", err)
+	}
+	decoded, err := DecodeEphemeral(encoded)
+	if err != nil {
+		t.Fatalf("decode two-generation ephemeral credential: %v", err)
+	}
+	if decoded.WriteGeneration != 7 || len(decoded.GenerationKeys) != 2 || decoded.GenerationKeys[1].Generation() != 8 {
+		t.Fatalf("decoded selector/key set = %d/%v, want selector 7 with inbound generation 8 retained", decoded.WriteGeneration, decoded.GenerationKeys)
+	}
+}
+
 func TestCredentialClassesCannotBeCrossDecoded(t *testing.T) {
 	t.Parallel()
 
@@ -315,12 +370,22 @@ func TestEphemeralCredentialRequiresExactExplicitGenerationKeysAndExpiry(t *test
 	t.Parallel()
 
 	_, _, ephemeral := testCredentials(t)
+	writeKeyMaterial := ephemeral.GenerationKeys[0].Bytes()
+	unauthorizedWriteKey, err := synccrypto.NewGenerationKey(ephemeral.ProjectID, ephemeral.WriteGeneration+1, writeKeyMaterial)
+	if err != nil {
+		t.Fatalf("create unauthorized write-generation key: %v", err)
+	}
 	tests := []struct {
 		name   string
 		mutate func(*EphemeralProjectCredential)
 	}{
-		{name: "no key", mutate: func(value *EphemeralProjectCredential) { value.GenerationKeys = nil }},
-		{name: "duplicate key", mutate: func(value *EphemeralProjectCredential) {
+		{name: "zero write generation", mutate: func(value *EphemeralProjectCredential) { value.WriteGeneration = 0 }},
+		{name: "write generation not certificate-authorized", mutate: func(value *EphemeralProjectCredential) {
+			value.WriteGeneration++
+			value.GenerationKeys[0] = unauthorizedWriteKey
+		}},
+		{name: "no matching write-generation key", mutate: func(value *EphemeralProjectCredential) { value.GenerationKeys = nil }},
+		{name: "duplicate matching write-generation key", mutate: func(value *EphemeralProjectCredential) {
 			value.GenerationKeys = append(value.GenerationKeys, value.GenerationKeys[0])
 		}},
 		{name: "token without expiry", mutate: func(value *EphemeralProjectCredential) { value.RelayTokenExpiresAtMillis = 0 }},
@@ -348,6 +413,73 @@ func TestEphemeralCredentialRequiresExactExplicitGenerationKeysAndExpiry(t *test
 				t.Fatalf("error = %v, want %v", err, ErrInvalidCredential)
 			}
 		})
+	}
+}
+
+func TestEphemeralCredentialV1CanonicalWireOrdersWriteGenerationBeforeKeyMaterial(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode ephemeral: %v", err)
+	}
+	body := rawBodyFromWire(t, encoded, EphemeralPrefix)
+	orderedFields := [][]byte{
+		[]byte(`"relay_token_expires_at_millis":1999999999000`),
+		[]byte(`"write_generation":7`),
+		[]byte(`"prune_bootstrap_purpose_version":1`),
+		[]byte(`"prune_bootstrap_key":`),
+		[]byte(`"generation_keys":`),
+	}
+	previous := -1
+	for _, field := range orderedFields {
+		index := bytes.Index(body, field)
+		if index <= previous {
+			t.Fatalf("canonical ephemeral field %q index = %d after %d; body = %s", field, index, previous, body)
+		}
+		previous = index
+	}
+}
+
+func TestEphemeralCredentialRejectsPreWriteGenerationV1Wire(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode ephemeral: %v", err)
+	}
+	body := rawBodyFromWire(t, encoded, EphemeralPrefix)
+	body = omitTopLevelJSONField(t, body, "write_generation")
+	preCorrection, err := encodeCredentialFrame(EphemeralPrefix, ephemeralKind, body)
+	if err != nil {
+		t.Fatalf("encode pre-correction credential: %v", err)
+	}
+	if _, err := DecodeEphemeral(preCorrection); !errors.Is(err, ErrInvalidCredential) {
+		t.Fatalf("pre-correction credential error = %v, want %v", err, ErrInvalidCredential)
+	}
+}
+
+func TestEphemeralCredentialRejectsZeroWriteGenerationV1Wire(t *testing.T) {
+	t.Parallel()
+
+	_, _, ephemeral := testCredentials(t)
+	encoded, err := EncodeEphemeral(ephemeral)
+	if err != nil {
+		t.Fatalf("encode ephemeral: %v", err)
+	}
+	body := rawBodyFromWire(t, encoded, EphemeralPrefix)
+	if bytes.Count(body, []byte(`"write_generation":7`)) != 1 {
+		t.Fatalf("canonical body write-generation field count != 1: %s", body)
+	}
+	body = bytes.Replace(body, []byte(`"write_generation":7`), []byte(`"write_generation":0`), 1)
+	zeroGeneration, err := encodeCredentialFrame(EphemeralPrefix, ephemeralKind, body)
+	if err != nil {
+		t.Fatalf("encode zero-generation credential: %v", err)
+	}
+	if _, err := DecodeEphemeral(zeroGeneration); !errors.Is(err, ErrInvalidCredential) {
+		t.Fatalf("zero-generation credential error = %v, want %v", err, ErrInvalidCredential)
 	}
 }
 
@@ -716,6 +848,7 @@ func testCredentials(t *testing.T) (ProjectRecoveryCredential, TrustedProjectCre
 		EnvironmentSeed:               environmentSeed,
 		EnvironmentRelayAuthorization: newBearer(0xe1, 0xf1),
 		RelayTokenExpiresAtMillis:     1_999_999_999_000,
+		WriteGeneration:               7,
 		PruneBootstrapPurposeVersion:  protocol.PruneBootstrapPurposeVersionV1,
 		PruneBootstrapKey:             pruneBootstrapKey,
 		GenerationKeys:                []synccrypto.GenerationKey{generationKey},

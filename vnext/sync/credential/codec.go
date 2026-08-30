@@ -67,6 +67,7 @@ type ephemeralWireV1 struct {
 	EnvironmentTokenID           string                `json:"environment_token_id"`
 	EnvironmentTokenSecret       string                `json:"environment_token_secret"`
 	RelayTokenExpiresAtMillis    int64                 `json:"relay_token_expires_at_millis"`
+	WriteGeneration              uint32                `json:"write_generation"`
 	PruneBootstrapPurposeVersion uint16                `json:"prune_bootstrap_purpose_version"`
 	PruneBootstrapKey            string                `json:"prune_bootstrap_key"`
 	GenerationKeys               []generationKeyWireV1 `json:"generation_keys"`
@@ -295,6 +296,7 @@ func EncodeEphemeral(credential EphemeralProjectCredential) (string, error) {
 		EnvironmentTokenID:           encodeBytes(environmentTokenID[:]),
 		EnvironmentTokenSecret:       encodeBytes(environmentTokenSecret[:]),
 		RelayTokenExpiresAtMillis:    credential.RelayTokenExpiresAtMillis,
+		WriteGeneration:              credential.WriteGeneration,
 		PruneBootstrapPurposeVersion: credential.PruneBootstrapPurposeVersion,
 		PruneBootstrapKey:            encodeBytes(pruneBootstrapKey[:]),
 		GenerationKeys:               keys,
@@ -374,6 +376,7 @@ func DecodeEphemeral(encoded string) (EphemeralProjectCredential, error) {
 		EnvironmentSeed:               environmentSeed,
 		EnvironmentRelayAuthorization: environmentAuthorization,
 		RelayTokenExpiresAtMillis:     wire.RelayTokenExpiresAtMillis,
+		WriteGeneration:               wire.WriteGeneration,
 		PruneBootstrapPurposeVersion:  wire.PruneBootstrapPurposeVersion,
 		PruneBootstrapKey:             pruneBootstrapKey,
 		GenerationKeys:                keys,
