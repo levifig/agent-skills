@@ -82,6 +82,68 @@ func TestSealBuildsExpectedSemanticProjectionWithoutDuplicatingWraps(t *testing.
 	}
 }
 
+func TestProjectionManifestForSnapshotIgnoresLocalClocksAndRejectsContamination(t *testing.T) {
+	sealed, err := Seal(validContentV1())
+	if err != nil {
+		t.Fatalf("Seal() error = %v", err)
+	}
+	observation := continuity.Observation{
+		ObservedAtMillis: 1_000,
+		HarnessSessionID: "migration-session",
+		Branch:           "main",
+		Worktree:         "/workspace/loaf",
+	}
+	version := func(kind continuity.RecordKind, subject continuity.SubjectID, fact continuity.FactID) continuity.RecordVersion {
+		stamp := continuity.FactStamp{
+			Clock:         continuity.HybridTime{WallMillis: 999, Logical: 7},
+			EnvironmentID: "local-environment", EnvironmentSequence: 42, FactID: fact,
+		}
+		return continuity.RecordVersion{
+			ProjectID: "proj_legacy", Subject: continuity.SubjectRef{Kind: kind, ID: subject}, Root: stamp, Head: stamp,
+		}
+	}
+	snapshot := continuity.Snapshot{
+		AtMillis: 987_654,
+		Project: continuity.ProjectIdentityProjection{Identity: continuity.ProjectIdentity{
+			Record: version(continuity.RecordProjectIdentity, "proj_legacy", "fact-project"), Label: "Loaf",
+			RegisteredObservation: observation, HeadObservation: observation,
+		}},
+		EffectiveJournal: continuity.EffectiveJournalProjection{Entries: []continuity.JournalEntry{{
+			Record:              version(continuity.RecordJournalEntry, "journal-1", "fact-journal"),
+			Content:             continuity.JournalContent{Category: continuity.JournalDiscover, Scope: "migration", Text: "learned"},
+			RecordedObservation: observation, HeadObservation: observation,
+		}}},
+		LatestWraps: continuity.LatestWrapsProjection{Wraps: []continuity.Wrap{{
+			Record: version(continuity.RecordWrap, "wrap-1", "fact-wrap"), Scope: "migration",
+			Synthesis: "next is staged import", HeadObservation: observation,
+		}}},
+	}
+	manifest, err := ProjectionManifestForSnapshot(snapshot)
+	if err != nil || manifest != sealed.Content.Expected {
+		t.Fatalf("ProjectionManifestForSnapshot() = (%#v, %v), want %#v", manifest, err, sealed.Content.Expected)
+	}
+
+	snapshot.Project.Identity.Record.Root.Clock.WallMillis++
+	snapshot.Project.Identity.Record.Root.EnvironmentID = "other-environment"
+	snapshot.EffectiveJournal.Entries[0].Record.Root.EnvironmentSequence++
+	snapshot.LatestWraps.Wraps[0].Record.Root.Clock.Logical++
+	reclocked, err := ProjectionManifestForSnapshot(snapshot)
+	if err != nil || reclocked != manifest {
+		t.Fatalf("reclocked projection = (%#v, %v), want %#v", reclocked, err, manifest)
+	}
+
+	contaminated := snapshot
+	contaminated.ActiveSparks.Sparks = []continuity.Spark{{}}
+	if _, err := ProjectionManifestForSnapshot(contaminated); err == nil || !strings.Contains(err.Error(), "outside archive version 1") {
+		t.Fatalf("contaminated projection error = %v", err)
+	}
+	focused := snapshot
+	focused.LatestWraps.Wraps[0].Focus = &continuity.SubjectRef{Kind: continuity.RecordJournalEntry, ID: "journal-1"}
+	if _, err := ProjectionManifestForSnapshot(focused); err == nil || !strings.Contains(err.Error(), "focused wrap") {
+		t.Fatalf("focused projection error = %v", err)
+	}
+}
+
 func TestSealRejectsInvalidOrderDuplicateSubjectsAndIncompleteFamilyDeclaration(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -116,6 +178,46 @@ func TestSealRejectsInvalidOrderDuplicateSubjectsAndIncompleteFamilyDeclaration(
 			}
 		})
 	}
+}
+
+func TestArchiveResourceBounds(t *testing.T) {
+	t.Run("encoded bytes", func(t *testing.T) {
+		if _, err := Parse(make([]byte, maxEncodedBytes+1)); err == nil || !strings.Contains(err.Error(), "encoded bytes") {
+			t.Fatalf("Parse(oversized) error = %v", err)
+		}
+	})
+
+	t.Run("record count before record validation", func(t *testing.T) {
+		content := validContentV1()
+		content.Records = make([]Record, maxRecords+1)
+		if _, err := Seal(content); err == nil || !strings.Contains(err.Error(), "record count") {
+			t.Fatalf("Seal(too many records) error = %v", err)
+		}
+	})
+
+	t.Run("compact record array before typed allocation", func(t *testing.T) {
+		var encoded strings.Builder
+		encoded.Grow(maxRecords*3 + 512)
+		encoded.WriteString(`{"format":"loaf-vnext-continuity-archive","version":1,"content":{"source":{},"project":{},"included_families":{},"records":[`)
+		for index := 0; index <= maxRecords; index++ {
+			if index != 0 {
+				encoded.WriteByte(',')
+			}
+			encoded.WriteString(`{}`)
+		}
+		encoded.WriteString(`],"expected_projection":{}},"content_sha256":""}`)
+		if _, err := Parse([]byte(encoded.String())); err == nil || !strings.Contains(err.Error(), "record count") {
+			t.Fatalf("Parse(compact record amplification) error = %v", err)
+		}
+	})
+
+	t.Run("aggregate payload before record validation", func(t *testing.T) {
+		content := validContentV1()
+		content.Project.Label = strings.Repeat("x", maxAggregatePayloadBytes+1)
+		if _, err := Seal(content); err == nil || !strings.Contains(err.Error(), "aggregate payload") {
+			t.Fatalf("Seal(oversized payload) error = %v", err)
+		}
+	})
 }
 
 func validContentV1() Content {

@@ -9,6 +9,16 @@ import (
 )
 
 func validateContentV1(content Content, verifyExpected bool) error {
+	if len(content.Records) > maxRecords {
+		return fmt.Errorf("archive record count exceeds %d", maxRecords)
+	}
+	payloadBytes := len(content.Project.Label)
+	for index := range content.Records {
+		payloadBytes += recordPayloadBytesV1(content.Records[index])
+		if payloadBytes > maxAggregatePayloadBytes {
+			return fmt.Errorf("archive aggregate payload exceeds %d bytes", maxAggregatePayloadBytes)
+		}
+	}
 	if content.Source.LegacySchemaVersion < 1 {
 		return fmt.Errorf("legacy schema version must be positive")
 	}
