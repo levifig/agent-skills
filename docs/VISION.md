@@ -12,6 +12,10 @@ Write skills once, deploy to supported harnesses. Skills are the universal knowl
 
 The Loaf Flow runs pitch → shape → implement → ship → release, at two scales. `/pitch` grills a problem into an authored brief: a change-scale `brief.md` on an existing project, or a new project's `BRIEF.md` that bootstrap turns into operating documents and a captured initial arc. `/shape` turns a brief into a bounded Change, which carries the product and verification contract through implementation, review, and shipping; release remains a separate project-level operation.
 
+### Rideable Progress
+
+Loaf evolves through complete, useful end-to-end operator journeys, not finished horizontal layers. Every milestone leaves a real rider able to do something they could not do before. A narrow increment keeps security, determinism, recovery, honest failure, and data safety intact; dogfood earns the next layer of breadth or abstraction. The operating method lives in [Rideable Increments](../content/skills/foundations/references/rideable-increments.md).
+
 ### Bounded Autonomy
 
 Functional profiles define what agents can mechanically touch (tool access). Skills define what they know (domain knowledge). The Warden coordinates but never implements. This separation makes agent behavior predictable and auditable.
@@ -32,6 +36,7 @@ A developer installs Loaf and immediately gets:
 
 - **Consistent agent behavior across tools** -- same skills, same conventions, different runtimes
 - **Bounded work that prevents scope creep** -- Changes define the intended outcome, boundaries, and proof before implementation
+- **Useful progress at every milestone** -- each increment completes a safe operator journey and produces real dogfood learning
 - **Project journal history that enables handoff** -- pick up where you left off, or hand off to a colleague
 - **Hooks that enforce quality without friction** -- secrets scanning, commit conventions, push guards
 - **Domain expertise that loads automatically** -- the right engineering standards for the current task

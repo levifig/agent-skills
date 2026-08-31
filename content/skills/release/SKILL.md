@@ -37,7 +37,8 @@ Cut a version from work that has already landed.
 6. **No forward version stamp** — do not bind an issue to a future version. Members are what already landed. Buckets (`loaf issue bucket`) are advisory labels; planned-vs-landed is information only.
 7. **No suite, no re-record, no publication stop in this skill** — ship already verified the merged work. Cut's operational refusals (dirty worktree, disagreeing version files, missing version, `--no-tag` without an existing tag) are command errors, not a substitute for ship.
 8. **Confirm before cut** — present the suggest report (or `cut --dry-run`) first. Ask one question at a time, with a recommendation, using your harness's structured question tool if it has one. `--dry-run` previews everything and writes nothing.
-9. **Log the outcome** — after a successful cut, `loaf journal log "decision(release): vX.Y.Z recorded from <base> with <summary>"`.
+9. **Describe operator progress honestly** — summarize a release by the larger real journey now possible. Infrastructure-only landed work may still be released, but name it as foundation rather than product progress and identify its intended consuming increment; this is reporting, never a new cut refusal.
+10. **Log the outcome** — after a successful cut, `loaf journal log "decision(release): vX.Y.Z recorded from <base> with <summary>"`.
 
 ---
 
@@ -47,6 +48,7 @@ Cut a version from work that has already landed.
 - The work in the range already landed through ship (PR review and CI at merge); this skill did not re-verify or re-merge it
 - `loaf release suggest` (or `cut --dry-run`) was shown: landed issues, partially-landed parents, unattributed commits, advisory buckets, derived bump, drafted notes
 - Partially-landed parents, unattributed commits, and bucket drift were reported as information — not treated as a cut refusal
+- Release notes distinguish a newly possible operator journey from enabling foundation work and do not overclaim layer completion as product progress
 - Mutating `loaf release cut` updated version files, wrote the notes into `CHANGELOG.md`, created or reused tag `v<version>`, and recorded the release row with issue members (plus `--includes` release members when given)
 - `cut --dry-run` left version files, changelog, tags, HEAD, and release rows untouched
 - GitHub Release is a draft, was skipped with `--no-gh`, or failed with a warning plus a paste-ready `gh release create …` retry — never a silent rollback of the recorded row
@@ -152,6 +154,8 @@ loaf release suggest --json
 ```
 
 Present the report as-is: base, suggested bump and version, bump evidence, landed issues with commits, partially-landed parents (missing children), unattributed commits, advisory buckets (planned landed / planned not landed / unplanned landed), drafted notes.
+
+When summarizing the report, state which complete operator journey became possible. If the range contains only enabling machinery, say so and name the immediate rideable increment expected to consume it; do not invent value or turn that observation into a release gate.
 
 Do not hide partial parents or unattributed commits, and do not refuse the cut because of them unless the operator is using the [must-contain convention](#must-contain-convention) and wants to wait.
 

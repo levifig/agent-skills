@@ -5,7 +5,7 @@ description: >-
   council workflows. Use when delegating to agents or coordinating cross-cutting
   work across multiple agents. Not for single-task implementation (use direct
   tool delegation) or solo research (use research).
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Orchestration
@@ -44,6 +44,7 @@ Use the `linear` skill for MCP selection, reads and mutations, update formatting
 ### Planning (Shape Up)
 - Complexity-based sizing (small / medium / large)
 - Shape before building (boundaries, not tasks)
+- Organize milestones and dependency rounds around complete rideable increments from the foundations Rideable Increments reference, not horizontal layers; keep foundation packets tied to their immediate consuming journey
 - Priority ordering with go/no-go gates between tracks
 - No backlogs -- bet or let go
 
@@ -52,6 +53,7 @@ Use the `linear` skill for MCP selection, reads and mutations, update formatting
 - Verify `loaf journal recent` / `loaf journal context` reflect the current work
 - Validate council files with `validate-council.py` before concluding
 - When Linear participates, verify the Linear skill's read-before-write and outcome-reporting contract
+- Confirm each shaped work unit names a real rider and complete journey; coordination slices preserve that value contract rather than turning commits into strategy milestones
 
 ## Quick Reference
 
@@ -96,7 +98,7 @@ The orchestrator:
 4. Coordinates outcomes and updates external systems
 5. Never implements code, tests, or documentation directly
 
-Every release should be complete, polished, and delightful.
+Every release should make a coherent real journey possible. Polish follows the needs of that journey; unused breadth waits for dogfood evidence.
 
 ## Configuration
 
@@ -124,6 +126,7 @@ This skill uses paths from `.agents/loaf.json`:
 
 ### BEFORE (Planning)
 - Shape prepares issues; implement works the frontier. Decomposition is `loaf issue promote` inside shape.
+- Review each root and child for rideability before building dependency rounds; a foundation-only wheel stays with the immediate slice that mounts it.
 - Log the orchestration intent with `loaf journal log`
 - `loaf issue check <ref>` must report shaped (delivery) or ready (decision); identify agents; get user approval
 

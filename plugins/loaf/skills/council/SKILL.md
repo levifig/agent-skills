@@ -9,7 +9,7 @@ description: >-
   don't need multi-agent deliberation (use architecture).
 user-invocable: true
 argument-hint: '[topic]'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Council

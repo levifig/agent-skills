@@ -220,6 +220,10 @@ Skills are the only knowledge mechanism that works across all targets (Claude Co
 
 Principles that shape how Loaf is designed and operated. Unlike ADRs, these are mutable and evolve via `/reflect` as the project learns. They sit above implementation choices but below VISION (which captures product intent and direction).
 
+### Architecture Serves the Next Rideable Increment
+
+Architectural depth is enabling work, not product progress by itself. New storage, migration, security, crypto, protocol, and abstraction work must name the immediate [rideable increment](../content/skills/foundations/references/rideable-increments.md) that exercises it end to end. Foundation work may span atomic commits, but successive strategic milestones must integrate it into a real operator journey. Narrow slices retain the same integrity requirements as broad ones.
+
 ### State Authority — Git Authors, SQLite Operates
 
 Authored durable artifacts — Changes, plans, research, specs, ADRs, knowledge, reports, code, and generated deliverables — live in Git and are edited in place. Operational, queryable state — the journal, Intent, Exploration, checkpoints, conversation provenance, relationships, deferrals, and derived indexes — lives in project-scoped SQLite. Neither store mirrors the other: SQLite never becomes a hidden Markdown repository, and Git never holds per-conversation operational facts. An elected tracker may own explicitly bounded issue identity and workflow fields, but it never owns either durable store; publication and reconciliation remain explicit.

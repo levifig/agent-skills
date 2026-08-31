@@ -7,7 +7,7 @@ description: >-
   architecture (use architecture) or post-implementation reflection (use
   reflect).
 subtask: false
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Strategy
@@ -34,6 +34,7 @@ Deep discovery for personas, market landscape, and problem space.
 - **Get approval** -- do NOT update STRATEGY.md without explicit user confirmation
 - **Define anti-personas** -- who we are NOT building for is as important as who we are
 - **Keep it current** -- outdated strategy is worse than no strategy
+- **Make progress rideable** -- priorities and milestones name complete operator journeys; foundations name the immediate slice that consumes them, and dogfood evidence earns later breadth
 - **Log updates** -- log strategic changes to the project journal: `loaf journal log "decision(strategy): updated personas/landscape/problem space"`
 
 ---
@@ -42,6 +43,7 @@ Deep discovery for personas, market landscape, and problem space.
 
 - STRATEGY.md content aligns with VISION.md direction
 - All persona definitions include anti-personas (who we are NOT building for)
+- Strategic sequencing says what a real operator can do after each milestone and keeps safety/integrity intact while deferring breadth
 - User has explicitly approved all updates before STRATEGY.md is modified
 
 ---
@@ -87,7 +89,7 @@ Strategy discovery requires **extensive interviewing**. Interview extensively us
 
 ### Step 3: Draft Updates
 
-Create additions/updates to STRATEGY.md following the [strategy template](templates/strategy.md).
+Create additions/updates to STRATEGY.md following the [strategy template](templates/strategy.md). Express sequencing as rideable increments from the foundations Rideable Increments reference, not completed architecture layers.
 
 ### Step 4: Present for Approval
 

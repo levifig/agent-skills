@@ -7,7 +7,7 @@ description: >-
   Produces verified mutations or read-only summaries with gaps and blockers. In
   Loaf projects, preserves loaf issue authority and synchronization boundaries.
   Not for configuring or authenticating MCP servers.
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Linear
