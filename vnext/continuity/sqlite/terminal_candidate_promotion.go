@@ -150,6 +150,18 @@ func (store *Store) PromoteTerminalCandidate(
 			return TerminalCandidateReceipt{}, syncProblem(SyncErrorCursor, "relay_head", "does not match the exact authority cutoff")
 		}
 	}
+	recoveryPrunes, hasRecoveryPrunes, err := readAndValidateSyncRecoveryPruneCandidateV1(ctx, tx, projectID)
+	if err != nil {
+		return TerminalCandidateReceipt{}, err
+	}
+	if hasRecoveryPrunes {
+		if !recoveryPrunes.Ready || recoveryPrunes.Snapshot.Authority != binding {
+			return TerminalCandidateReceipt{}, syncProblem(SyncErrorConflict, "sync_recovery_prune_candidate", "does not match the terminal recovery authority")
+		}
+		if err := requireExactSyncRecoveryPruneCandidateV1(ctx, tx, projectID, recoveryPrunes); err != nil {
+			return TerminalCandidateReceipt{}, err
+		}
+	}
 
 	frames, err := readTerminalCandidatePromotionFramesV1(ctx, tx, candidate)
 	if err != nil {
@@ -165,6 +177,11 @@ func (store *Store) PromoteTerminalCandidate(
 	}
 	if err := validateTerminalCandidatePromotionFramesV1(ctx, tx, candidate, authorityEnvironments, frames); err != nil {
 		return TerminalCandidateReceipt{}, err
+	}
+	if hasRecoveryPrunes {
+		if err := validateRecoveryPruneTerminalPromotionV1(ctx, tx, recoveryPrunes, candidate, frames); err != nil {
+			return TerminalCandidateReceipt{}, err
+		}
 	}
 	resultingFacts, err := planTerminalCandidatePromotionV1(ctx, tx, projectID, authorityEnvironments, frames)
 	if err != nil {
@@ -190,6 +207,11 @@ func (store *Store) PromoteTerminalCandidate(
 	receipt := terminalCandidateReceiptV1(candidate, corpusDigest)
 	if err := finishTerminalCandidatePromotionV1(ctx, tx, receipt, frames, binding, progress); err != nil {
 		return TerminalCandidateReceipt{}, err
+	}
+	if hasRecoveryPrunes {
+		if err := deleteExactSyncRecoveryPruneCandidateV1(ctx, tx, recoveryPrunes); err != nil {
+			return TerminalCandidateReceipt{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return TerminalCandidateReceipt{}, syncProblem(SyncErrorStore, "", "terminal candidate promotion outcome is unknown; retry the exact checkpoint")
@@ -451,6 +473,92 @@ func validateTerminalCandidatePromotionFramesV1(ctx context.Context, tx *sql.Tx,
 		return syncProblem(SyncErrorStore, "", "terminal candidate header digest is corrupt")
 	}
 	return nil
+}
+
+func validateRecoveryPruneTerminalPromotionV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	recoveryPrunes SyncRecoveryPruneCandidate,
+	candidate TerminalCandidate,
+	frames []preparedTerminalCandidatePromotionFrameV1,
+) error {
+	var stagedPrunedTargets int64
+	for _, frame := range frames {
+		match, found, err := readSyncRecoveryPruneTargetMatchV1(
+			ctx, tx, candidate.ProjectID, recoveryPrunes.CandidateID, frame.normalized.arrivalSequence,
+		)
+		if err != nil {
+			return err
+		}
+		if match.MembershipGeneration > recoveryPrunes.Snapshot.Authority.MembershipGeneration {
+			return corruptSyncRecoveryPruneCandidateV1("indexed prune target generation exceeds the ready authority")
+		}
+		if frame.normalized.frameKind == terminalCandidateFrameKindSealedV1 {
+			if found {
+				return syncProblem(SyncErrorConflict, "recovery_prune_target", "authenticated prune target is staged as a sealed frame")
+			}
+			continue
+		}
+		if !found || frame.prunedReference == nil || frame.normalized.pruneCertificateID == nil ||
+			match.Reference != *frame.prunedReference ||
+			match.PruneCertificateID != *frame.normalized.pruneCertificateID ||
+			match.FactKind != frame.prunedKind || match.HLC != frame.normalized.clock {
+			return syncProblem(SyncErrorConflict, "recovery_prune_target", "staged prune projection differs from the exact authenticated target")
+		}
+		stagedPrunedTargets++
+	}
+
+	priorTargets, err := exactCanonicalRecoveryPruneTargetPrefixCountV1(
+		ctx, tx, recoveryPrunes, candidate.StartArrivalSequence,
+	)
+	if err != nil {
+		return err
+	}
+	if priorTargets > recoveryPrunes.TargetCount || stagedPrunedTargets > recoveryPrunes.TargetCount-priorTargets ||
+		priorTargets+stagedPrunedTargets != recoveryPrunes.TargetCount {
+		return syncProblem(SyncErrorConflict, "recovery_prune_target", "terminal history does not exactly cover the authenticated prune inventory")
+	}
+	return nil
+}
+
+func exactCanonicalRecoveryPruneTargetPrefixCountV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	recoveryPrunes SyncRecoveryPruneCandidate,
+	beforeArrival int64,
+) (int64, error) {
+	var targetCount, missingCount int64
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*),
+       COALESCE(SUM(CASE WHEN tombstones.fact_id IS NULL THEN 1 ELSE 0 END), 0)
+FROM continuity_sync_recovery_prune_targets AS targets
+JOIN continuity_sync_recovery_prune_records AS records
+  ON records.project_id = targets.project_id
+ AND records.candidate_id = targets.candidate_id
+ AND records.prune_sequence = targets.prune_sequence
+LEFT JOIN continuity_sync_tombstones AS tombstones
+  ON tombstones.project_id = targets.project_id
+ AND tombstones.fact_id = targets.fact_id
+ AND tombstones.environment_id = targets.environment_id
+ AND tombstones.environment_sequence = targets.environment_sequence
+ AND tombstones.arrival_sequence = targets.arrival_sequence
+ AND tombstones.previous_envelope_digest = targets.previous_envelope_digest
+ AND tombstones.envelope_digest = targets.envelope_digest
+ AND tombstones.certificate_id = targets.certificate_id
+ AND tombstones.key_generation = targets.key_generation
+ AND tombstones.nonce = targets.nonce
+ AND tombstones.prune_certificate_id = records.prune_certificate_id
+ AND tombstones.pruned_arrival_digest IS NOT NULL
+WHERE targets.project_id = ? AND targets.candidate_id = ?
+  AND targets.arrival_sequence < ?`,
+		string(recoveryPrunes.ProjectID), recoveryPrunes.CandidateID[:], beforeArrival,
+	).Scan(&targetCount, &missingCount); err != nil {
+		return 0, syncTransactionProblem(ctx)
+	}
+	if missingCount != 0 {
+		return 0, syncProblem(SyncErrorConflict, "recovery_prune_target", "authenticated prune prefix has no exact canonical tombstone")
+	}
+	return targetCount, nil
 }
 
 func terminalCandidatePromotionStoredFactV1(frame terminalCandidateFrameV1) (storedFactV1, error) {

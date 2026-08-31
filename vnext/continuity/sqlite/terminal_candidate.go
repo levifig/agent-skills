@@ -16,10 +16,19 @@ import (
 // authenticated projection inputs. The caller is responsible for constructing
 // it only from the exact PrunedArrival bytes carried by Inbox.
 type VerifiedTerminalPrunedFrame struct {
+	PruneID            [32]byte
 	Reference          VerifiedPruneReference
 	PruneCertificateID [32]byte
 	FactKind           continuity.FactKind
 	HLC                continuity.HybridTime
+}
+
+func (VerifiedTerminalPrunedFrame) String() string {
+	return "[REDACTED verified terminal pruned frame]"
+}
+
+func (VerifiedTerminalPrunedFrame) GoString() string {
+	return "sqlite.VerifiedTerminalPrunedFrame([REDACTED])"
 }
 
 // VerifiedTerminalCandidateFrame binds exactly one staged opaque arrival to
@@ -28,6 +37,14 @@ type VerifiedTerminalCandidateFrame struct {
 	Inbox  OpaqueSyncFrame
 	Sealed *VerifiedSyncFrame
 	Pruned *VerifiedTerminalPrunedFrame
+}
+
+func (VerifiedTerminalCandidateFrame) String() string {
+	return "[REDACTED verified terminal candidate frame]"
+}
+
+func (VerifiedTerminalCandidateFrame) GoString() string {
+	return "sqlite.VerifiedTerminalCandidateFrame([REDACTED])"
 }
 
 // TerminalCandidate is the fixed-size durable checkpoint for the one active
@@ -56,9 +73,10 @@ type TerminalCandidateCheckpoint struct {
 }
 
 type preparedTerminalCandidateFrameV1 struct {
-	inbox      OpaqueSyncFrame
-	normalized terminalCandidateFrameV1
-	sealedFact *storedFactV1
+	inbox           OpaqueSyncFrame
+	normalized      terminalCandidateFrameV1
+	sealedFact      *storedFactV1
+	recoveryPruneID *[32]byte
 }
 
 type terminalCandidateSourceV1 struct {
@@ -82,6 +100,47 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	ctx context.Context,
 	projectID continuity.ProjectID,
 	verifiedAuthority SyncAuthorityBinding,
+	frames []VerifiedTerminalCandidateFrame,
+	trustedNowMillis,
+	maxFutureSkewMillis int64,
+) (TerminalCandidate, error) {
+	return store.stageVerifiedTerminalCandidateChunkV1(
+		ctx, projectID, verifiedAuthority, nil, frames, trustedNowMillis, maxFutureSkewMillis,
+	)
+}
+
+// StageVerifiedRecoveryTerminalCandidateChunk creates, resumes, or replays one
+// terminal-history chunk while atomically revalidating every pruned frame
+// against the exact immutable READY recovery prune candidate. Sealed frames
+// retain the same caller-verification contract as ordinary terminal staging.
+func (store *Store) StageVerifiedRecoveryTerminalCandidateChunk(
+	ctx context.Context,
+	projectID continuity.ProjectID,
+	verifiedAuthority SyncAuthorityBinding,
+	recoveryPrunes SyncRecoveryPruneCandidate,
+	frames []VerifiedTerminalCandidateFrame,
+	trustedNowMillis,
+	maxFutureSkewMillis int64,
+) (TerminalCandidate, error) {
+	if err := validateSyncRecoveryPruneCandidateV1(recoveryPrunes); err != nil {
+		return TerminalCandidate{}, err
+	}
+	if recoveryPrunes.ProjectID != projectID || recoveryPrunes.Snapshot.Authority != verifiedAuthority {
+		return TerminalCandidate{}, syncProblem(SyncErrorInvalid, "recovery_prunes", "does not match the terminal project and authority")
+	}
+	if !recoveryPrunes.Ready {
+		return TerminalCandidate{}, syncProblem(SyncErrorInvalid, "recovery_prunes", "must be ready")
+	}
+	return store.stageVerifiedTerminalCandidateChunkV1(
+		ctx, projectID, verifiedAuthority, &recoveryPrunes, frames, trustedNowMillis, maxFutureSkewMillis,
+	)
+}
+
+func (store *Store) stageVerifiedTerminalCandidateChunkV1(
+	ctx context.Context,
+	projectID continuity.ProjectID,
+	verifiedAuthority SyncAuthorityBinding,
+	recoveryPrunes *SyncRecoveryPruneCandidate,
 	frames []VerifiedTerminalCandidateFrame,
 	trustedNowMillis,
 	maxFutureSkewMillis int64,
@@ -116,8 +175,17 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
 		return TerminalCandidate{}, err
 	}
-	if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
-		return TerminalCandidate{}, err
+	if recoveryPrunes == nil {
+		if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
+			return TerminalCandidate{}, err
+		}
+	} else {
+		if err := requireExactSyncRecoveryPruneCandidateV1(ctx, tx, projectID, *recoveryPrunes); err != nil {
+			return TerminalCandidate{}, err
+		}
+		if err := requireExactRecoveryTerminalPrunedFramesV1(ctx, tx, projectID, *recoveryPrunes, prepared); err != nil {
+			return TerminalCandidate{}, err
+		}
 	}
 
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
@@ -523,6 +591,8 @@ func prepareTerminalCandidateChunkV1(projectID continuity.ProjectID, frames []Ve
 				return nil, syncProblem(SyncErrorInvalid, "pruned", "does not have canonical anchor fields")
 			}
 			pruneCertificateID := input.Pruned.PruneCertificateID
+			recoveryPruneID := input.Pruned.PruneID
+			entry.recoveryPruneID = &recoveryPruneID
 			entry.normalized = terminalCandidateFrameV1{
 				projectID:              projectID,
 				arrivalSequence:        input.Pruned.Reference.ArrivalSequence,
@@ -664,6 +734,60 @@ WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), prepared.norm
 	}
 	if err := validateTerminalCandidateInboxBindingV1(prepared.normalized, retained); err != nil {
 		return err
+	}
+	return nil
+}
+
+func requireExactRecoveryTerminalPrunedFramesV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	recoveryPrunes SyncRecoveryPruneCandidate,
+	frames []preparedTerminalCandidateFrameV1,
+) error {
+	for _, frame := range frames {
+		match, found, err := readSyncRecoveryPruneTargetMatchV1(
+			ctx, tx, projectID, recoveryPrunes.CandidateID, frame.normalized.arrivalSequence,
+		)
+		if err != nil {
+			return err
+		}
+		if match.MembershipGeneration > recoveryPrunes.Snapshot.Authority.MembershipGeneration {
+			return corruptSyncRecoveryPruneCandidateV1("indexed prune target generation exceeds the ready authority")
+		}
+		if frame.normalized.frameKind == terminalCandidateFrameKindSealedV1 {
+			if found {
+				return syncProblem(SyncErrorConflict, "recovery_prune_target", "authenticated prune target arrived as a sealed frame")
+			}
+			continue
+		}
+		if !found || frame.recoveryPruneID == nil || *frame.recoveryPruneID == ([32]byte{}) {
+			if !found {
+				if err := validateSyncRecoveryPruneCandidateIndexV1(ctx, tx, recoveryPrunes); err != nil {
+					return err
+				}
+			}
+			return syncProblem(SyncErrorConflict, "recovery_prune_target", "pruned arrival has no exact authenticated target")
+		}
+		body, err := decodeTerminalCandidatePrunedBodyV1(frame.normalized.candidateBytes)
+		if err != nil {
+			return syncProblem(SyncErrorStore, "", "prepared terminal prune projection is corrupt")
+		}
+		if match.PruneID != *frame.recoveryPruneID ||
+			match.Reference.FactID != frame.normalized.factID ||
+			match.Reference.EnvironmentID != frame.normalized.environmentID ||
+			match.Reference.EnvironmentSequence != frame.normalized.environmentSequence ||
+			match.Reference.ArrivalSequence != frame.normalized.arrivalSequence ||
+			match.Reference.PreviousEnvelopeDigest != frame.normalized.previousEnvelopeDigest ||
+			match.Reference.EnvelopeDigest != frame.normalized.envelopeDigest ||
+			match.Reference.CertificateID != frame.normalized.certificateID ||
+			match.Reference.KeyGeneration != frame.normalized.keyGeneration ||
+			match.Reference.Nonce != frame.normalized.nonce ||
+			match.PruneCertificateID != *frame.normalized.pruneCertificateID ||
+			match.FactKind != body.FactKind ||
+			match.HLC != frame.normalized.clock {
+			return syncProblem(SyncErrorConflict, "recovery_prune_target", "pruned arrival differs from its exact authenticated target")
+		}
 	}
 	return nil
 }
