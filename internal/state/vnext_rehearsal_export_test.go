@@ -155,6 +155,187 @@ func TestExportVNextRehearsalArchiveAcceptsMigrationBornHandoffWithoutFactAlias(
 	}
 }
 
+func TestExportVNextRehearsalArchiveAcceptsExactMigration25HandoffPair(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	body := "# Exact legacy handoff\n\nKeep **all** Markdown bytes.  \n"
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(session seed) error = %v", err)
+	}
+	now := "2026-01-01T00:00:00Z"
+	mustExec(t, store, `INSERT INTO sessions (id, project_id, harness_session_id, status, created_at, updated_at) VALUES ('session-migration-25', ?, 'session-migration-25', 'active', ?, ?)`, status.ProjectID, now, now)
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close(session seed) error = %v", err)
+	}
+	handoff, err := CreateArtifactEntity(ctx, root, resolver, ArtifactEntityCreateOptions{
+		Kind: "handoff", Title: "Migration 25 handoff", Body: body, HarnessSessionID: "session-migration-25",
+	})
+	if err != nil {
+		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
+	}
+	journal, err := LogJournal(ctx, root, resolver, JournalLogOptions{Entry: "discover(order): between migration facts"})
+	if err != nil {
+		t.Fatalf("LogJournal() error = %v", err)
+	}
+	store, err = OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	seedMigration25HandoffPair(t, store, status.ProjectID, handoff)
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	backup, err := Backup(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+
+	encoded, err := ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{
+		Backup: backup, ProjectID: status.ProjectID, Root: root, Resolver: resolver,
+	})
+	if err != nil {
+		t.Fatalf("ExportVNextRehearsalArchive() error = %v", err)
+	}
+	replayed, err := ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{
+		Backup: backup, ProjectID: status.ProjectID, Root: root, Resolver: resolver,
+	})
+	if err != nil || !bytes.Equal(encoded, replayed) {
+		t.Fatalf("deterministic migration-pair replay = (%d bytes, %v), want %d identical bytes", len(replayed), err, len(encoded))
+	}
+	sealed, err := archive.Parse(encoded)
+	if err != nil {
+		t.Fatalf("archive.Parse() error = %v", err)
+	}
+	if len(sealed.Content.Records) != 3 || sealed.Content.Records[1].Kind != archive.RecordHandoff ||
+		sealed.Content.Records[1].SourceID != handoff.Entity.Alias || sealed.Content.Records[1].Handoff == nil ||
+		sealed.Content.Records[1].Handoff.Purpose != "Migration 25 handoff" || sealed.Content.Records[1].Handoff.Situation != body ||
+		sealed.Content.Records[1].Observation.HarnessSessionID != "session-migration-25" ||
+		sealed.Content.Records[2].Kind != archive.RecordJournal || sealed.Content.Records[2].SourceID != journal.ID {
+		t.Fatalf("migration-pair root order/content = %#v", sealed.Content.Records)
+	}
+}
+
+func TestExportVNextRehearsalArchiveRejectsNearMigration25HandoffPairs(t *testing.T) {
+	for name, mutate := range map[string]func(*testing.T, *Store, string, ArtifactEntityCreateResult, string){
+		"nullable from status stored empty": func(t *testing.T, store *Store, _ string, _ ArtifactEntityCreateResult, eventID string) {
+			mustExec(t, store, `UPDATE events SET from_status = '' WHERE id = ?`, eventID)
+		},
+		"different event note": func(t *testing.T, store *Store, _ string, _ ArtifactEntityCreateResult, eventID string) {
+			mustExec(t, store, `UPDATE events SET note = 'real status change' WHERE id = ?`, eventID)
+		},
+		"enriched sparse payload": func(t *testing.T, store *Store, _ string, _ ArtifactEntityCreateResult, eventID string) {
+			var raw string
+			if err := store.db.QueryRow(`SELECT payload FROM facts WHERE id = ?`, eventID).Scan(&raw); err != nil {
+				t.Fatalf("read sparse fact: %v", err)
+			}
+			raw = strings.TrimSuffix(raw, "}") + `,"title":"not sparse"}`
+			mustExec(t, store, `UPDATE facts SET payload = ? WHERE id = ?`, raw, eventID)
+		},
+		"non-legacy sparse environment": func(t *testing.T, store *Store, _ string, _ ArtifactEntityCreateResult, eventID string) {
+			mustExec(t, store, `UPDATE facts SET env_id = 'other-host' WHERE id = ?`, eventID)
+		},
+		"sparse fact ordered after rich fact": func(t *testing.T, store *Store, _ string, handoff ArtifactEntityCreateResult, eventID string) {
+			mustExec(t, store, `UPDATE facts SET seq = 3, hlc = (SELECT hlc FROM facts WHERE id = ?) WHERE id = ?`, handoff.EventID, eventID)
+		},
+		"second event": func(t *testing.T, store *Store, projectID string, handoff ArtifactEntityCreateResult, eventID string) {
+			mustExec(t, store, `INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
+				SELECT id || '-extra', project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at FROM events WHERE id = ?`, eventID)
+		},
+		"third rich fact": func(t *testing.T, store *Store, _ string, handoff ArtifactEntityCreateResult, _ string) {
+			mustExec(t, store, `INSERT INTO facts (id, project_id, kind, payload, env_id, seq, hlc, envelope_v)
+				SELECT id || '-revision', project_id, kind, payload, env_id, seq + 1, hlc, envelope_v FROM facts WHERE id = ?`, handoff.EventID)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			root := projectRoot(t)
+			resolver := PathResolver{StateHome: t.TempDir()}
+			status, err := Initialize(ctx, root, resolver)
+			if err != nil {
+				t.Fatalf("Initialize() error = %v", err)
+			}
+			handoff, err := CreateArtifactEntity(ctx, root, resolver, ArtifactEntityCreateOptions{Kind: "handoff", Title: "Strict pair", Body: "body"})
+			if err != nil {
+				t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
+			}
+			store, err := OpenStore(status.DatabasePath)
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			eventID := seedMigration25HandoffPair(t, store, status.ProjectID, handoff)
+			mutate(t, store, status.ProjectID, handoff, eventID)
+			if err := store.Close(); err != nil {
+				t.Fatalf("Close() error = %v", err)
+			}
+			backup, err := Backup(ctx, root, resolver)
+			if err != nil {
+				t.Fatalf("Backup() error = %v", err)
+			}
+			if _, err := ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{Backup: backup, ProjectID: status.ProjectID, Root: root, Resolver: resolver}); err == nil {
+				t.Fatal("ExportVNextRehearsalArchive() error = nil")
+			}
+		})
+	}
+}
+
+func seedMigration25HandoffPair(t *testing.T, store *Store, projectID string, handoff ArtifactEntityCreateResult) string {
+	t.Helper()
+	ctx := context.Background()
+	var createdAt string
+	if err := store.db.QueryRow(`SELECT created_at FROM handoffs WHERE project_id = ? AND id = ?`, projectID, handoff.Entity.ID).Scan(&createdAt); err != nil {
+		t.Fatalf("read handoff created_at: %v", err)
+	}
+	eventID := stableMigrationID("event", projectID, "handoff", handoff.Entity.ID, "created", LifecycleStatusDraft)
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin migration pair seed: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
+		VALUES (?, ?, 'handoff', ?, 'status_changed', NULL, 'draft', 'recorded by handoff new', ?, ?)`, eventID, projectID, handoff.Entity.ID, createdAt, createdAt); err != nil {
+		t.Fatalf("insert migration event: %v", err)
+	}
+	sparse, err := appendCoreEventFactTx(ctx, tx, projectID, FactKindHandoffRecorded, eventID, CoreEventPayload{
+		SubjectKind: "handoff", SubjectID: handoff.Entity.ID, Status: LifecycleStatusDraft,
+		ToStatus: LifecycleStatusDraft, Note: "recorded by handoff new", CreatedAt: createdAt, UpdatedAt: createdAt,
+	}, parseCoreEventTime(createdAt), legacyFactEnvID)
+	if err != nil {
+		t.Fatalf("append sparse migration fact: %v", err)
+	}
+	var richRaw string
+	if err := tx.QueryRowContext(ctx, `SELECT payload FROM facts WHERE id = ?`, handoff.EventID).Scan(&richRaw); err != nil {
+		t.Fatalf("read rich handoff fact: %v", err)
+	}
+	rich, err := decodeCoreEventPayload(richRaw)
+	if err != nil {
+		t.Fatalf("decode rich handoff fact: %v", err)
+	}
+	rich.Alias, rich.Note = "", ""
+	richRaw, err = encodeCoreEventPayload(rich)
+	if err != nil {
+		t.Fatalf("encode migration birth fact: %v", err)
+	}
+	sparseHLC, err := parseHLC(sparse.HLC)
+	if err != nil {
+		t.Fatalf("parse sparse HLC: %v", err)
+	}
+	richHLC := HLC{WallMS: sparseHLC.WallMS + 60_000, Logical: 0}
+	if _, err := tx.ExecContext(ctx, `UPDATE facts SET payload = ?, env_id = ?, seq = ?, hlc = ?, envelope_v = ? WHERE id = ?`,
+		richRaw, legacyFactEnvID, sparse.Seq+1, richHLC.String(), factEnvelopeVersion, handoff.EventID); err != nil {
+		t.Fatalf("shape migration birth fact: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit migration pair seed: %v", err)
+	}
+	return eventID
+}
+
 func TestExportVNextRehearsalArchiveMergesJournalAndHandoffRootFactOrder(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)
@@ -378,6 +559,133 @@ func TestReadVNextRehearsalHandoffFactsV1PreflightsOversizedSelectedEnvironmentI
 	_, err = readVNextRehearsalHandoffFactsV1(ctx, tx, status.ProjectID, vnextRehearsalArchiveBudgetV1{})
 	if err == nil || !strings.Contains(err.Error(), "handoff fact selected bytes") {
 		t.Fatalf("readVNextRehearsalHandoffFactsV1() error = %v, want selected-byte preflight refusal", err)
+	}
+}
+
+func TestReadVNextRehearsalHandoffFactsV1PreflightsOversizedSelectedEventNote(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	handoff, err := CreateArtifactEntity(ctx, root, resolver, ArtifactEntityCreateOptions{Kind: "handoff", Title: "Oversized event", Body: "body"})
+	if err != nil {
+		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	eventID := seedMigration25HandoffPair(t, store, status.ProjectID, handoff)
+	mustExec(t, store, `UPDATE events SET note = printf('%*s', ?, 'x') WHERE id = ?`,
+		vnextRehearsalMaxAggregatePayloadBytesV1+1, eventID)
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer tx.Rollback()
+	_, err = readVNextRehearsalHandoffFactsV1(ctx, tx, status.ProjectID, vnextRehearsalArchiveBudgetV1{})
+	if err == nil || !strings.Contains(err.Error(), "handoff fact selected bytes") {
+		t.Fatalf("readVNextRehearsalHandoffFactsV1() error = %v, want event selected-byte preflight refusal", err)
+	}
+}
+
+func TestReadVNextRehearsalHandoffFactsV1PreflightsOversizedWrongKindCollidingEvent(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	handoff, err := CreateArtifactEntity(ctx, root, resolver, ArtifactEntityCreateOptions{Kind: "handoff", Title: "Colliding event", Body: "body"})
+	if err != nil {
+		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	now := "2026-01-01T00:00:00Z"
+	mustExec(t, store, `INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
+		VALUES (?, ?, 'idea', 'missing-idea', 'status_changed', NULL, 'open', printf('%*s', ?, 'x'), ?, ?)`,
+		handoff.EventID, status.ProjectID, vnextRehearsalMaxAggregatePayloadBytesV1+1, now, now)
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer tx.Rollback()
+	_, err = readVNextRehearsalHandoffFactsV1(ctx, tx, status.ProjectID, vnextRehearsalArchiveBudgetV1{})
+	if err == nil || !strings.Contains(err.Error(), "handoff fact selected bytes") {
+		t.Fatalf("readVNextRehearsalHandoffFactsV1() error = %v, want pre-scan colliding-event byte refusal", err)
+	}
+}
+
+func TestExportVNextRehearsalArchiveRejectsOrphanHandoffEvent(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if _, err := CreateArtifactEntity(ctx, root, resolver, ArtifactEntityCreateOptions{Kind: "handoff", Title: "Current handoff", Body: "body"}); err != nil {
+		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	now := "2026-01-01T00:00:00Z"
+	mustExec(t, store, `INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
+		VALUES ('orphan-handoff-event', ?, 'handoff', 'missing-handoff', 'status_changed', NULL, 'draft', 'recorded by handoff new', ?, ?)`,
+		status.ProjectID, now, now)
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	backup, err := Backup(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+	if _, err := ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{
+		Backup: backup, ProjectID: status.ProjectID, Root: root, Resolver: resolver,
+	}); err == nil || !strings.Contains(err.Error(), "handoff event/fact cardinality") {
+		t.Fatalf("ExportVNextRehearsalArchive() error = %v, want orphan handoff event refusal", err)
+	}
+}
+
+func TestExportVNextRehearsalArchiveRejectsInvalidUTF8Migration25Event(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	handoff, err := CreateArtifactEntity(ctx, root, resolver, ArtifactEntityCreateOptions{Kind: "handoff", Title: "Invalid event", Body: "body"})
+	if err != nil {
+		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	eventID := seedMigration25HandoffPair(t, store, status.ProjectID, handoff)
+	mustExec(t, store, `UPDATE events SET note = CAST(x'ff' AS TEXT) WHERE id = ?`, eventID)
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	backup, err := Backup(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+	_, err = ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{Backup: backup, ProjectID: status.ProjectID, Root: root, Resolver: resolver})
+	if err == nil || !strings.Contains(err.Error(), "UTF-8") {
+		t.Fatalf("ExportVNextRehearsalArchive() error = %v, want invalid event UTF-8 refusal", err)
 	}
 }
 
