@@ -72,6 +72,16 @@ type TerminalCandidateCheckpoint struct {
 	RollingCandidateDigest [32]byte
 }
 
+// Checkpoint returns the exact compare-and-swap token for candidate.
+func (candidate TerminalCandidate) Checkpoint() TerminalCandidateCheckpoint {
+	return TerminalCandidateCheckpoint{
+		CandidateID:            candidate.CandidateID,
+		ThroughArrivalSequence: candidate.ThroughArrivalSequence,
+		FrameCount:             candidate.FrameCount,
+		RollingCandidateDigest: candidate.RollingCandidateDigest,
+	}
+}
+
 type preparedTerminalCandidateFrameV1 struct {
 	inbox           OpaqueSyncFrame
 	normalized      terminalCandidateFrameV1
@@ -292,7 +302,7 @@ func (store *Store) stageVerifiedTerminalCandidateChunkV1(
 		}
 	}
 
-	firstFrameTerminalTrigger := false
+	firstFrameTerminalTrigger := recoveryPrunes != nil
 	frontiers := make(map[continuity.EnvironmentID]terminalCandidateFrontierV1)
 	for index := range prepared {
 		frame := &prepared[index]
@@ -307,7 +317,7 @@ func (store *Store) stageVerifiedTerminalCandidateChunkV1(
 		isTerminalTrigger := frame.normalized.frameKind == terminalCandidateFrameKindPrunedV1 ||
 			(firstSeen && ordinarySyncEnvironmentRequiresTerminalHistoryV1(environment, trustedNowMillis))
 		if index == 0 {
-			firstFrameTerminalTrigger = isTerminalTrigger
+			firstFrameTerminalTrigger = firstFrameTerminalTrigger || isTerminalTrigger
 		}
 		exactCanonicalDuplicate, err := validateTerminalCandidateCollisionsV1(ctx, tx, projectID, candidateID, *frame)
 		if err != nil {

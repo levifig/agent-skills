@@ -405,6 +405,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"TerminalCandidate.AuthorityDigest",
 		"TerminalCandidate.CandidateID",
 		"TerminalCandidate.ChannelID",
+		"TerminalCandidate.Checkpoint",
 		"TerminalCandidate.FrameCount",
 		"TerminalCandidate.MembershipGeneration",
 		"TerminalCandidate.ProjectID",

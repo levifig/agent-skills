@@ -82,6 +82,74 @@ WHERE project_id = ? AND state = 'staging'`, string(fixture.projectID)).Scan(&ac
 	}
 }
 
+func TestRecoveryTerminalCandidateStartsAllSealedSnapshotUnderReadyInventory(t *testing.T) {
+	store := openSyncStore(t, "recovery-terminal-all-sealed")
+	projectID := continuity.ProjectID("project-recovery-terminal-all-sealed")
+	authority := testActiveSyncAuthority()
+	authority.InventoryArrivalHead = 1
+	digest := seedCanonicalSyncAuthorityForBindingTest(t, store, projectID, authority)
+	binding := syncAuthorityBindingForTest(authority, 2, digest)
+	if _, err := store.AdvanceSyncRelayWatermark(
+		context.Background(), syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+	); err != nil {
+		t.Fatalf("seed all-sealed recovery watermark: %v", err)
+	}
+
+	fact := syncProjectFact(t, projectID, "fact-recovery-terminal-all-sealed", "environment-a", 1, 100)
+	encoded, err := continuitywire.Encode(fact)
+	if err != nil {
+		t.Fatalf("encode all-sealed recovery root: %v", err)
+	}
+	sealedBytes := append([]byte("sealed:"), encoded...)
+	envelopeDigest := sha256.Sum256(sealedBytes)
+	inbox := OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: envelopeDigest, SealedEnvelope: sealedBytes}
+	if _, err := store.StageSyncPageUnderAuthority(
+		context.Background(), projectID, binding, 0, 1, []OpaqueSyncFrame{inbox},
+	); err != nil {
+		t.Fatalf("stage all-sealed recovery root: %v", err)
+	}
+	sealed := VerifiedSyncFrame{
+		ArrivalSequence: 1, EnvelopeDigest: envelopeDigest,
+		CertificateID: testSyncCertificateID("environment-a"), KeyGeneration: 1,
+		Nonce: testNonce("recovery-terminal-all-sealed"), Fact: fact,
+	}
+	frame := VerifiedTerminalCandidateFrame{Inbox: inbox, Sealed: &sealed}
+	if _, err := store.StageVerifiedTerminalCandidateChunk(
+		context.Background(), projectID, binding, []VerifiedTerminalCandidateFrame{frame}, 1_000, 100,
+	); err == nil {
+		t.Fatal("ordinary all-sealed terminal candidate without trigger error = nil")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorCandidate)
+	}
+
+	recoveryPrunes, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+		context.Background(), projectID, SyncRecoveryPruneSnapshot{Authority: binding}, nil,
+		SyncRecoveryPruneCandidatePage{
+			ResultingRollingDigest: testSyncRecoveryPruneRollingDigestV1(0x91),
+			InventoryDigest:        testSyncRecoveryPruneInventoryDigestV1(0x92),
+		},
+	)
+	if err != nil {
+		t.Fatalf("stage ready empty recovery prune inventory: %v", err)
+	}
+	candidate, err := store.StageVerifiedRecoveryTerminalCandidateChunk(
+		context.Background(), projectID, binding, recoveryPrunes,
+		[]VerifiedTerminalCandidateFrame{frame}, 1_000, 100,
+	)
+	if err != nil {
+		t.Fatalf("start all-sealed recovery terminal candidate: %v", err)
+	}
+	wantCheckpoint := TerminalCandidateCheckpoint{
+		CandidateID:            candidate.CandidateID,
+		ThroughArrivalSequence: candidate.ThroughArrivalSequence,
+		FrameCount:             candidate.FrameCount,
+		RollingCandidateDigest: candidate.RollingCandidateDigest,
+	}
+	if candidate.Checkpoint() != wantCheckpoint {
+		t.Fatalf("terminal candidate checkpoint = %#v, want %#v", candidate.Checkpoint(), wantCheckpoint)
+	}
+}
+
 func TestRecoveryTerminalCandidateAuthenticatesStagesPromotesAndConsumesReadyIndex(t *testing.T) {
 	fixture := recoveryTerminalCandidateFixtureV1(t, "lifecycle")
 	frame := VerifiedTerminalCandidateFrame{Inbox: fixture.inbox, Pruned: &fixture.pruned}
