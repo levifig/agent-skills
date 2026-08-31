@@ -64,9 +64,29 @@ type vnextRehearsalProjectionV1 struct {
 }
 
 type vnextRehearsalHandoffFoldV1 struct {
-	Facts    map[string]CoreEventPayload
-	Roots    map[string]vnextRehearsalFactRootV1
-	FactRows int
+	Facts         map[string]CoreEventPayload
+	Roots         map[string]vnextRehearsalFactRootV1
+	FactRows      int
+	SyntheticRows int
+}
+
+type vnextRehearsalHandoffFactV1 struct {
+	Payload CoreEventPayload
+	Root    vnextRehearsalFactRootV1
+	EnvID   string
+	Seq     int64
+}
+
+type vnextRehearsalHandoffEventV1 struct {
+	ID         sql.NullString
+	EntityKind sql.NullString
+	EntityID   sql.NullString
+	EventType  sql.NullString
+	FromStatus sql.NullString
+	ToStatus   sql.NullString
+	Note       sql.NullString
+	CreatedAt  sql.NullString
+	UpdatedAt  sql.NullString
 }
 
 type vnextRehearsalFactRootV1 struct {
@@ -761,7 +781,7 @@ func readVNextRehearsalHandoffFactsV1(
 	budget vnextRehearsalArchiveBudgetV1,
 ) (vnextRehearsalHandoffFoldV1, error) {
 	var factRows int
-	var selectedBytes int64
+	var factBytes int64
 	if err := tx.QueryRowContext(ctx, `
 SELECT COUNT(*), COALESCE(SUM(
     length(CAST(id AS BLOB)) +
@@ -770,17 +790,48 @@ SELECT COUNT(*), COALESCE(SUM(
     length(CAST(env_id AS BLOB))
 ), 0)
 FROM facts
-WHERE project_id = ? AND kind = ?`, projectID, FactKindHandoffRecorded).Scan(&factRows, &selectedBytes); err != nil {
+WHERE project_id = ? AND kind = ?`, projectID, FactKindHandoffRecorded).Scan(&factRows, &factBytes); err != nil {
 		return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: inspect handoff fact bounds: %w", err)
 	}
-	if err := validateVNextRehearsalHandoffFactBoundsV1(factRows, selectedBytes, budget); err != nil {
+	var readerEventRows int
+	var eventBytes int64
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*), COALESCE(SUM(
+    length(CAST(e.id AS BLOB)) +
+    length(CAST(e.entity_kind AS BLOB)) +
+    length(CAST(e.entity_id AS BLOB)) +
+    length(CAST(e.event_type AS BLOB)) +
+    length(CAST(COALESCE(e.from_status, '') AS BLOB)) +
+    length(CAST(COALESCE(e.to_status, '') AS BLOB)) +
+    length(CAST(COALESCE(e.note, '') AS BLOB)) +
+    length(CAST(e.created_at AS BLOB)) +
+    length(CAST(e.updated_at AS BLOB))
+), 0)
+FROM events AS e
+JOIN facts AS f
+  ON f.project_id = e.project_id AND f.id = e.id
+WHERE f.project_id = ? AND f.kind = ?`, projectID, FactKindHandoffRecorded).Scan(&readerEventRows, &eventBytes); err != nil {
+		return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: inspect handoff event bounds: %w", err)
+	}
+	if err := validateVNextRehearsalHandoffFactBoundsV1(factRows+readerEventRows, factBytes+eventBytes, budget); err != nil {
 		return vnextRehearsalHandoffFoldV1{}, err
 	}
+	var handoffEventRows int
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM events
+WHERE project_id = ? AND entity_kind = 'handoff'`, projectID).Scan(&handoffEventRows); err != nil {
+		return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: count selected-project handoff events: %w", err)
+	}
 	rows, err := tx.QueryContext(ctx, `
-SELECT id, payload, hlc, env_id
-FROM facts
-WHERE project_id = ? AND kind = ?
-ORDER BY hlc COLLATE BINARY ASC, env_id COLLATE BINARY ASC, id COLLATE BINARY ASC`, projectID, FactKindHandoffRecorded)
+SELECT f.id, f.payload, f.hlc, f.env_id, f.seq, f.envelope_v,
+       e.id, e.entity_kind, e.entity_id, e.event_type, e.from_status,
+       e.to_status, e.note, e.created_at, e.updated_at
+FROM facts AS f
+LEFT JOIN events AS e
+  ON e.project_id = f.project_id AND e.id = f.id
+WHERE f.project_id = ? AND f.kind = ?
+ORDER BY f.hlc COLLATE BINARY ASC, f.env_id COLLATE BINARY ASC, f.id COLLATE BINARY ASC`, projectID, FactKindHandoffRecorded)
 	if err != nil {
 		return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: read handoff facts: %w", err)
 	}
@@ -789,14 +840,50 @@ ORDER BY hlc COLLATE BINARY ASC, env_id COLLATE BINARY ASC, id COLLATE BINARY AS
 		Facts: make(map[string]CoreEventPayload, factRows),
 		Roots: make(map[string]vnextRehearsalFactRootV1, factRows),
 	}
+	richFacts := make(map[string]vnextRehearsalHandoffFactV1, factRows)
+	syntheticRoots := make(map[string]vnextRehearsalHandoffFactV1, readerEventRows)
 	for rows.Next() {
 		var factID, payloadRaw, rawHLC, envID string
-		if err := rows.Scan(&factID, &payloadRaw, &rawHLC, &envID); err != nil {
+		var seq int64
+		var envelopeV int
+		var event vnextRehearsalHandoffEventV1
+		if err := rows.Scan(
+			&factID, &payloadRaw, &rawHLC, &envID, &seq, &envelopeV,
+			&event.ID, &event.EntityKind, &event.EntityID, &event.EventType, &event.FromStatus,
+			&event.ToStatus, &event.Note, &event.CreatedAt, &event.UpdatedAt,
+		); err != nil {
 			return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: scan handoff fact: %w", err)
+		}
+		for _, field := range []struct {
+			name  string
+			value string
+		}{{"id", factID}, {"payload", payloadRaw}, {"hlc", rawHLC}, {"env_id", envID}} {
+			if !utf8.ValidString(field.value) {
+				return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: handoff fact %s contains invalid UTF-8", field.name)
+			}
+		}
+		if seq <= 0 || envelopeV != factEnvelopeVersion {
+			return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: handoff fact %q has unsupported envelope provenance", factID)
 		}
 		stamp, err := vnextRehearsalFactRootV1FromRaw(FactKindHandoffRecorded, "", rawHLC, envID, factID)
 		if err != nil {
 			return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: handoff fact %q: %w", factID, err)
+		}
+		fold.FactRows++
+		if event.ID.Valid {
+			subjectID, err := validateVNextRehearsalSyntheticHandoffFactV1(projectID, factID, payloadRaw, envID, event)
+			if err != nil {
+				return vnextRehearsalHandoffFoldV1{}, err
+			}
+			if _, duplicate := syntheticRoots[subjectID]; duplicate {
+				return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: handoff %q has more than one synthetic creation fact", subjectID)
+			}
+			stamp.SubjectID = subjectID
+			syntheticRoots[subjectID] = vnextRehearsalHandoffFactV1{
+				Payload: CoreEventPayload{CreatedAt: event.CreatedAt.String}, Root: stamp, EnvID: envID, Seq: seq,
+			}
+			fold.SyntheticRows++
+			continue
 		}
 		payload, err := decodeVNextRehearsalHandoffFactPayloadV1(payloadRaw)
 		if err != nil {
@@ -808,12 +895,70 @@ ORDER BY hlc COLLATE BINARY ASC, env_id COLLATE BINARY ASC, id COLLATE BINARY AS
 		fold.Facts[payload.SubjectID] = payload
 		stamp.SubjectID = payload.SubjectID
 		fold.Roots[payload.SubjectID] = stamp
-		fold.FactRows++
+		richFacts[payload.SubjectID] = vnextRehearsalHandoffFactV1{Payload: payload, Root: stamp, EnvID: envID, Seq: seq}
 	}
 	if err := rows.Err(); err != nil {
 		return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: iterate handoff facts: %w", err)
 	}
+	if handoffEventRows != fold.SyntheticRows {
+		return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: handoff event/fact cardinality diverges")
+	}
+	for subjectID, synthetic := range syntheticRoots {
+		rich, found := richFacts[subjectID]
+		if !found || rich.EnvID != legacyFactEnvID || rich.Payload.Alias != "" || rich.Payload.Note != "" ||
+			synthetic.EnvID != legacyFactEnvID || synthetic.Seq >= rich.Seq ||
+			synthetic.Payload.CreatedAt != rich.Payload.CreatedAt ||
+			compareFactOrder(
+				synthetic.Root.HLC, synthetic.Root.EnvID, synthetic.Root.FactID,
+				rich.Root.HLC, rich.Root.EnvID, rich.Root.FactID,
+			) >= 0 {
+			return vnextRehearsalHandoffFoldV1{}, fmt.Errorf("export vNext rehearsal archive: handoff %q synthetic creation provenance diverges", subjectID)
+		}
+		fold.Roots[subjectID] = synthetic.Root
+	}
 	return fold, nil
+}
+
+func validateVNextRehearsalSyntheticHandoffFactV1(
+	projectID string,
+	factID string,
+	payloadRaw string,
+	envID string,
+	event vnextRehearsalHandoffEventV1,
+) (string, error) {
+	for _, field := range []struct {
+		name  string
+		value sql.NullString
+	}{
+		{"id", event.ID}, {"entity_kind", event.EntityKind}, {"entity_id", event.EntityID},
+		{"event_type", event.EventType}, {"from_status", event.FromStatus}, {"to_status", event.ToStatus},
+		{"note", event.Note}, {"created_at", event.CreatedAt}, {"updated_at", event.UpdatedAt},
+	} {
+		if field.value.Valid && !utf8.ValidString(field.value.String) {
+			return "", fmt.Errorf("export vNext rehearsal archive: handoff event %s contains invalid UTF-8", field.name)
+		}
+	}
+	if !event.ID.Valid || event.ID.String != factID || envID != legacyFactEnvID ||
+		!event.EntityKind.Valid || event.EntityKind.String != "handoff" || !event.EntityID.Valid || event.EntityID.String == "" ||
+		event.ID.String != stableMigrationID("event", projectID, "handoff", event.EntityID.String, "created", LifecycleStatusDraft) ||
+		!event.EventType.Valid || event.EventType.String != "status_changed" || event.FromStatus.Valid ||
+		!event.ToStatus.Valid || event.ToStatus.String != LifecycleStatusDraft ||
+		!event.Note.Valid || event.Note.String != "recorded by handoff new" ||
+		!event.CreatedAt.Valid || !event.UpdatedAt.Valid || event.CreatedAt.String != event.UpdatedAt.String {
+		return "", fmt.Errorf("export vNext rehearsal archive: handoff event/fact migration provenance diverges")
+	}
+	expected, err := encodeCoreEventPayload(CoreEventPayload{
+		SubjectKind: "handoff", SubjectID: event.EntityID.String, Status: LifecycleStatusDraft,
+		Note: event.Note.String, ToStatus: LifecycleStatusDraft,
+		CreatedAt: event.CreatedAt.String, UpdatedAt: event.CreatedAt.String,
+	})
+	if err != nil {
+		return "", fmt.Errorf("export vNext rehearsal archive: encode expected synthetic handoff fact: %w", err)
+	}
+	if payloadRaw != expected {
+		return "", fmt.Errorf("export vNext rehearsal archive: handoff event/fact migration payload diverges")
+	}
+	return event.EntityID.String, nil
 }
 
 func validateVNextRehearsalHandoffFactBoundsV1(
@@ -822,7 +967,7 @@ func validateVNextRehearsalHandoffFactBoundsV1(
 	budget vnextRehearsalArchiveBudgetV1,
 ) error {
 	if budget.RecordCount+factRows > vnextRehearsalMaxRecordsV1 {
-		return fmt.Errorf("export vNext rehearsal archive: handoff facts would exceed archive record limit %d", vnextRehearsalMaxRecordsV1)
+		return fmt.Errorf("export vNext rehearsal archive: handoff fact/event rows would exceed record limit %d", vnextRehearsalMaxRecordsV1)
 	}
 	if budget.PayloadBytes > vnextRehearsalMaxAggregatePayloadBytesV1 {
 		return fmt.Errorf("export vNext rehearsal archive: journal projection already exceeds archive aggregate payload limit %d", vnextRehearsalMaxAggregatePayloadBytesV1)
@@ -974,14 +1119,11 @@ WITH unsupported(entity_id) AS (
     UNION ALL
     SELECT entity_id FROM backend_mappings
     WHERE project_id = ? AND entity_kind = 'handoff'
-    UNION ALL
-    SELECT entity_id FROM events
-    WHERE project_id = ? AND entity_kind = 'handoff'
 )
 SELECT h.id
 FROM unsupported AS u
 JOIN handoffs AS h ON h.project_id = ? AND h.id = u.entity_id
-LIMIT 1`, projectID, projectID, projectID, projectID, projectID, projectID, projectID).Scan(&handoffID); err == nil {
+LIMIT 1`, projectID, projectID, projectID, projectID, projectID, projectID).Scan(&handoffID); err == nil {
 		return fmt.Errorf("export vNext rehearsal archive: handoff %q has unsupported relationship or projection metadata", handoffID)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("export vNext rehearsal archive: audit handoff relationship metadata: %w", err)
@@ -1124,7 +1266,7 @@ func validateVNextRehearsalHandoffParityV1(
 	fold vnextRehearsalHandoffFoldV1,
 	projection map[string]vnextRehearsalHandoffProjectionV1,
 ) error {
-	if len(fold.Facts) != len(projection) || fold.FactRows != len(projection) {
+	if len(fold.Facts) != len(projection) || fold.FactRows != len(projection)+fold.SyntheticRows {
 		return fmt.Errorf("export vNext rehearsal archive: selected project handoff fact/projection row counts diverge")
 	}
 	for handoffID, payload := range fold.Facts {
