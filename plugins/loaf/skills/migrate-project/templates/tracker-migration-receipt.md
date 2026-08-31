@@ -7,7 +7,8 @@ Return this receipt to the operator after the final verification read. Do not pe
 
 ## Destination
 
-- Provider: [Linear | GitHub | Jira | other]
+- Provider module: [provider slug and contract version]
+- Provider: [verified native provider name]
 - Workspace/organization: [verified name and native ID]
 - Team/repository: [verified name and native ID]
 - Project-like resources: [none, or one entry per verified project/milestone/epic with kind, name, native ID, and URL]
@@ -57,5 +58,5 @@ Return this receipt to the operator after the final verification read. Do not pe
 
 ## Boundary
 
-The local Loaf issue rows remain untouched and available as migration history; only the required workflow invocation was added to the private journal. The destination tracker is canonical for migrated issue work. Authentication and provider operations were handled by the harness connection; Loaf did not receive provider credentials or proxy provider traffic. Journal history, wraps, handoffs, ideas, sparks, reports, scratchpad, and remote continuity were not migrated.
+The local Loaf issue rows remain untouched and available as migration history; only the required workflow invocation was added to the private journal. The destination tracker is canonical for migrated issue work. Authentication and provider operations were handled by the harness connection; Loaf did not receive provider credentials or proxy provider traffic. Journal history, wraps, handoffs, ideas, sparks, reports, and remote continuity were not migrated.
 ```
