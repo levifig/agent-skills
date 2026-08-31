@@ -3,9 +3,10 @@ name: migrate-project
 description: >-
   Migrates open local Loaf issues into a harness-connected external tracker from
   a provider-neutral export packet. Use when moving a project to Linear, GitHub,
-  Jira, or another tracker. Produces a verified source-to-destination mapping
-  receipt. Not for ongoing synchronization, provider authentication, private
-  continuity transfer, or remote Loaf setup.
+  GitLab, Gitea, Jira, or another tracker supported by a provider module.
+  Produces a verified source-to-destination mapping receipt. Not for ongoing
+  synchronization, provider authentication, private continuity transfer, or
+  remote Loaf setup.
 user-invocable: true
 argument-hint: '[provider and destination project]'
 version: 0.5.0
@@ -41,7 +42,7 @@ Move open tracker-owned work once, then let the destination tracker remain canon
 10. **Preserve provenance without auto-linking** — every created or adopted provider resource description must contain `Loaf source alias:` followed by the alias in Markdown inline code, for example `Loaf source alias:` then `` `DOJO-1` ``. When an alias is absent, use `Loaf source ID:` followed by the ID in inline code. Never replace provider-native IDs with Loaf aliases.
 11. **Map by identity, never order** — associate every provider response with its source ID/alias and destination kind, then re-read the provenance marker. Never infer mappings from provider key sequence, request order, response order, creation time, or batch position; concurrent creates may receive provider keys in a different order.
 12. **Verify every batch** — re-read each destination resource, its kind, and its hierarchy/status/relationship state after writing. Only verified mappings enter the receipt.
-13. **One-time migration only** — do not create dual sync, webhooks, local mirrors, provider clients, credentials, scratchpad transfer, journal/wrap/handoff migration, or remote continuity sync. Local harness execution needs no Loaf server.
+13. **One-time migration only** — do not create dual sync, webhooks, local mirrors, provider clients, credentials, journal/wrap/handoff migration, or remote continuity sync. Local harness execution needs no Loaf server.
 
 ## Verification
 
@@ -96,7 +97,7 @@ Using the harness's native tracker connection:
 4. Confirm exact destination display names and casing with the operator.
 5. If more than one destination fits, ask the operator to choose.
 
-Do not ask for a Linear, GitHub, Jira, or other provider API key for Loaf. If the harness lacks the required connection, pause here.
+Do not ask for a Linear, GitHub, GitLab, Gitea, Jira, or other provider API key for Loaf. If the harness lacks the required connection, pause here.
 
 ### 3. Build the resource plan
 
