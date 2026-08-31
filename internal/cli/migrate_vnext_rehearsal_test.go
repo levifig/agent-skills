@@ -61,6 +61,10 @@ func TestRunnerMigrateVNextRehearsalJSONCreatesVerifiedDisposableDestination(t *
 		result.Archive.ContentSHA256 == "" || result.Archive.RecordCount != 4 {
 		t.Fatalf("archive evidence = %#v", result.Archive)
 	}
+	if result.Archive.Source.NormalizedJournalCategoryRows != 1 ||
+		result.Archive.Source.JournalCategoryMapping != archive.JournalCategoryMappingUnsupportedToNoteV1 {
+		t.Fatalf("archive source normalization evidence = %#v", result.Archive.Source)
+	}
 	if !result.Archive.Families.Project || !result.Archive.Families.Journal || !result.Archive.Families.Wrap || !result.Archive.Families.Handoffs ||
 		result.Archive.Families.Sparks || result.Archive.Families.Scratchpads || result.Archive.Families.CompleteForCutover {
 		t.Fatalf("archive families = %#v", result.Archive.Families)
@@ -96,7 +100,10 @@ func TestRunnerMigrateVNextRehearsalHumanLeadsWithIsolationAndNoActivation(t *te
 	if !strings.HasPrefix(output, "Verified isolated vNext rehearsal completed; no activation or cutover was performed.\n") {
 		t.Fatalf("human output lead = %q", output)
 	}
-	for _, want := range []string{"projection verified: true", "disposable: true", "activation performed: false", "cutover ready: false"} {
+	for _, want := range []string{
+		"journal category normalization: unsupported_legacy_journal_category_to_note_v1 (1 rows)",
+		"projection verified: true", "disposable: true", "activation performed: false", "cutover ready: false",
+	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("human output missing %q:\n%s", want, output)
 		}
@@ -385,7 +392,9 @@ func TestRunnerMigrateVNextRehearsalCloseFailureRetainsVerifiedProjectionEvidenc
 		t.Fatalf("json.Unmarshal(%q) error = %v", stdout.String(), decodeErr)
 	}
 	if result.ErrorCode != "destination_close_failed" || result.Succeeded || !result.ProjectionVerified ||
-		result.Archive.ContentSHA256 == "" || result.Archive.Expected != result.Archive.Actual || result.Archive.RecordCount != 4 {
+		result.Archive.ContentSHA256 == "" || result.Archive.Expected != result.Archive.Actual || result.Archive.RecordCount != 4 ||
+		result.Archive.Source.NormalizedJournalCategoryRows != 1 ||
+		result.Archive.Source.JournalCategoryMapping != archive.JournalCategoryMappingUnsupportedToNoteV1 {
 		t.Fatalf("close failure evidence = %#v", result)
 	}
 }
@@ -407,7 +416,8 @@ func prepareVNextRehearsalCLIFixture(t *testing.T) vnextRehearsalCLIFixture {
 	if err != nil {
 		t.Fatalf("state.Initialize() error = %v", err)
 	}
-	if _, err := state.LogJournal(context.Background(), root, resolver, state.JournalLogOptions{Entry: "discover(rehearsal): safe operator path", HarnessSessionID: "session-cli"}); err != nil {
+	discover, err := state.LogJournal(context.Background(), root, resolver, state.JournalLogOptions{Entry: "discover(rehearsal): safe operator path", HarnessSessionID: "session-cli"})
+	if err != nil {
 		t.Fatalf("state.LogJournal(discover) error = %v", err)
 	}
 	if _, err := state.LogJournal(context.Background(), root, resolver, state.JournalLogOptions{Entry: "wrap(rehearsal): dogfood the isolated result", HarnessSessionID: "session-cli"}); err != nil {
@@ -417,6 +427,22 @@ func prepareVNextRehearsalCLIFixture(t *testing.T) vnextRehearsalCLIFixture {
 		Kind: "handoff", Title: "CLI rehearsal", Body: "do-not-render-this-body",
 	}); err != nil {
 		t.Fatalf("state.CreateArtifactEntity(handoff) error = %v", err)
+	}
+	store, err := state.OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("state.OpenStore(normalization seed) error = %v", err)
+	}
+	if _, err := store.DB().Exec(`UPDATE facts SET payload = replace(payload, '"entry_type":"discover"', '"entry_type":"legacy_session"') WHERE id = ?`, discover.ID); err != nil {
+		t.Fatalf("update journal fact category: %v", err)
+	}
+	if _, err := store.DB().Exec(`UPDATE journal_entries SET entry_type = 'legacy_session' WHERE project_id = ? AND id = ?`, status.ProjectID, discover.ID); err != nil {
+		t.Fatalf("update journal projection category: %v", err)
+	}
+	if _, err := store.DB().Exec(`UPDATE journal_search SET entry_type = 'legacy_session' WHERE project_id = ? AND journal_entry_id = ?`, status.ProjectID, discover.ID); err != nil {
+		t.Fatalf("update journal search category: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("state.Close(normalization seed) error = %v", err)
 	}
 	backup, err := state.Backup(context.Background(), root, resolver)
 	if err != nil {

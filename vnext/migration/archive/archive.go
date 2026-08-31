@@ -28,6 +28,10 @@ const archiveDigestDomainV1 = "loaf:vnext:migration:archive:v1\x00"
 // preserved byte-for-byte as Situation without attempting field extraction.
 const HandoffMappingUnparsedLegacyV1 = "unparsed_legacy_handoff_v1"
 
+// JournalCategoryMappingUnsupportedToNoteV1 declares that effective legacy
+// journal labels outside the closed vNext vocabulary were mapped to note.
+const JournalCategoryMappingUnsupportedToNoteV1 = "unsupported_legacy_journal_category_to_note_v1"
+
 // Archive is one immutable checksummed migration archive. Its SHA-256 detects
 // accidental corruption; exporter provenance must be established out of band.
 type Archive struct {
@@ -48,17 +52,19 @@ type Content struct {
 
 // Source identifies the verified legacy backup used for export.
 type Source struct {
-	LegacySchemaVersion   int    `json:"legacy_schema_version"`
-	BackupSHA256          string `json:"backup_sha256"`
-	BackupBytes           int64  `json:"backup_bytes"`
-	JournalFactRows       int    `json:"journal_fact_rows"`
-	JournalProjectionRows int    `json:"journal_projection_rows"`
-	CollapsedRevisionRows int    `json:"collapsed_revision_rows"`
-	JournalOriginRows     int    `json:"journal_origin_rows"`
-	DroppedSpecLinks      int    `json:"dropped_spec_links"`
-	DroppedTaskLinks      int    `json:"dropped_task_links"`
-	HandoffRows           int    `json:"handoff_rows,omitempty"`
-	HandoffMapping        string `json:"handoff_mapping,omitempty"`
+	LegacySchemaVersion           int    `json:"legacy_schema_version"`
+	BackupSHA256                  string `json:"backup_sha256"`
+	BackupBytes                   int64  `json:"backup_bytes"`
+	JournalFactRows               int    `json:"journal_fact_rows"`
+	JournalProjectionRows         int    `json:"journal_projection_rows"`
+	CollapsedRevisionRows         int    `json:"collapsed_revision_rows"`
+	JournalOriginRows             int    `json:"journal_origin_rows"`
+	DroppedSpecLinks              int    `json:"dropped_spec_links"`
+	DroppedTaskLinks              int    `json:"dropped_task_links"`
+	HandoffRows                   int    `json:"handoff_rows,omitempty"`
+	HandoffMapping                string `json:"handoff_mapping,omitempty"`
+	NormalizedJournalCategoryRows int    `json:"normalized_journal_category_rows,omitempty"`
+	JournalCategoryMapping        string `json:"journal_category_mapping,omitempty"`
 }
 
 // ProjectMapping preserves the legacy durable identity exactly. Archive v1
