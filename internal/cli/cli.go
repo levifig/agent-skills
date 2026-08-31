@@ -393,7 +393,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  council       Manage councils")
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
 	fmt.Fprintln(out, "  check         Run hook checks")
-	fmt.Fprintln(out, "  doctor        Diagnose project alignment, leftover SQLite work, and leaked issue prefixes")
+	fmt.Fprintln(out, "  doctor        Diagnose project alignment, managed content, and leftover migration work")
 	fmt.Fprintln(out, "  release       Cut a retroactive release (suggest, cut)")
 	fmt.Fprintln(out, "  version       Show version and content counts")
 	fmt.Fprintln(out)

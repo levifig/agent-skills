@@ -198,7 +198,7 @@ func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
 
 func writeDoctorHelp(out io.Writer) {
 	fmt.Fprint(out, "Usage: loaf doctor [--fix [--force]] [--verbose] [--json]\n\n")
-	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, fenced content, leftover SQLite work, leaked issue prefixes)\n\n")
+	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, managed content, and leftover migration work)\n\n")
 	fmt.Fprint(out, "Options:\n")
 	fmt.Fprint(out, "  --fix       Offer each safe repair and prompt y/N before applying it\n")
 	fmt.Fprint(out, "  --force     With --fix, apply every offered repair without prompting\n")

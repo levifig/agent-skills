@@ -256,7 +256,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Flags: "--json", Description: "Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON"},
 			},
 		},
-		{Name: "doctor", Description: "Diagnose project alignment, including leftover SQLite work and leaked issue prefixes", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}, {Flags: "--json", Description: "Output the identical check set as read-only JSON; never prompts or repairs"}}},
+		{Name: "doctor", Description: "Diagnose project alignment, managed content, and leftover migration work", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}, {Flags: "--json", Description: "Output the identical check set as read-only JSON; never prompts or repairs"}}},
 		{
 			Name:        "release",
 			Description: "Cut a retroactive release from already-landed work",
