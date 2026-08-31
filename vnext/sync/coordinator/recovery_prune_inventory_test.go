@@ -399,6 +399,52 @@ func TestScanRecoveryPruneInventoryCollapsesCapsuleAuthenticationFailures(t *tes
 	}
 }
 
+func TestRecoveryPruneBootstrapErrorMappingSeparatesAuthenticationFromMalformedRelayMaterial(t *testing.T) {
+	secretMarker := "capsule-secret-marker"
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantCode   ProblemCode
+		wantAction ProblemAction
+	}{
+		{
+			name:     "authentication",
+			err:      fmt.Errorf("%s: %w", secretMarker, crypto.ErrPruneBootstrapAuthenticationFailed),
+			wantCode: CodeConflict, wantAction: ActionRestartRecovery,
+		},
+		{
+			name:     "authenticated plaintext binding",
+			err:      fmt.Errorf("%s: %w", secretMarker, crypto.ErrPruneBootstrapPlaintextBinding),
+			wantCode: CodeRemote, wantAction: ActionRestartRecovery,
+		},
+		{
+			name:     "malformed plaintext",
+			err:      fmt.Errorf("%s: %w", secretMarker, protocol.ErrInvalidPruneBootstrapPlaintext),
+			wantCode: CodeRemote, wantAction: ActionRestartRecovery,
+		},
+		{
+			name:     "oversized capsule",
+			err:      fmt.Errorf("%s: %w", secretMarker, protocol.ErrTooLarge),
+			wantCode: CodeRemote, wantAction: ActionRestartRecovery,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := mapRecoveryPruneBootstrapError(context.Background(), test.err)
+			assertProblem(t, err, test.wantCode, PhasePruneInventory, test.wantAction)
+			if strings.Contains(err.Error(), secretMarker) || strings.Contains(fmt.Sprintf("%#v", err), secretMarker) {
+				t.Fatalf("mapped bootstrap error exposed cause marker: %v", err)
+			}
+		})
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := mapRecoveryPruneBootstrapError(canceled, crypto.ErrPruneBootstrapAuthenticationFailed)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled bootstrap mapping = %v, want context cancellation precedence", err)
+	}
+}
+
 func TestScanRecoveryPruneInventoryRejectsUnverifiedSignedAndBootstrapMaterial(t *testing.T) {
 	for _, test := range []struct {
 		name   string
