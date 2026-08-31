@@ -16,6 +16,10 @@ import (
 const (
 	Format  = "loaf-vnext-continuity-archive"
 	Version = 1
+
+	maxEncodedBytes          = 64 << 20
+	maxRecords               = 100_000
+	maxAggregatePayloadBytes = 32 << 20
 )
 
 const archiveDigestDomainV1 = "loaf:vnext:migration:archive:v1\x00"
@@ -180,11 +184,17 @@ func Marshal(archive Archive) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal migration archive: %w", err)
 	}
+	if len(encoded) > maxEncodedBytes {
+		return nil, fmt.Errorf("migration archive exceeds %d encoded bytes", maxEncodedBytes)
+	}
 	return encoded, nil
 }
 
 // Parse strictly decodes and verifies the integrity of one canonical archive.
 func Parse(encoded []byte) (Archive, error) {
+	if len(encoded) > maxEncodedBytes {
+		return Archive{}, fmt.Errorf("migration archive exceeds %d encoded bytes", maxEncodedBytes)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	var archive Archive

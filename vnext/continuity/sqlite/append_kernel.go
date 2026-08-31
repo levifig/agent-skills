@@ -72,10 +72,21 @@ func (store *Store) appendFactV1(ctx context.Context, projectID continuity.Proje
 	}
 	defer tx.Rollback()
 
-	if err := rejectPrunedFactIDV1(ctx, tx, factID); err != nil {
+	receipt, err := store.appendIntentInTxV1(ctx, tx, intent)
+	if err != nil {
 		return continuity.AppendReceipt{}, err
 	}
-	existing, found, err := readFactByIDV1(ctx, tx, factID)
+	if err := tx.Commit(); err != nil {
+		return continuity.AppendReceipt{}, &continuity.Problem{Code: continuity.ProblemCommitUnknown, Detail: "the append commit outcome is unknown; retry with the retained fact id"}
+	}
+	return receipt, nil
+}
+
+func (store *Store) appendIntentInTxV1(ctx context.Context, tx *sql.Tx, intent appendIntentV1) (continuity.AppendReceipt, error) {
+	if err := rejectPrunedFactIDV1(ctx, tx, intent.factID); err != nil {
+		return continuity.AppendReceipt{}, err
+	}
+	existing, found, err := readFactByIDV1(ctx, tx, intent.factID)
 	if err != nil {
 		return continuity.AppendReceipt{}, err
 	}
@@ -91,7 +102,7 @@ func (store *Store) appendFactV1(ctx context.Context, projectID continuity.Proje
 	if err := admitFactV1(ctx, tx, intent); err != nil {
 		return continuity.AppendReceipt{}, err
 	}
-	sequence, clock, err := allocateEnvelopeV1(ctx, tx, projectID, store.environmentID, store.wallMillis())
+	sequence, clock, err := allocateEnvelopeV1(ctx, tx, intent.projectID, store.environmentID, store.wallMillis())
 	if err != nil {
 		return continuity.AppendReceipt{}, err
 	}
@@ -99,12 +110,12 @@ func (store *Store) appendFactV1(ctx context.Context, projectID continuity.Proje
 		return continuity.AppendReceipt{}, err
 	}
 	if err := advanceEnvironmentHeadV1(ctx, tx, storedFactV1{
-		factID:              factID,
-		projectID:           projectID,
-		subject:             subject,
-		kind:                kind,
+		factID:              intent.factID,
+		projectID:           intent.projectID,
+		subject:             intent.subject,
+		kind:                intent.kind,
 		payloadVersion:      payloadVersionV1,
-		content:             content,
+		content:             intent.content,
 		environmentID:       store.environmentID,
 		environmentSequence: sequence,
 		clock:               clock,
@@ -112,14 +123,11 @@ func (store *Store) appendFactV1(ctx context.Context, projectID continuity.Proje
 	}); err != nil {
 		return continuity.AppendReceipt{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return continuity.AppendReceipt{}, &continuity.Problem{Code: continuity.ProblemCommitUnknown, Detail: "the append commit outcome is unknown; retry with the retained fact id"}
-	}
 	return continuity.AppendReceipt{
-		FactID:              factID,
-		ProjectID:           projectID,
-		Subject:             subject,
-		Kind:                kind,
+		FactID:              intent.factID,
+		ProjectID:           intent.projectID,
+		Subject:             intent.subject,
+		Kind:                intent.kind,
 		EnvironmentID:       store.environmentID,
 		EnvironmentSequence: sequence,
 		Clock:               clock,
