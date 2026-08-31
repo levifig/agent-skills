@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"reflect"
 	"strings"
 	"testing"
@@ -128,6 +129,25 @@ func TestTrackerSkillContractRejectsProviderOverclaim(t *testing.T) {
 
 	findings := validateProjectManagementContract(fixture)
 	assertContractFinding(t, findings, "provider.mapping", "exact Linear mapping")
+}
+
+func TestProviderModuleCanBeAddedWithoutChangingCoreFlow(t *testing.T) {
+	t.Parallel()
+
+	fixture := validProjectManagementFixture()
+	fixture["skills/gitea/SKILL.md"] = &fstest.MapFile{Data: []byte(validSkill("gitea", "Maps project-management/v1 semantics to Gitea. Use when a Gitea connection is selected."))}
+	fixture["skills/gitea/capabilities.json"] = &fstest.MapFile{Data: []byte(providerCapabilitiesJSON("gitea"))}
+	assertNoContractFindings(t, validateProviderModules(fixture))
+
+	manifest := flowManifest{}
+	if err := decodeStrictJSON(fixture, flowManifestPath, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range manifest.Skills {
+		if declaration.Name == "gitea" || declaration.Kind == "provider" {
+			t.Fatalf("provider leaked into core Flow declarations: %+v", declaration)
+		}
+	}
 }
 
 func TestTrackerSkillContractRejectsExpandedProjectManagerAuthority(t *testing.T) {
@@ -300,12 +320,7 @@ func validateProjectManagementContract(content fs.FS) []finding {
 	}
 	findings = append(findings, validateTrackerContract(contract)...)
 
-	provider := providerCapabilities{}
-	if err := decodeStrictJSON(content, linearCapabilitiesPath, &provider); err != nil {
-		findings = append(findings, finding{"provider.contract", linearCapabilitiesPath, err.Error()})
-	} else {
-		findings = append(findings, validateProviderCapabilities(contract, provider)...)
-	}
+	findings = append(findings, validateProviderModulesAgainstContract(content, contract)...)
 
 	profile := projectManagerProfileContract{}
 	if err := decodeStrictJSON(content, projectManagerContractPath, &profile); err != nil {
@@ -318,7 +333,6 @@ func validateProjectManagementContract(content fs.FS) []finding {
 
 	for _, entrypoint := range []string{
 		"skills/project-management/SKILL.md",
-		"skills/linear/SKILL.md",
 		"agents/project-manager.md",
 	} {
 		body, err := fs.ReadFile(content, entrypoint)
@@ -357,11 +371,8 @@ func validateProjectManagerExecution(manifest flowManifest, profile projectManag
 		profile.BehaviorSource.ProviderRoute != manifest.Execution.Primary.ProviderRoute {
 		findings = append(findings, finding{"profile.execution", projectManagerContractPath, "optional profile behavior must derive from the primary main-agent contract, skill, and provider route"})
 	}
-	if profile.ID != manifest.Execution.OptionalProfile.ID ||
-		manifest.Execution.OptionalProfile.ContractPath != projectManagerContractPath ||
-		manifest.Execution.OptionalProfile.Fallback != "primary" ||
-		profile.Fallback != "main-agent-same-contract" {
-		findings = append(findings, finding{"profile.execution", projectManagerContractPath, "optional profile must fall back to primary main-agent execution of the same contract"})
+	if profile.Fallback != "main-agent-same-contract" {
+		findings = append(findings, finding{"profile.execution", projectManagerContractPath, "deferred profile source must preserve main-agent fallback semantics if revived"})
 	}
 	return findings
 }
@@ -434,26 +445,111 @@ func validateTrackerContract(contract projectManagementContract) []finding {
 }
 
 func validateProviderCapabilities(contract projectManagementContract, provider providerCapabilities) []finding {
+	return validateProviderCapabilitiesAt(contract, provider, linearCapabilitiesPath, "linear")
+}
+
+func validateProviderModules(content fs.FS) []finding {
+	contract := projectManagementContract{}
+	if err := decodeStrictJSON(content, projectManagementContractPath, &contract); err != nil {
+		return []finding{{"tracker.contract", projectManagementContractPath, err.Error()}}
+	}
+	return validateProviderModulesAgainstContract(content, contract)
+}
+
+func validateProviderModulesAgainstContract(content fs.FS, contract projectManagementContract) []finding {
+	entries, err := fs.ReadDir(content, "skills")
+	if err != nil {
+		return []finding{{"provider.inventory", "skills", err.Error()}}
+	}
 	var findings []finding
-	if provider.Schema != "loaf-provider-capabilities/v1" || provider.Provider != "linear" || provider.Contract != trackerContract {
-		findings = append(findings, finding{"provider.identity", linearCapabilitiesPath, "provider identity must bind Linear to project-management/v1"})
+	for _, entry := range entries {
+		if !entry.IsDir() || !providerManifestExists(content, entry.Name()) {
+			continue
+		}
+		providerPath := path.Join("skills", entry.Name(), "capabilities.json")
+		provider := providerCapabilities{}
+		if err := decodeStrictJSON(content, providerPath, &provider); err != nil {
+			findings = append(findings, finding{"provider.contract", providerPath, err.Error()})
+			continue
+		}
+		declaration := skillDeclaration{Name: entry.Name(), Path: path.Join("skills", entry.Name(), "SKILL.md"), Kind: "provider"}
+		findings = append(findings, validateProviderSkill(content, declaration)...)
+		findings = append(findings, validateProviderCapabilitiesAt(contract, provider, providerPath, entry.Name())...)
+	}
+	sortFindings(findings)
+	return findings
+}
+
+func validateProviderSkill(content fs.FS, declaration skillDeclaration) []finding {
+	findings := validateSkillDirectory(content, declaration)
+	body, err := fs.ReadFile(content, declaration.Path)
+	if err != nil {
+		return append(findings, finding{"skill.missing", declaration.Path, err.Error()})
+	}
+	matter, err := parseFrontMatter(string(body))
+	if err != nil {
+		return append(findings, finding{"skill.frontmatter", declaration.Path, err.Error()})
+	}
+	if matter.Name != declaration.Name {
+		findings = append(findings, finding{"skill.frontmatter", declaration.Path, fmt.Sprintf("name = %q, want provider slug %q", matter.Name, declaration.Name)})
+	}
+	if len(matter.Description) == 0 || len(matter.Description) > 1024 || strings.HasPrefix(matter.Description, "Use ") || !strings.Contains(matter.Description, "Use when") {
+		findings = append(findings, finding{"skill.description", declaration.Path, "provider description must contain 1-1024 characters, start with an action verb, and include a Use when trigger"})
+	}
+	findings = append(findings, validateSkillSections(declaration.Path, string(body))...)
+	findings = append(findings, validateReferenceInventory(content, declaration, string(body))...)
+	if !strings.Contains(string(body), trackerContract) {
+		findings = append(findings, finding{"tracker.entrypoint", declaration.Path, fmt.Sprintf("must name %s", trackerContract)})
+	}
+	return findings
+}
+
+func validateProviderCapabilitiesAt(contract projectManagementContract, provider providerCapabilities, providerPath string, providerName string) []finding {
+	var findings []finding
+	if !skillNamePattern.MatchString(providerName) || provider.Schema != "loaf-provider-capabilities/v1" || provider.Provider != providerName || provider.Contract != trackerContract {
+		findings = append(findings, finding{"provider.identity", providerPath, "provider manifest must bind its directory slug to project-management/v1"})
 	}
 	if provider.Connection != "harness-native" || provider.RuntimeCapabilityDiscovery != "required" {
-		findings = append(findings, finding{"provider.connection", linearCapabilitiesPath, "connection must remain harness-native with runtime capability discovery"})
+		findings = append(findings, finding{"provider.connection", providerPath, "connection must remain harness-native with runtime capability discovery"})
 	}
-	wantMappings := canonicalProviderOperations()
-	if len(provider.Operations) != len(wantMappings) || len(provider.Operations) != len(contract.Operations) {
-		findings = append(findings, finding{"provider.operations", linearCapabilitiesPath, fmt.Sprintf("operations has %d entries, want %d", len(provider.Operations), len(wantMappings))})
+	if len(provider.Operations) != len(contract.Operations) {
+		findings = append(findings, finding{"provider.operations", providerPath, fmt.Sprintf("operations has %d entries, want %d", len(provider.Operations), len(contract.Operations))})
 	}
 	for index, mapping := range provider.Operations {
 		if index >= len(contract.Operations) || mapping.ID != contract.Operations[index].ID {
-			findings = append(findings, finding{"provider.operations", linearCapabilitiesPath, fmt.Sprintf("operation %d does not match the common contract order", index)})
+			findings = append(findings, finding{"provider.operations", providerPath, fmt.Sprintf("operation %d does not match the common contract order", index)})
 		}
-		if index >= len(wantMappings) || !reflect.DeepEqual(mapping, wantMappings[index]) {
-			findings = append(findings, finding{"provider.mapping", linearCapabilitiesPath, fmt.Sprintf("operation %q must match the exact Linear mapping and phased capability requirements", mapping.ID)})
+		if mapping.NativeSemantic == "" || (mapping.Availability != "runtime" && mapping.Availability != "unsupported") || !stringInSlice(mapping.MaximumFidelity, contract.Fidelities) {
+			findings = append(findings, finding{"provider.mapping", providerPath, fmt.Sprintf("operation %q has an invalid semantic, availability, or fidelity", mapping.ID)})
+		}
+		if mapping.Availability == "unsupported" {
+			if mapping.MaximumFidelity != "unsupported" || len(mapping.Requires.Before)+len(mapping.Requires.Execute)+len(mapping.Requires.After) != 0 {
+				findings = append(findings, finding{"provider.mapping", providerPath, fmt.Sprintf("unsupported operation %q must use unsupported fidelity with empty phases", mapping.ID)})
+			}
+		} else if len(mapping.Requires.Execute) == 0 || mapping.MaximumFidelity == "unsupported" {
+			findings = append(findings, finding{"provider.mapping", providerPath, fmt.Sprintf("runtime operation %q must name execution capabilities and an achievable fidelity", mapping.ID)})
+		} else if index < len(contract.Operations) && contract.Operations[index].Mode == "write" && (len(mapping.Requires.Before) == 0 || len(mapping.Requires.After) == 0) {
+			findings = append(findings, finding{"provider.mapping", providerPath, fmt.Sprintf("write operation %q must name read-before and readback phases", mapping.ID)})
+		}
+	}
+	if providerName == "linear" {
+		wantMappings := canonicalProviderOperations()
+		for index, mapping := range provider.Operations {
+			if index >= len(wantMappings) || !reflect.DeepEqual(mapping, wantMappings[index]) {
+				findings = append(findings, finding{"provider.mapping", providerPath, fmt.Sprintf("operation %q must match the exact Linear mapping and phased capability requirements", mapping.ID)})
+			}
 		}
 	}
 	return findings
+}
+
+func stringInSlice(value string, values []string) bool {
+	for _, candidate := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func validateProjectManagerProfile(profile projectManagerProfileContract) []finding {
@@ -584,6 +680,30 @@ func providerOperationsJSON() string {
 		))
 	}
 	return strings.Join(lines, ",\n")
+}
+
+func providerCapabilitiesJSON(provider string) string {
+	operations := canonicalProviderOperations()
+	for index := range operations {
+		operations[index].NativeSemantic = strings.ReplaceAll(operations[index].NativeSemantic, "linear", provider)
+	}
+	lines := make([]string, 0, len(operations))
+	for _, operation := range operations {
+		before, _ := json.Marshal(operation.Requires.Before)
+		execute, _ := json.Marshal(operation.Requires.Execute)
+		after, _ := json.Marshal(operation.Requires.After)
+		lines = append(lines, fmt.Sprintf(`    {"id": %q, "native_semantic": %q, "availability": %q, "maximum_fidelity": %q, "requires": {"before": %s, "execute": %s, "after": %s}}`, operation.ID, operation.NativeSemantic, operation.Availability, operation.MaximumFidelity, before, execute, after))
+	}
+	return fmt.Sprintf(`{
+  "schema": "loaf-provider-capabilities/v1",
+  "provider": %q,
+  "contract": "project-management/v1",
+  "connection": "harness-native",
+  "runtime_capability_discovery": "required",
+  "operations": [
+%s
+  ]
+}`, provider, strings.Join(lines, ",\n"))
 }
 
 func init() {

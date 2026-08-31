@@ -20,7 +20,6 @@ func TestContinuityCatalogIsExact(t *testing.T) {
 		{Kind: RecordCheckpoint, Permanence: PermanenceNotebook, Mutation: MutationAppendOnly, Retention: RetentionForever, References: ReferencesMayAttachOpaque, Projection: ProjectionLatestCheckpoint, Context: ContextLatestCheckpoint},
 		{Kind: RecordFinding, Permanence: PermanenceLedger, Mutation: MutationAppendWithCorrectionRetraction, Retention: RetentionForever, References: ReferencesMayAttachOpaque, Projection: ProjectionCurrentFinding, Context: ContextFocusFinding},
 		{Kind: RecordHandoff, Permanence: PermanenceLedger, Mutation: MutationAppendOnly, Retention: RetentionForever, References: ReferencesMayAttachOpaque, Projection: ProjectionLatestHandoff, Context: ContextLatestFocusHandoff},
-		{Kind: RecordScratchpad, Permanence: PermanenceScratchpad, Mutation: MutationAdvisoryFacts, Retention: RetentionUntilSyncSafePoint, References: ReferencesEphemeralOpaqueIDs, Projection: ProjectionCoordinationState, Context: ContextExcluded},
 		{Kind: RecordExternalReference, Permanence: PermanenceLedger, Mutation: MutationAppendWithAttachmentChanges, Retention: RetentionForever, References: ReferencesOpaqueLeaf, Projection: ProjectionReferenceAttachments, Context: ContextAttachedOnly},
 		{Kind: RecordVerificationEvidence, Permanence: PermanenceLedger, Mutation: MutationAppendOnly, Retention: RetentionForever, References: ReferencesEvidenceLeaf, Projection: ProjectionEvidenceLedger, Context: ContextAttachedOnly},
 		{Kind: RecordDerivedContext, Permanence: PermanenceDerived, Mutation: MutationReadTimeFold, Retention: RetentionRecomputed, References: ReferencesIncludeAttached, Projection: ProjectionContextDigest, Context: ContextOutput},
@@ -46,8 +45,8 @@ func TestContinuityCatalogReturnsFreshValues(t *testing.T) {
 	if second[0].Kind != RecordProjectIdentity {
 		t.Fatalf("caller mutation changed catalog: first kind = %q", second[0].Kind)
 	}
-	if len(second) != 14 {
-		t.Fatalf("caller append changed catalog length: got %d, want 14", len(second))
+	if len(second) != 13 {
+		t.Fatalf("caller append changed catalog length: got %d, want 13", len(second))
 	}
 }
 
@@ -65,7 +64,6 @@ func TestContinuityCatalogWireValuesArePinned(t *testing.T) {
 		"checkpoint|notebook|append-only|forever|may-attach-opaque|latest-checkpoint|latest-checkpoint",
 		"finding|ledger|append-with-correction-retraction|forever|may-attach-opaque|current-finding|focus-finding",
 		"handoff|ledger|append-only|forever|may-attach-opaque|latest-handoff|latest-focus-handoff",
-		"scratchpad|scratchpad|advisory-facts|until-sync-safe-point|ephemeral-opaque-ids|coordination-state|excluded",
 		"external-reference|ledger|append-with-attachment-changes|forever|opaque-leaf|reference-attachments|attached-only",
 		"verification-evidence|ledger|append-only|forever|evidence-leaf|evidence-ledger|attached-only",
 		"derived-context|derived|read-time-fold|recomputed|include-attached|context-digest|output",

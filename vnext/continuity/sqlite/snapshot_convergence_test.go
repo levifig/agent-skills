@@ -79,52 +79,6 @@ func TestContinuitySnapshotKeysLatestRecordsByStructuralOptionalFocus(t *testing
 	}
 }
 
-func TestContinuitySnapshotKeepsScratchpadClaimSemanticHeads(t *testing.T) {
-	t.Parallel()
-
-	store := openAppendStoreV1(t, filepath.Join(testTempDir(t), "state"), "environment-root", 100)
-	projectID := continuity.ProjectID("project-claim-branches")
-	mustAppendV1(t)(store.RegisterProject(context.Background(), projectID, "fact-project", continuity.ProjectRegistrationPayload{Observation: snapshotObservationV1(1, "main"), Label: "Loaf"}))
-
-	seedClaimScratchpadV1(t, store, projectID, "scratchpad-renewal", 200)
-	claim := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadClaimV1(continuity.ScratchpadClaimPayload{Observation: snapshotObservationV1(3, "claim"), ClaimID: "claim-renewal", ParticipantID: "participant", Resource: "resource", ExpiresAtMillis: 300})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-claim-root", continuity.RecordScratchpad, "scratchpad-renewal", continuity.FactScratchpadClaimRecorded, claim, "environment-renewal", 3, 202, 0))
-	winningRenewal := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadClaimV1(continuity.ScratchpadClaimPayload{Observation: snapshotObservationV1(4, "winning"), ClaimID: "claim-renewal", ParticipantID: "participant", Resource: "resource", ExpiresAtMillis: 400})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-renewal-winning", continuity.RecordScratchpad, "scratchpad-renewal", continuity.FactScratchpadClaimRecorded, winningRenewal, "environment-renewal", 4, 203, 0))
-	losingRenewal := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadClaimV1(continuity.ScratchpadClaimPayload{Observation: snapshotObservationV1(5, "losing"), ClaimID: "claim-renewal", ParticipantID: "participant", Resource: "resource", ExpiresAtMillis: 350})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-renewal-losing", continuity.RecordScratchpad, "scratchpad-renewal", continuity.FactScratchpadClaimRecorded, losingRenewal, "environment-renewal", 5, 204, 0))
-
-	seedClaimScratchpadV1(t, store, projectID, "scratchpad-release", 210)
-	releasedClaim := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadClaimV1(continuity.ScratchpadClaimPayload{Observation: snapshotObservationV1(3, "claim"), ClaimID: "claim-release", ParticipantID: "participant", Resource: "resource", ExpiresAtMillis: 300})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-release-claim-root", continuity.RecordScratchpad, "scratchpad-release", continuity.FactScratchpadClaimRecorded, releasedClaim, "environment-release", 3, 212, 0))
-	release := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadClaimReleaseV1(continuity.ScratchpadClaimReleasePayload{Observation: snapshotObservationV1(4, "release"), ClaimID: "claim-release", ReleasedBy: "participant", Reason: "done"})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-claim-release", continuity.RecordScratchpad, "scratchpad-release", continuity.FactScratchpadClaimReleased, release, "environment-release", 4, 213, 0))
-	postReleaseRenewal := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadClaimV1(continuity.ScratchpadClaimPayload{Observation: snapshotObservationV1(5, "post-release"), ClaimID: "claim-release", ParticipantID: "participant", Resource: "resource", ExpiresAtMillis: 500})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-post-release-renewal", continuity.RecordScratchpad, "scratchpad-release", continuity.FactScratchpadClaimRecorded, postReleaseRenewal, "environment-release", 5, 214, 0))
-
-	snapshot := mustSnapshotV1(t, store, projectID, 0)
-	renewalScratchpad := scratchpadByIDV1(t, snapshot.Scratchpads.Scratchpads, "scratchpad-renewal")
-	if renewalScratchpad.Record.Head.FactID != "fact-renewal-winning" || len(renewalScratchpad.Claims) != 1 || renewalScratchpad.Claims[0].ExpiresAtMillis != 400 || renewalScratchpad.Claims[0].Head.FactID != "fact-renewal-winning" {
-		t.Fatalf("losing renewal changed semantic heads: %#v", renewalScratchpad)
-	}
-	releaseScratchpad := scratchpadByIDV1(t, snapshot.Scratchpads.Scratchpads, "scratchpad-release")
-	if releaseScratchpad.Record.Head.FactID != "fact-claim-release" || len(releaseScratchpad.Claims) != 0 {
-		t.Fatalf("post-release renewal changed terminal head: %#v", releaseScratchpad)
-	}
-}
-
 func TestContinuitySnapshotRejectsImpossibleExternalEdgeTransitions(t *testing.T) {
 	t.Parallel()
 
@@ -271,19 +225,6 @@ func TestContinuitySnapshotCancellationDoesNotPoisonStore(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("in-memory fold cancellation = %v, want context.Canceled", err)
 	}
-}
-
-func seedClaimScratchpadV1(t *testing.T, store *Store, projectID continuity.ProjectID, scratchpadID continuity.SubjectID, wallMillis int64) {
-	t.Helper()
-	environmentID := continuity.EnvironmentID("environment-" + string(scratchpadID))
-	opened := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadOpenedV1(continuity.ScratchpadOpenedPayload{Observation: snapshotObservationV1(1, "open"), Label: string(scratchpadID)})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, continuity.FactID("fact-"+string(scratchpadID)+"-root"), continuity.RecordScratchpad, scratchpadID, continuity.FactScratchpadOpened, opened, environmentID, 1, wallMillis, 0))
-	participant := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadParticipantV1(continuity.ScratchpadParticipantPayload{Observation: snapshotObservationV1(2, "participant"), ParticipantID: "participant", Name: "writer"})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, continuity.FactID("fact-"+string(scratchpadID)+"-participant"), continuity.RecordScratchpad, scratchpadID, continuity.FactScratchpadParticipantIntroduced, participant, environmentID, 2, wallMillis+1, 0))
 }
 
 type cancelAfterChecksContextV1 struct {

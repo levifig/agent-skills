@@ -16,11 +16,13 @@ Read the live canonical work contract through [`project-management/v1`](../proje
 
 ## Critical Rules
 
-- As the first action, emit a private `skill(implement)` continuity event when the vNext continuity capability is present. Never put invocation bookkeeping in the tracker.
+- As the first action, run `loaf journal log "skill(implement): <concise intent>"` against the current private local journal. If the write fails, report the failure and continue only when the work can safely proceed; never put invocation bookkeeping in the tracker.
 - Re-read the native work record, completion criteria, hierarchy, dependencies, status, and recent relevant comments before planning.
+- Confirm the live contract makes Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals concrete. If it describes layers or future-only machinery instead, return it to shape.
 - Inspect repository instructions and affected code before editing. Treat existing changes as user-owned.
 - If the live contract is incomplete or implementation changes its intended outcome, stop and return it to shape instead of silently redefining work.
 - Start each testable behavior with a focused failing test when practical, implement the minimum passing change, and keep refactoring behavior-neutral.
+- Preserve the rideable journey across commits and delegation. Include only machinery exercised by its end-to-end path; reduce breadth before integrity.
 - Keep commits cohesive and atomic only when the user or governing workflow authorizes commits. Never infer permission to push, merge, or publish.
 - Use orchestration only when delegation is available, authorized, and materially useful; a single agent remains a valid execution path.
 - Post a [tracker update](../../templates/tracker-update.md) only when progress, a blocker, or verification evidence benefits collaborators. Comments never modify the work contract.
@@ -29,6 +31,8 @@ Read the live canonical work contract through [`project-management/v1`](../proje
 ## Verification
 
 - Every completion criterion is mapped to current evidence or an explicit remaining gap.
+- The named rider can complete the journey through its real entry point, and observed dogfood plus safety/integrity evidence match the live contract.
+- No added foundation or abstraction waits on an unspecified future consumer.
 - Focused tests, affected package tests, formatting, lint or static analysis, and the relevant build were actually run and their outputs read.
 - The implementation diff contains no unrequested authority, dependency, schema, or public-interface expansion.
 - Commit references and working-tree state are reported exactly; uncommitted or unverified work is labeled.

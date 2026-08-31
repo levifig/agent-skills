@@ -132,14 +132,6 @@ func admitFactV1(ctx context.Context, tx *sql.Tx, intent appendIntentV1) error {
 			return err
 		}
 		return admitNewSubjectWithFocusV1(ctx, tx, intent, payload.Focus)
-	case continuity.FactScratchpadOpened:
-		payload, err := decodeStoredWireV1[wireScratchpadOpenedV1](string(intent.content))
-		if err != nil {
-			return err
-		}
-		return admitNewSubjectWithFocusV1(ctx, tx, intent, payload.Focus)
-	case continuity.FactScratchpadParticipantIntroduced, continuity.FactScratchpadMessageRecorded, continuity.FactScratchpadClaimRecorded, continuity.FactScratchpadClaimReleased, continuity.FactScratchpadClosed:
-		return admitScratchpadFactV1(ctx, tx, intent)
 	case continuity.FactExternalReferenceRegistered:
 		return requireNewSubjectV1(ctx, tx, intent.projectID, intent.subject)
 	case continuity.FactExternalReferenceAttached, continuity.FactExternalReferenceDetached:
@@ -341,8 +333,6 @@ func rootFactKindV1(kind continuity.RecordKind) (continuity.FactKind, bool) {
 		return continuity.FactFindingRecorded, true
 	case continuity.RecordHandoff:
 		return continuity.FactHandoffRecorded, true
-	case continuity.RecordScratchpad:
-		return continuity.FactScratchpadOpened, true
 	case continuity.RecordExternalReference:
 		return continuity.FactExternalReferenceRegistered, true
 	case continuity.RecordVerificationEvidence:
@@ -366,174 +356,6 @@ func admitDecisionSuccessorV1(ctx context.Context, tx *sql.Tx, projectID continu
 	}
 	if facts[len(facts)-1].kind == continuity.FactDecisionSuperseded {
 		return &continuity.Problem{Code: continuity.ProblemPreconditionFailed, Field: "successor_id", Detail: "the successor decision is already superseded"}
-	}
-	return nil
-}
-
-type scratchpadClaimStateV1 struct {
-	participantID string
-	resource      string
-	maximumExpiry int64
-	released      bool
-}
-
-type scratchpadStateV1 struct {
-	closed       bool
-	participants map[string]struct{}
-	claims       map[string]scratchpadClaimStateV1
-}
-
-func admitScratchpadFactV1(ctx context.Context, tx *sql.Tx, intent appendIntentV1) error {
-	facts, err := loadSubjectFactsV1(ctx, tx, intent.projectID, intent.subject)
-	if err != nil {
-		return err
-	}
-	if len(facts) == 0 || facts[0].kind != continuity.FactScratchpadOpened {
-		return &continuity.Problem{Code: continuity.ProblemSubjectNotRegistered, Field: "subject_id", Detail: "does not identify an open scratchpad"}
-	}
-	state, err := foldScratchpadStateV1(facts)
-	if err != nil {
-		return err
-	}
-	if state.closed {
-		return &continuity.Problem{Code: continuity.ProblemPreconditionFailed, Field: "subject_id", Detail: "the scratchpad is closed"}
-	}
-
-	switch intent.kind {
-	case continuity.FactScratchpadParticipantIntroduced:
-		payload, err := decodeStoredWireV1[wireScratchpadParticipantV1](string(intent.content))
-		if err != nil {
-			return err
-		}
-		if _, exists := state.participants[payload.ParticipantID]; exists {
-			return &continuity.Problem{Code: continuity.ProblemSubjectAlreadyRegistered, Field: "participant_id", Detail: "already identifies a participant in this scratchpad"}
-		}
-		if payload.Focus != nil {
-			return requireReferenceV1(ctx, tx, intent.projectID, payload.Focus.domain(), "focus")
-		}
-		return nil
-	case continuity.FactScratchpadMessageRecorded:
-		payload, err := decodeStoredWireV1[wireScratchpadMessageV1](string(intent.content))
-		if err != nil {
-			return err
-		}
-		return requireScratchpadParticipantV1(state, payload.ParticipantID, "participant_id")
-	case continuity.FactScratchpadClaimRecorded:
-		payload, err := decodeStoredWireV1[wireScratchpadClaimV1](string(intent.content))
-		if err != nil {
-			return err
-		}
-		if err := requireScratchpadParticipantV1(state, payload.ParticipantID, "participant_id"); err != nil {
-			return err
-		}
-		claim, exists := state.claims[payload.ClaimID]
-		if !exists {
-			return nil
-		}
-		if claim.released {
-			return &continuity.Problem{Code: continuity.ProblemPreconditionFailed, Field: "claim_id", Detail: "the advisory claim is already released"}
-		}
-		if claim.participantID != payload.ParticipantID || claim.resource != payload.Resource {
-			return &continuity.Problem{Code: continuity.ProblemReferenceMismatch, Field: "claim_id", Detail: "is already bound to different immutable claim identity"}
-		}
-		if payload.ExpiresAtMillis <= claim.maximumExpiry {
-			return &continuity.Problem{Code: continuity.ProblemPreconditionFailed, Field: "expires_at_millis", Detail: "must monotonically extend the advisory claim"}
-		}
-		return nil
-	case continuity.FactScratchpadClaimReleased:
-		payload, err := decodeStoredWireV1[wireScratchpadClaimReleaseV1](string(intent.content))
-		if err != nil {
-			return err
-		}
-		claim, exists := state.claims[payload.ClaimID]
-		if !exists {
-			return &continuity.Problem{Code: continuity.ProblemReferenceNotFound, Field: "claim_id", Detail: "does not identify an advisory claim in this scratchpad"}
-		}
-		if claim.released {
-			return &continuity.Problem{Code: continuity.ProblemPreconditionFailed, Field: "claim_id", Detail: "the advisory claim is already released"}
-		}
-		if claim.participantID != payload.ReleasedBy {
-			return &continuity.Problem{Code: continuity.ProblemReferenceMismatch, Field: "released_by", Detail: "must be the advisory claimant"}
-		}
-		return nil
-	case continuity.FactScratchpadClosed:
-		return nil
-	default:
-		return corruptFactProblemV1()
-	}
-}
-
-func foldScratchpadStateV1(facts []storedFactV1) (scratchpadStateV1, error) {
-	state := scratchpadStateV1{
-		participants: make(map[string]struct{}),
-		claims:       make(map[string]scratchpadClaimStateV1),
-	}
-	for _, fact := range facts {
-		if state.closed {
-			return scratchpadStateV1{}, corruptFactProblemV1()
-		}
-		switch fact.kind {
-		case continuity.FactScratchpadOpened:
-		case continuity.FactScratchpadMessageRecorded:
-			payload, err := decodeStoredWireV1[wireScratchpadMessageV1](string(fact.content))
-			if err != nil {
-				return scratchpadStateV1{}, err
-			}
-			if _, exists := state.participants[payload.ParticipantID]; !exists {
-				return scratchpadStateV1{}, corruptFactProblemV1()
-			}
-		case continuity.FactScratchpadParticipantIntroduced:
-			payload, err := decodeStoredWireV1[wireScratchpadParticipantV1](string(fact.content))
-			if err != nil {
-				return scratchpadStateV1{}, err
-			}
-			if _, duplicate := state.participants[payload.ParticipantID]; duplicate {
-				return scratchpadStateV1{}, corruptFactProblemV1()
-			}
-			state.participants[payload.ParticipantID] = struct{}{}
-		case continuity.FactScratchpadClaimRecorded:
-			payload, err := decodeStoredWireV1[wireScratchpadClaimV1](string(fact.content))
-			if err != nil {
-				return scratchpadStateV1{}, err
-			}
-			claim, exists := state.claims[payload.ClaimID]
-			if !exists {
-				if _, participantExists := state.participants[payload.ParticipantID]; !participantExists {
-					return scratchpadStateV1{}, corruptFactProblemV1()
-				}
-				state.claims[payload.ClaimID] = scratchpadClaimStateV1{participantID: payload.ParticipantID, resource: payload.Resource, maximumExpiry: payload.ExpiresAtMillis}
-				continue
-			}
-			if claim.released || claim.participantID != payload.ParticipantID || claim.resource != payload.Resource {
-				return scratchpadStateV1{}, corruptFactProblemV1()
-			}
-			if payload.ExpiresAtMillis > claim.maximumExpiry {
-				claim.maximumExpiry = payload.ExpiresAtMillis
-			}
-			state.claims[payload.ClaimID] = claim
-		case continuity.FactScratchpadClaimReleased:
-			payload, err := decodeStoredWireV1[wireScratchpadClaimReleaseV1](string(fact.content))
-			if err != nil {
-				return scratchpadStateV1{}, err
-			}
-			claim, exists := state.claims[payload.ClaimID]
-			if !exists || claim.released || claim.participantID != payload.ReleasedBy {
-				return scratchpadStateV1{}, corruptFactProblemV1()
-			}
-			claim.released = true
-			state.claims[payload.ClaimID] = claim
-		case continuity.FactScratchpadClosed:
-			state.closed = true
-		default:
-			return scratchpadStateV1{}, corruptFactProblemV1()
-		}
-	}
-	return state, nil
-}
-
-func requireScratchpadParticipantV1(state scratchpadStateV1, participantID string, field string) error {
-	if _, exists := state.participants[participantID]; !exists {
-		return &continuity.Problem{Code: continuity.ProblemReferenceNotFound, Field: field, Detail: "does not identify a participant in this scratchpad"}
 	}
 	return nil
 }

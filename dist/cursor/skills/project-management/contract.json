@@ -1,0 +1,158 @@
+{
+  "id": "project-management/v1",
+  "authority": {
+    "shared_work": "tracker",
+    "service_connections": "harness",
+    "local_work_record": "forbidden",
+    "tracker_proxy": "forbidden",
+    "tracker_sync": "forbidden"
+  },
+  "routing": {
+    "connection_discovery": "already-exposed-only",
+    "destination_scope": "required",
+    "provider_selection": "runtime-capability-checked"
+  },
+  "mutation_policy": {
+    "read_before_write": "required",
+    "authoritative_readback": "required",
+    "ambiguous_create_retry": "forbidden",
+    "ambiguous_comment_retry": "forbidden",
+    "partial_outcomes": "preserve",
+    "indeterminate_outcomes": "preserve"
+  },
+  "operations": [
+    {
+      "id": "connection.discover",
+      "mode": "discover",
+      "precondition": "none",
+      "verification": "observed-connection",
+      "ambiguous_retry": "not-applicable"
+    },
+    {
+      "id": "capability.discover",
+      "mode": "discover",
+      "precondition": "selected-connection",
+      "verification": "observed-capabilities",
+      "ambiguous_retry": "not-applicable"
+    },
+    {
+      "id": "work.read",
+      "mode": "read",
+      "precondition": "scoped-destination",
+      "verification": "authoritative-read",
+      "ambiguous_retry": "not-applicable"
+    },
+    {
+      "id": "work.create",
+      "mode": "write",
+      "precondition": "read-current",
+      "verification": "authoritative-readback",
+      "ambiguous_retry": "never"
+    },
+    {
+      "id": "work.update",
+      "mode": "write",
+      "precondition": "read-current",
+      "verification": "authoritative-readback",
+      "ambiguous_retry": "re-read-first"
+    },
+    {
+      "id": "definition.write",
+      "mode": "write",
+      "precondition": "read-current",
+      "verification": "authoritative-readback",
+      "ambiguous_retry": "re-read-first"
+    },
+    {
+      "id": "hierarchy.read",
+      "mode": "read",
+      "precondition": "scoped-destination",
+      "verification": "authoritative-read",
+      "ambiguous_retry": "not-applicable"
+    },
+    {
+      "id": "hierarchy.change",
+      "mode": "write",
+      "precondition": "read-current",
+      "verification": "authoritative-readback",
+      "ambiguous_retry": "re-read-first"
+    },
+    {
+      "id": "dependency.read",
+      "mode": "read",
+      "precondition": "scoped-destination",
+      "verification": "authoritative-read",
+      "ambiguous_retry": "not-applicable"
+    },
+    {
+      "id": "dependency.change",
+      "mode": "write",
+      "precondition": "read-current",
+      "verification": "authoritative-readback",
+      "ambiguous_retry": "re-read-first"
+    },
+    {
+      "id": "status.read",
+      "mode": "read",
+      "precondition": "scoped-destination",
+      "verification": "authoritative-read",
+      "ambiguous_retry": "not-applicable"
+    },
+    {
+      "id": "status.transition",
+      "mode": "write",
+      "precondition": "read-current",
+      "verification": "authoritative-readback",
+      "ambiguous_retry": "re-read-first"
+    },
+    {
+      "id": "comment.list",
+      "mode": "read",
+      "precondition": "scoped-destination",
+      "verification": "authoritative-read",
+      "ambiguous_retry": "not-applicable"
+    },
+    {
+      "id": "comment.append",
+      "mode": "write",
+      "precondition": "read-current",
+      "verification": "authoritative-readback",
+      "ambiguous_retry": "never"
+    }
+  ],
+  "outcomes": [
+    "confirmed",
+    "unchanged",
+    "partial",
+    "failed",
+    "indeterminate"
+  ],
+  "fidelities": [
+    "exact",
+    "advisory",
+    "manual",
+    "unsupported"
+  ],
+  "result_fields": [
+    "operation",
+    "destination",
+    "native_ref",
+    "outcome",
+    "fidelity",
+    "observed_state",
+    "verification_evidence"
+  ],
+  "semantic_channels": [
+    "definition",
+    "hierarchy",
+    "dependency",
+    "status",
+    "comment"
+  ],
+  "comment_policy": {
+    "purpose": "evidence-and-collaboration",
+    "substitute_for_definition": "forbidden",
+    "substitute_for_relationship": "forbidden",
+    "substitute_for_status": "forbidden"
+  }
+}

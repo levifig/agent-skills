@@ -1,7 +1,7 @@
 {
   "version": 1,
   "target": "codex",
-  "package_version": "0.3.1",
+  "package_version": "0.5.0",
   "capability_contract_version": 3,
   "adapters": [
     "codex-session-start-v1"
@@ -11,7 +11,7 @@
       "id": "managed-instructions",
       "kind": "instruction",
       "destination": "project-instructions",
-      "sha256": "21e91a6226ead7de1ef1d3d61c4e2060dc9763e8485192f6efc0060a09bbe66e"
+      "sha256": "dd1528fbcd47b62e9cf4e5943d2deb78e5118e60a0111608eed79b07cca4d873"
     }
   ]
 }

@@ -26,6 +26,7 @@ Engineering foundations for consistent, high-quality code.
 
 - Use type hints on all public functions
 - Validate inputs at trust boundaries
+- Deliver [rideable increments](references/rideable-increments.md): complete, useful operator journeys whose breadth is narrow without weakening integrity
 
 ### Never
 
@@ -94,6 +95,7 @@ Engineering foundations for consistent, high-quality code.
 | Permissions | [references/permissions.md](references/permissions.md) | Configuring tool allowlists, sandbox, agent permissions |
 | Observability | [references/observability.md](references/observability.md) | Instrumenting services, logging, metrics, tracing |
 | Production Readiness | [references/production-readiness.md](references/production-readiness.md) | Validating services are ready for production |
+| Rideable Increments | [references/rideable-increments.md](references/rideable-increments.md) | Shaping, implementing, reviewing, or sequencing complete operator journeys |
 
 ## Available Scripts
 

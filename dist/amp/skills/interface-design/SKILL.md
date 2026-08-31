@@ -6,7 +6,7 @@ description: >-
   ensuring accessibility compliance. Not for frontend code (use
   typescript-development) or API design (use architecture or language-specific
   skills).
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Design Principles

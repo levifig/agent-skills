@@ -35,7 +35,7 @@ type SyncRecoveryPruneInventoryDigest [32]byte
 // VerifiedSyncRecoveryPruneTarget is the minimal exact identity and
 // ordering metadata of one already-authenticated pruned arrival.
 type VerifiedSyncRecoveryPruneTarget struct {
-	Reference VerifiedPruneReference
+	Reference legacyVerifiedPruneReferenceV1
 	FactKind  continuity.FactKind
 	HLC       continuity.HybridTime
 }
@@ -75,7 +75,7 @@ type SyncRecoveryPruneTargetMatch struct {
 	PruneID              [32]byte
 	PruneCertificateID   [32]byte
 	MembershipGeneration uint32
-	Reference            VerifiedPruneReference
+	Reference            legacyVerifiedPruneReferenceV1
 	FactKind             continuity.FactKind
 	HLC                  continuity.HybridTime
 }

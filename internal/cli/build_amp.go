@@ -427,7 +427,24 @@ const postToolHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(p
 }
 
 func nativeAmpPluginBody() string {
-	body := `  amp.on('tool.call', async (event: AmpToolCallEvent) => {
+	body := `  amp.on('agent.start', async () => {
+    const result = await runHook('harness', '', 'managed-content-reconcile', 'loaf harness reconcile --target amp --json', undefined, undefined, 10000, false);
+    const detail = (result.stdout || result.stderr).trim();
+    if (result.exitCode !== 0) {
+      console.warn(%%BT%%[loaf] Managed-content reconcile failed without blocking this session: ${detail || ('exit ' + result.exitCode)}%%BT%%);
+    } else if (detail) {
+      try {
+        const receipt = JSON.parse(detail);
+        if (receipt.outcome !== 'current') {
+          console.warn(%%BT%%[loaf] Managed-content reconcile receipt: ${detail}%%BT%%);
+        }
+      } catch {
+        console.warn(%%BT%%[loaf] Managed-content reconcile returned an unreadable receipt: ${detail}%%BT%%);
+      }
+    }
+  });
+
+  amp.on('tool.call', async (event: AmpToolCallEvent) => {
     const toolName = normalizeAmpToolName(event.tool);
     const toolInput = normalizeAmpToolInput(amp, event);
     const hookPayload = serializeHookPayload(toolName, toolInput, event);

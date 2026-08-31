@@ -71,17 +71,6 @@ func TestContinuitySnapshotProjectsEveryFamilyAndFactKind(t *testing.T) {
 	if got := len(snapshot.LatestHandoffs.Handoffs); got != 2 {
 		t.Fatalf("latest handoffs = %d, want 2", got)
 	}
-	if got := len(snapshot.Scratchpads.Scratchpads); got != 2 {
-		t.Fatalf("scratchpads = %d, want 2", got)
-	}
-	openScratchpad := scratchpadByIDV1(t, snapshot.Scratchpads.Scratchpads, "scratchpad-open")
-	if openScratchpad.State != continuity.ScratchpadOpen || len(openScratchpad.Participants) != 1 || len(openScratchpad.Messages) != 1 || len(openScratchpad.Claims) != 1 || openScratchpad.Claims[0].ClaimID != "claim-active" || openScratchpad.Claims[0].ExpiresAtMillis != 300 {
-		t.Fatalf("open scratchpad = %#v", openScratchpad)
-	}
-	closedScratchpad := scratchpadByIDV1(t, snapshot.Scratchpads.Scratchpads, "scratchpad-closed")
-	if closedScratchpad.State != continuity.ScratchpadClosed || closedScratchpad.ClosedBy != "arbitrary-operator" || closedScratchpad.Participants == nil || closedScratchpad.Messages == nil || closedScratchpad.Claims == nil || len(closedScratchpad.Participants)+len(closedScratchpad.Messages)+len(closedScratchpad.Claims) != 0 {
-		t.Fatalf("closed scratchpad = %#v", closedScratchpad)
-	}
 	if got := len(snapshot.ExternalReferences.References); got != 2 {
 		t.Fatalf("external references = %d, want 2", got)
 	}
@@ -92,7 +81,7 @@ func TestContinuitySnapshotProjectsEveryFamilyAndFactKind(t *testing.T) {
 	if got := len(snapshot.VerificationEvidence.Evidence); got != 2 {
 		t.Fatalf("verification evidence = %d, want 2", got)
 	}
-	if snapshot.EffectiveJournal.Entries == nil || snapshot.LatestWraps.Wraps == nil || snapshot.ActiveSparks.Sparks == nil || snapshot.CurrentIdeas.Ideas == nil || snapshot.CurrentDecisions.Decisions == nil || snapshot.Explorations.Explorations == nil || snapshot.LatestCheckpoints.Checkpoints == nil || snapshot.CurrentFindings.Findings == nil || snapshot.LatestHandoffs.Handoffs == nil || snapshot.Scratchpads.Scratchpads == nil || snapshot.ExternalReferences.References == nil || snapshot.VerificationEvidence.Evidence == nil {
+	if snapshot.EffectiveJournal.Entries == nil || snapshot.LatestWraps.Wraps == nil || snapshot.ActiveSparks.Sparks == nil || snapshot.CurrentIdeas.Ideas == nil || snapshot.CurrentDecisions.Decisions == nil || snapshot.Explorations.Explorations == nil || snapshot.LatestCheckpoints.Checkpoints == nil || snapshot.CurrentFindings.Findings == nil || snapshot.LatestHandoffs.Handoffs == nil || snapshot.ExternalReferences.References == nil || snapshot.VerificationEvidence.Evidence == nil {
 		t.Fatal("successful Snapshot returned a nil collection")
 	}
 
@@ -105,7 +94,7 @@ func TestContinuitySnapshotProjectsEveryFamilyAndFactKind(t *testing.T) {
 	}
 }
 
-func TestContinuitySnapshotUsesLiteralClaimInstantAndStableFactOrder(t *testing.T) {
+func TestContinuitySnapshotUsesStableFactOrder(t *testing.T) {
 	t.Parallel()
 
 	store := openAppendStoreV1(t, filepath.Join(testTempDir(t), "state"), "environment-a", 100)
@@ -115,22 +104,7 @@ func TestContinuitySnapshotUsesLiteralClaimInstantAndStableFactOrder(t *testing.
 	first := mustAppendV1(t)(store.RecordJournalEntry(ctx, projectID, "fact-journal-first", "journal-first", continuity.JournalRecordedPayload{Observation: snapshotObservationV1(900, "later-observation"), Content: continuity.JournalContent{Category: continuity.JournalNote, Text: "First root."}}))
 	mustAppendV1(t)(store.RecordJournalEntry(ctx, projectID, "fact-journal-second", "journal-second", continuity.JournalRecordedPayload{Observation: snapshotObservationV1(1, "earlier-observation"), Content: continuity.JournalContent{Category: continuity.JournalNote, Text: "Second root."}}))
 	mustAppendV1(t)(store.CorrectJournalEntry(ctx, projectID, "fact-journal-correction", "journal-first", continuity.JournalCorrectionPayload{Observation: snapshotObservationV1(1000, "correction"), Corrects: first.FactID, Content: continuity.JournalContent{Category: continuity.JournalDecision, Text: "Corrected first."}}))
-	mustAppendV1(t)(store.OpenScratchpad(ctx, projectID, "fact-scratch", "scratch-1", continuity.ScratchpadOpenedPayload{Observation: snapshotObservationV1(1, "main"), Label: "Claims"}))
-	mustAppendV1(t)(store.IntroduceScratchpadParticipant(ctx, projectID, "fact-participant", "scratch-1", continuity.ScratchpadParticipantPayload{Observation: snapshotObservationV1(1, "main"), ParticipantID: "participant-1", Name: "writer"}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim", "scratch-1", continuity.ScratchpadClaimPayload{Observation: snapshotObservationV1(1, "main"), ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "read.go", ExpiresAtMillis: 200}))
-
 	before := mustSnapshotV1(t, store, projectID, 199)
-	at := mustSnapshotV1(t, store, projectID, 200)
-	after := mustSnapshotV1(t, store, projectID, 201)
-	if got := len(scratchpadByIDV1(t, before.Scratchpads.Scratchpads, "scratch-1").Claims); got != 1 {
-		t.Fatalf("claims immediately before expiry = %d, want 1", got)
-	}
-	if got := len(scratchpadByIDV1(t, at.Scratchpads.Scratchpads, "scratch-1").Claims); got != 0 {
-		t.Fatalf("claims exactly at expiry = %d, want 0", got)
-	}
-	if got := len(scratchpadByIDV1(t, after.Scratchpads.Scratchpads, "scratch-1").Claims); got != 0 {
-		t.Fatalf("claims after expiry = %d, want 0", got)
-	}
 	if got := []continuity.SubjectID{before.EffectiveJournal.Entries[0].Record.Subject.ID, before.EffectiveJournal.Entries[1].Record.Subject.ID}; !reflect.DeepEqual(got, []continuity.SubjectID{"journal-second", "journal-first"}) {
 		t.Fatalf("journal order = %v, want recording-root recency", got)
 	}
@@ -230,18 +204,6 @@ func seedCompleteSnapshotProjectWithIDV1(t *testing.T, store *Store, projectID c
 	mustAppendV1(t)(store.RecordHandoff(ctx, projectID, "fact-handoff-project", "handoff-project", continuity.HandoffRecordedPayload{Observation: observation, Purpose: "Project handoff."}))
 	mustAppendV1(t)(store.RecordHandoff(ctx, projectID, "fact-handoff-focus", "handoff-focus", continuity.HandoffRecordedPayload{Observation: observation, Focus: &journalFocus, Purpose: "Focused handoff.", SuggestedSkills: []string{"implement"}}))
 
-	mustAppendV1(t)(store.OpenScratchpad(ctx, projectID, "fact-scratch-open", "scratchpad-open", continuity.ScratchpadOpenedPayload{Observation: observation, Focus: &journalFocus, Label: "Read review"}))
-	mustAppendV1(t)(store.IntroduceScratchpadParticipant(ctx, projectID, "fact-participant", "scratchpad-open", continuity.ScratchpadParticipantPayload{Observation: observation, ParticipantID: "participant-1", Name: "reviewer", Focus: &journalFocus}))
-	mustAppendV1(t)(store.RecordScratchpadMessage(ctx, projectID, "fact-message", "scratchpad-open", continuity.ScratchpadMessagePayload{Observation: observation, ParticipantID: "participant-1", Text: "Reviewing."}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim-active", "scratchpad-open", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-active", ParticipantID: "participant-1", Resource: "snapshot.go", ExpiresAtMillis: 275}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim-renewed", "scratchpad-open", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-active", ParticipantID: "participant-1", Resource: "snapshot.go", ExpiresAtMillis: 300}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim-released-root", "scratchpad-open", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-released", ParticipantID: "participant-1", Resource: "fold.go", ExpiresAtMillis: 300}))
-	mustAppendV1(t)(store.ReleaseScratchpadClaim(ctx, projectID, "fact-claim-released", "scratchpad-open", continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-released", ReleasedBy: "participant-1", Reason: "Done"}))
-	mustAppendV1(t)(store.OpenScratchpad(ctx, projectID, "fact-scratch-closed-root", "scratchpad-closed", continuity.ScratchpadOpenedPayload{Observation: observation, Label: "Closed review"}))
-	mustAppendV1(t)(store.IntroduceScratchpadParticipant(ctx, projectID, "fact-closed-participant", "scratchpad-closed", continuity.ScratchpadParticipantPayload{Observation: observation, ParticipantID: "participant-closed", Name: "closer"}))
-	mustAppendV1(t)(store.RecordScratchpadMessage(ctx, projectID, "fact-closed-message", "scratchpad-closed", continuity.ScratchpadMessagePayload{Observation: observation, ParticipantID: "participant-closed", Text: "Closing."}))
-	mustAppendV1(t)(store.CloseScratchpad(ctx, projectID, "fact-scratch-closed", "scratchpad-closed", continuity.ScratchpadClosePayload{Observation: observation, ClosedBy: "arbitrary-operator", Reason: "Done"}))
-
 	activeAttachment := mustAppendV1(t)(store.AttachExternalReference(ctx, projectID, "fact-reference-attach-active", "reference-1", continuity.ExternalReferenceAttachmentPayload{Observation: observation, Target: continuity.SubjectRef{Kind: continuity.RecordIdea, ID: "idea-active"}}))
 	_ = activeAttachment
 	detachedAttachment := mustAppendV1(t)(store.AttachExternalReference(ctx, projectID, "fact-reference-attach-detached", "reference-1", continuity.ExternalReferenceAttachmentPayload{Observation: observation, Target: journalFocus}))
@@ -297,17 +259,6 @@ func findingByIDV1(t *testing.T, findings []continuity.Finding, id continuity.Su
 	}
 	t.Fatalf("finding %s not found", id)
 	return continuity.Finding{}
-}
-
-func scratchpadByIDV1(t *testing.T, scratchpads []continuity.Scratchpad, id continuity.SubjectID) continuity.Scratchpad {
-	t.Helper()
-	for _, scratchpad := range scratchpads {
-		if scratchpad.Record.Subject.ID == id {
-			return scratchpad
-		}
-	}
-	t.Fatalf("scratchpad %s not found", id)
-	return continuity.Scratchpad{}
 }
 
 func referenceByIDV1(t *testing.T, references []continuity.ExternalReference, id continuity.SubjectID) continuity.ExternalReference {

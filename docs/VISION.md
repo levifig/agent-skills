@@ -14,6 +14,10 @@ Write skills once, deploy to supported harnesses. Skills are the universal knowl
 
 The Loaf Flow runs pitch → shape → implement → ship → release, at two scales. Skills and templates define the ceremonies; the connected issue tracker carries the shared work definition, definition of done, workflow state, hierarchy, assignment, and collaboration. Loaf does not create a second work record to coordinate the same work.
 
+### Rideable Progress
+
+Loaf evolves through complete, useful end-to-end operator journeys, not finished horizontal layers. Every milestone leaves a real rider able to do something they could not do before. A narrow increment keeps security, determinism, recovery, honest failure, and data safety intact; dogfood earns the next layer of breadth or abstraction. The operating method lives in [Rideable Increments](../content/skills/foundations/references/rideable-increments.md).
+
 ### Bounded Autonomy
 
 Functional profiles define what agents can mechanically touch (tool access). Skills define what they know (domain knowledge). The Warden coordinates but never implements. This separation makes agent behavior predictable and auditable.
@@ -22,11 +26,11 @@ Functional profiles define what agents can mechanically touch (tool access). Ski
 
 > **Revision 2026-08-26 (LOAF-90):** Continuity is personal-first and environment-agnostic. Supersedes: continuity described only as project-journal handoff on a single machine.
 
-Loaf's durable memory — journal, wraps, sparks, ideas, decisions, explorations, findings, handoffs, scratchpad coordination, opaque work refs, verification records, and derived context — lives in one operator's **personal memory substrate**. Every environment the operator uses (laptop, second machine, Cursor Cloud Agent, Amp Orb, CI) attaches to the same substrate or **hard-refuses** Loaf-flow work. There is no silent empty universe and no memoryless degraded mode. A never-attached trusted machine remains a complete local-first replica; attach is the multi-environment join, not a prerequisite for first use.
+Loaf's durable memory — journal, wraps, sparks, ideas, decisions, explorations, findings, handoffs, opaque work refs, verification records, and derived context — lives in one operator's **personal memory substrate**. Every environment the operator uses (laptop, second machine, Cursor Cloud Agent, Amp Orb, CI) attaches to the same substrate or **hard-refuses** Loaf-flow work. There is no silent empty universe and no memoryless degraded mode. A never-attached trusted machine remains a complete local-first replica; attach is the multi-environment join, not a prerequisite for first use.
 
 Work survives context loss, compaction, tool restarts, and cross-conversation handoffs because the substrate is external to any single harness session. Private memory retains the connective narrative and opaque references needed to resume; the tracker remains canonical for the shared work itself. Context at conversation start is a derived digest — never a lifecycle transition.
 
-Scratchpad coordination is private, effort-scoped, and ephemeral. It can coordinate the operator's agents during an effort, but it is never canonical tracker work, definition of done, workflow, hierarchy, assignment, or team collaboration state.
+Scratchpad is deferred from the immediate vNext product boundary. A future conversation-oriented coordination surface may revisit it, but current Flow, continuity, milestones, and cutover do not depend on it.
 
 Sharing with other humans happens only through explicit **promote surfaces** (PR bodies, committed files, external trackers). The substrate itself is private.
 
@@ -36,6 +40,7 @@ A developer installs Loaf and immediately gets:
 
 - **Consistent agent behavior across tools** -- same skills, same conventions, different runtimes
 - **Bounded work that prevents scope creep** -- tracker-native work items define the intended outcome, boundaries, and proof before implementation
+- **Useful progress at every milestone** -- each increment completes a safe operator journey and produces real dogfood learning
 - **Private continuity that enables resumption** -- the same operator can resume across agents, sessions, harnesses, and environments; colleagues receive work only through explicit tracker or Git promotion
 - **Hooks that enforce quality without friction** -- secrets scanning, commit conventions, push guards
 - **Domain expertise that loads automatically** -- the right engineering standards for the current task

@@ -84,9 +84,9 @@ func TestScanRecoveryPruneInventoryVerifiesAndOpensBoundedPages(t *testing.T) {
 		first.membershipGeneration != wantCertificate.MembershipGeneration ||
 		first.barrierArrivalSequence != wantCertificate.BarrierArrivalSequence ||
 		first.closure != verifiedRecoveryPruneReference(wantCertificate.Closure) ||
-		first.scratchpadSubject != "scratchpad-1" || len(first.targets) != 1 ||
+		first.legacySubject != "scratchpad-1" || len(first.targets) != 1 ||
 		first.targets[0].reference != verifiedRecoveryPruneReference(wantCertificate.Manifest.Targets[0]) ||
-		first.targets[0].factKind != continuity.FactScratchpadMessageRecorded ||
+		first.targets[0].factKind != continuity.FactKind("scratchpad.message-recorded") ||
 		first.targets[0].hlc != (continuity.HybridTime{WallMillis: 101, Logical: 1}) {
 		t.Fatalf("verified prune = %#v, want exact authenticated certificate and capsule projection", first)
 	}
@@ -111,7 +111,7 @@ func TestVerifiedRecoveryPruneProjectionExcludesCredentialsAndRawCryptographicOb
 		{name: "membershipGeneration", typeOf: reflect.TypeOf(uint32(0))},
 		{name: "barrierArrivalSequence", typeOf: reflect.TypeOf(int64(0))},
 		{name: "closure", typeOf: reflect.TypeOf(continuitysqlite.VerifiedPruneReference{})},
-		{name: "scratchpadSubject", typeOf: reflect.TypeOf(continuity.SubjectID(""))},
+		{name: "legacySubject", typeOf: reflect.TypeOf(continuity.SubjectID(""))},
 		{name: "targets", typeOf: reflect.TypeOf([]verifiedRecoveryPruneTarget(nil))},
 	}
 	pruneType := reflect.TypeOf(verifiedRecoveryPrune{})
@@ -790,11 +790,11 @@ func testRecoveryPruneInventoryRecordWithWitnesses(
 		ClosureReferenceDigest:  protocol.PruneReferenceDigest(closure),
 		ManifestCount:           1,
 		ManifestDigest:          protocol.PruneManifestDigest(manifest),
-		ScratchpadSubject:       continuity.SubjectID(fmt.Sprintf("scratchpad-%d", sequence)),
+		LegacySubject:           continuity.SubjectID(fmt.Sprintf("scratchpad-%d", sequence)),
 		EntryCount:              1,
 		Entries: []protocol.PruneBootstrapEntry{{
 			PruneReferenceDigest: protocol.PruneReferenceDigest(target),
-			FactKind:             continuity.FactScratchpadMessageRecorded,
+			FactKind:             continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                  continuity.HybridTime{WallMillis: 100 + sequence, Logical: int32(sequence)},
 		}},
 	}

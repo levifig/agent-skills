@@ -16,20 +16,21 @@ Coordinate agents around the same native reference and work contract. The main a
 
 ## Critical Rules
 
-- As the first action, emit a private `skill(orchestration)` continuity event when the vNext continuity capability is present. Never put invocation bookkeeping in the tracker.
+- As the first action, run `loaf journal log "skill(orchestration): <concise intent>"` against the current private local journal. If the write fails, report the failure and continue only when the work can safely proceed; never put invocation bookkeeping in the tracker.
 - Re-read the live work contract through [`project-management/v1`](../project-management/SKILL.md) before dividing work or accepting a result.
 - Delegate only when the harness exposes the capability, governing instructions allow it, and the task is independently bounded. Delegation is optional.
 - Give every agent the native reference, relevant criteria, allowed actions, file or subsystem boundary, and required verification.
+- Carry the rideable-increment answers in every relevant delegation packet. Execution may split commits and handoffs, but it must not fragment the end-to-end value contract into local work authorities or future-only layers.
 - Assign one writer to a shared change at a time. Use independent read-only reviewers after implementation.
-- Use the optional [project-manager profile](../../agents/project-manager.md) only for bounded connector operations; it cannot implement, research, prioritize, or coordinate.
+- Keep provider operations with the main agent through the selected provider skill. Dedicated provider profiles are deferred until every target can package and enforce them without broken links or broader authority.
 - Treat agent reports as claims. Inspect delivered diffs and rerun the contract's gates before accepting them.
 - Consolidate reviewer perspectives by evidence and defect class rather than vote count.
-- Use private scratchpad coordination only when that later vNext capability is present; it never becomes shared work or tracker collaboration state.
 - Read [Delegation Contract](references/delegation.md) before coordinating multiple writers or review rounds.
 
 ## Verification
 
 - Every delegated task is traceable to a live completion criterion or explicit review lens.
+- The coordinated result preserves the named rider's complete journey, and foundation packets remain tied to the immediate path that exercises them.
 - Exactly one writer owned each overlapping change at any moment.
 - Delivered commits, diffs, and test claims were independently inspected.
 - Provider mutations used the same common contract as main-agent execution and were verified by native readback.

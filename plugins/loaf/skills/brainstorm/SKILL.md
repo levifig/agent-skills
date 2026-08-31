@@ -10,7 +10,7 @@ description: >-
   shape).
 user-invocable: false
 argument-hint: '[idea or problem]'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Brainstorm

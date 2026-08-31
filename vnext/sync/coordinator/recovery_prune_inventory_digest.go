@@ -282,7 +282,7 @@ func recoveryPruneRecordDigestV1(prune verifiedRecoveryPrune) ([32]byte, error) 
 		recoveryPruneUint32V1(prune.membershipGeneration),
 		recoveryPruneInt64V1(prune.barrierArrivalSequence),
 		closureDigest[:],
-		[]byte(prune.scratchpadSubject),
+		[]byte(prune.legacySubject),
 		recoveryPruneInt64V1(int64(len(prune.targets))),
 		targetRolling[:],
 	)
@@ -326,7 +326,7 @@ func validateRecoveryPruneProjectionV1(prune verifiedRecoveryPrune) error {
 	if prune.pruneSequence < 1 || prune.pruneID == (recoveryPruneID{}) ||
 		prune.pruneCertificateID == (recoveryPruneCertificateID{}) ||
 		prune.membershipGeneration == 0 || prune.barrierArrivalSequence < 1 ||
-		prune.scratchpadSubject.Validate() != nil || len(prune.targets) < 1 ||
+		prune.legacySubject.Validate() != nil || len(prune.targets) < 1 ||
 		len(prune.targets) > protocol.MaxPruneTargets {
 		return errInvalidRecoveryPruneInventoryDigestV1
 	}
@@ -355,10 +355,10 @@ func validateRecoveryPruneProjectionV1(prune verifiedRecoveryPrune) error {
 
 func recoveryPrunableFactKindV1(kind continuity.FactKind) bool {
 	switch kind {
-	case continuity.FactScratchpadParticipantIntroduced,
-		continuity.FactScratchpadMessageRecorded,
-		continuity.FactScratchpadClaimRecorded,
-		continuity.FactScratchpadClaimReleased:
+	case continuity.FactKind("scratchpad.participant-introduced"),
+		continuity.FactKind("scratchpad.message-recorded"),
+		continuity.FactKind("scratchpad.claim-recorded"),
+		continuity.FactKind("scratchpad.claim-released"):
 		return true
 	default:
 		return false

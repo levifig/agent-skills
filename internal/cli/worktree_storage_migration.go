@@ -245,6 +245,11 @@ func shouldRefuseCommandNative(args []string, cwd string) bool {
 	switch args[0] {
 	case "migrate", "help":
 		return false
+	case "harness":
+		// Global harness maintenance does not read or mutate pre-A3 project
+		// storage. A project-bound cloud install does, so it must wait until the
+		// worktree storage migration resolves the canonical project root.
+		return projectEnvironmentActive() && detectPreA3StateNative(cwd)
 	default:
 		return detectPreA3StateNative(cwd)
 	}
@@ -269,6 +274,7 @@ func knownTopLevelCommandNative(command string) bool {
 		"check",
 		"doctor",
 		"housekeeping",
+		"harness",
 		"idea",
 		"init",
 		"install",

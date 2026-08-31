@@ -39,7 +39,7 @@ func TestContinuityContextConvergesAcrossPhysicalInsertionOrder(t *testing.T) {
 	}
 }
 
-func TestContinuityContextAtMillisOnlyEchoesWhenScratchpadClaimsChange(t *testing.T) {
+func TestContinuityContextAtMillisOnlyEchoes(t *testing.T) {
 	t.Parallel()
 
 	store := openAppendStoreV1(t, filepath.Join(testTempDir(t), "state"), "environment-at", 100)
@@ -49,7 +49,7 @@ func TestContinuityContextAtMillisOnlyEchoesWhenScratchpadClaimsChange(t *testin
 	before.AtMillis = 0
 	after.AtMillis = 0
 	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("scratchpad claim instant changed derived context:\nbefore=%#v\nafter=%#v", before, after)
+		t.Fatalf("explicit read instant changed derived context:\nbefore=%#v\nafter=%#v", before, after)
 	}
 }
 

@@ -58,7 +58,7 @@ type verifiedRecoveryPrune struct {
 	membershipGeneration   uint32
 	barrierArrivalSequence int64
 	closure                continuitysqlite.VerifiedPruneReference
-	scratchpadSubject      continuity.SubjectID
+	legacySubject          continuity.SubjectID
 	targets                []verifiedRecoveryPruneTarget
 }
 
@@ -460,7 +460,7 @@ func (coordinator *Coordinator) verifyRecoveryPruneInventoryRecord(
 		membershipGeneration:   parsed.MembershipGeneration,
 		barrierArrivalSequence: parsed.BarrierArrivalSequence,
 		closure:                recoveryVerifiedPruneReference(parsed.Closure),
-		scratchpadSubject:      plaintext.ScratchpadSubject,
+		legacySubject:          plaintext.LegacySubject,
 		targets:                targets,
 	}, nil
 }

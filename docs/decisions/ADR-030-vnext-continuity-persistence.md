@@ -17,9 +17,9 @@ related:
 
 ## Context
 
-vNext needs a private continuity store for one operator: project identity, journal entries, wraps, sparks, ideas, decisions, explorations, checkpoints, findings, handoffs, scratchpad coordination, opaque external references, verification evidence, and derived context. The kernel already owns schema identity `vnext/1` and does not open a database. Continuity cannot import the shipped runtime, reuse its packages, or treat ADR-014 or ADR-029 as vNext precedent.
+vNext needs a private continuity store for one operator: project identity, journal entries, wraps, sparks, ideas, decisions, explorations, checkpoints, findings, handoffs, opaque external references, verification evidence, and derived context. The kernel already owns schema identity `vnext/1` and does not open a database. Continuity cannot import the shipped runtime, reuse its packages, or treat ADR-014 or ADR-029 as vNext precedent.
 
-The store has to survive compaction, harness restarts, and later private sync. Facts have to stay typed and closed. Projections must not become a second source of truth. Scratchpad coordination is ephemeral in meaning, but physical prune is a sync concern, not a continuity-schema concern.
+The store has to survive compaction, harness restarts, and later private sync. Facts have to stay typed and closed. Projections must not become a second source of truth. Scratchpad is deferred from the current vNext product and continuity boundary; a later conversation-oriented design may reintroduce it under a new decision.
 
 ## Decision
 
@@ -30,9 +30,9 @@ vNext continuity persistence is SQLite now.
 3. **Total order is HLC wall/logical, then environment ID, then fact ID.** Physical wall time may live inside a typed payload for display; it does not participate in fold order.
 4. **The API is closed and typed.** Continuity exposes named domain types and a closed semantics catalog. It does not grow tracker, provider, credential, status, title, body, assignment, hierarchy, or dependency surfaces.
 5. **SQLite admission is exact.** `database/sql` is allowed only in package `vnext/continuity/sqlite`. A blank import of `github.com/ncruces/go-sqlite3/driver` is allowed only in file `vnext/continuity/sqlite/driver.go`. The Windows-only filesystem adapter may import `syscall` solely for `Win32FileAttributeData` and `FILE_ATTRIBUTE_REPARSE_POINT`. Path or prefix spoofing, aliased or dot imports, non-blank driver imports, extra `syscall` selectors, and every other ncruces or third-party import remain forbidden.
-6. **Physical scratchpad prune is deferred to LOAF-97 sync safe-points.** Scratchpad facts are ephemeral in the catalog and retained on disk until that slice.
-7. **A snapshot materializes one exact project corpus in one deferred read-only transaction.** The adapter strictly scans canonical rows in total order, commits the read transaction, releases the sole SQLite connection and store lock, and only then performs the cancellable in-memory fold. `AtMillis` evaluates scratchpad claim expiry only; the implementation never reads the current clock.
-8. **Concurrent history converges by canonical causal closure and semantic class.** The least ordered mint is the record root. Successors of that root and its eligible descendants remain candidates even when they are sibling branches. The greatest candidate wins within a semantic class, while terminal classes such as idea disposition, decision supersession, finding retraction, scratchpad close, and claim release dominate later nonterminal candidates. Missing, cross-subject, future, or impossible-transition predecessors make the history corrupt rather than producing a partial projection.
+6. **Scratchpad is absent from the current catalog and API.** New Scratchpad facts cannot be appended, admitted, projected, exported, synchronized, or pruned. Exact rows written by pre-cutover builds remain physically intact and are ignored by current snapshots and sync export.
+7. **A snapshot materializes one exact project corpus in one deferred read-only transaction.** The adapter strictly scans canonical rows in total order, commits the read transaction, releases the sole SQLite connection and store lock, and only then performs the cancellable in-memory fold. The implementation never reads the current clock implicitly.
+8. **Concurrent history converges by canonical causal closure and semantic class.** The least ordered mint is the record root. Successors of that root and its eligible descendants remain candidates even when they are sibling branches. The greatest candidate wins within a semantic class, while terminal classes such as idea disposition, decision supersession, and finding retraction dominate later nonterminal candidates. Missing, cross-subject, future, or impossible-transition predecessors make the history corrupt rather than producing a partial projection.
 9. **Derived context is one bounded projection, not another state model.** A valid focus must name an existing same-project subject, including a terminal or projection-hidden subject. Selection is exact and deterministic: focus, then scope, then branch, then project remainder, with subject deduplication before fixed per-layer caps. Scope applies only to journal entries, active sparks, decisions, and findings; branch applies only to the winning journal observation. Primary layers seed one-hop opaque references and direct verification evidence only after their caps, so omitted records cannot leak through attachments. One-hop records inherit their best selected target's precedence tier and retain snapshot order within a tier. A directly focused external reference forms a strict leading sub-tier before references that inherit focus precedence, even when none of its edges target a selected primary record, so the explicit focus cannot be capped out.
 
 This is a vNext decision. ADR-014 chose Go and left the legacy SQLite driver to SPEC-040. ADR-029 is the shipped grow-only envelope for the current runtime. Neither authorizes vNext packages, schema identity, or the continuity API.
@@ -52,7 +52,7 @@ The kernel still does not open a database. The SQLite adapter and write chokepoi
 ### Negative
 
 - vNext takes a SQLite dependency at the exact adapter file, so the bootstrap tree is no longer uniformly stdlib-only.
-- Deferring physical scratchpad prune means ephemeral facts occupy disk until LOAF-97.
+- Pre-cutover Scratchpad rows may continue to occupy disk until a separately designed, explicit migration handles them; current vNext does not delete them.
 - Filesystem checks are path-based. They do not defend against a hostile same-UID process racing path components between checks, or against a privileged process that can bypass filesystem policy.
 
 ### Neutral
@@ -85,6 +85,7 @@ This loses the isolation contract. vNext may learn from that behavior and consum
 
 ## Revisions
 
+- 2026-08-31 - Removed Scratchpad from the current vNext catalog, API, projection, archive, and sync-export boundary while preserving pre-cutover rows non-destructively.
 - 2026-08-29 — Initial record.
 - 2026-08-29 — Pinned the Windows-only `syscall` admission and recorded filesystem authority, ACL, symlink-alias, race, and runtime-validation limits.
 - 2026-08-29 — Pinned deferred read-only snapshot materialization, cancellable post-transaction folding, and branch-tolerant semantic-class convergence.

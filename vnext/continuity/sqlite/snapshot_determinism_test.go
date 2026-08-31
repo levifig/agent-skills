@@ -122,23 +122,6 @@ func TestContinuitySnapshotUsesBranchTolerantTerminalDominance(t *testing.T) {
 	})
 	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-finding-corrected", continuity.RecordFinding, "finding-branch", continuity.FactFindingCorrected, corrected, "environment-finding", 3, 222, 0))
 
-	scratchpadRoot := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadOpenedV1(continuity.ScratchpadOpenedPayload{Observation: snapshotObservationV1(1, "root"), Label: "branched close"})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-scratchpad-root", continuity.RecordScratchpad, "scratchpad-branch", continuity.FactScratchpadOpened, scratchpadRoot, "environment-scratchpad", 1, 230, 0))
-	participant := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadParticipantV1(continuity.ScratchpadParticipantPayload{Observation: snapshotObservationV1(2, "participant"), ParticipantID: "participant-branch", Name: "writer"})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-scratchpad-participant", continuity.RecordScratchpad, "scratchpad-branch", continuity.FactScratchpadParticipantIntroduced, participant, "environment-scratchpad", 2, 231, 0))
-	closed := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadCloseV1(continuity.ScratchpadClosePayload{Observation: snapshotObservationV1(3, "close"), ClosedBy: "operator", Reason: "closed"})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-scratchpad-closed", continuity.RecordScratchpad, "scratchpad-branch", continuity.FactScratchpadClosed, closed, "environment-scratchpad", 3, 232, 0))
-	laterMessage := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
-		return encodeScratchpadMessageV1(continuity.ScratchpadMessagePayload{Observation: snapshotObservationV1(4, "message"), ParticipantID: "participant-branch", Text: "later branch"})
-	})
-	insertSnapshotStoredFactV1(t, store, snapshotStoredFactV1(projectID, "fact-scratchpad-message", continuity.RecordScratchpad, "scratchpad-branch", continuity.FactScratchpadMessageRecorded, laterMessage, "environment-scratchpad", 4, 233, 0))
-
 	referenceRoot := canonicalSnapshotContentV1(t, func() (canonicalContentV1, error) {
 		return encodeExternalReferenceRegistrationV1(continuity.ExternalReferenceRegistrationPayload{Observation: snapshotObservationV1(1, "root"), Locator: "opaque:branch"})
 	})
@@ -177,10 +160,6 @@ func TestContinuitySnapshotUsesBranchTolerantTerminalDominance(t *testing.T) {
 	finding := findingByIDV1(t, snapshot.CurrentFindings.Findings, "finding-branch")
 	if finding.State != continuity.FindingRetracted || finding.Record.Head.FactID != "fact-finding-retracted" || finding.ContentStamp.FactID != "fact-finding-corrected" || finding.Content.Summary != "later branch" {
 		t.Fatalf("branch-tolerant finding = %#v", finding)
-	}
-	scratchpad := scratchpadByIDV1(t, snapshot.Scratchpads.Scratchpads, "scratchpad-branch")
-	if scratchpad.State != continuity.ScratchpadClosed || scratchpad.Record.Head.FactID != "fact-scratchpad-closed" || len(scratchpad.Participants)+len(scratchpad.Messages)+len(scratchpad.Claims) != 0 {
-		t.Fatalf("branch-tolerant scratchpad = %#v", scratchpad)
 	}
 	reference := referenceByIDV1(t, snapshot.ExternalReferences.References, "reference-branch")
 	if reference.Record.Head.FactID != "fact-reference-attached-z" || len(reference.Attachments) != 1 || reference.Attachments[0].Stamp.FactID != "fact-reference-attached-z" || reference.Attachments[0].Target != target {

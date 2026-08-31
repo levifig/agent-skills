@@ -78,43 +78,42 @@ Three reasons, in order of importance:
    default were primed, the user would have to explicitly ask for an
    unprimed sanity check — and most users never know to ask.
 
-## Loaf Agent Profile Mapping
+## Sub-Agent Role
 
-**Use the `researcher` profile** for the design sub-agents.
+Use a read-only, research-oriented role for the design sub-agents. Select the
+closest role the current harness exposes; the required boundary is behavior and
+tool access, not a Loaf-specific profile name.
 
 Justification:
 
-- The design sub-agents produce structured reports (interface signature +
-  implementation sketch + tradeoffs), which is exactly the
-  researcher contract: "Return findings as structured reports: summary,
-  options (ranked with trade-offs), evidence sources, and a
-  recommendation." See [content/agents/researcher.md](../../../agents/researcher.md).
+- The design sub-agents produce structured reports: interface signature,
+  implementation sketch, ranked options with tradeoffs, evidence, and a
+  recommendation.
 - Read-only access matches the activity's purpose. Interface Design
   proposes designs; it does not implement them. Granting write access
   invites scope creep into "let me just sketch the implementation" and
   pollutes the parallel sampling.
-- The researcher's "Cite sources. Every claim from an external source
-  needs a URL or reference" rule maps directly to "every design choice
-  must reference a caller, a dependency category, or a vocabulary term"
-  during the deepening review.
+- Evidence-backed reporting maps directly to "every design choice must
+  reference a caller, a dependency category, or a vocabulary term" during the
+  deepening review.
 
-### When `implementer` Could Be an Alternative
+### When a Write-Capable Role Could Be an Alternative
 
 If the design activity needs to write probe code — a quick spike to verify
 that a proposed interface compiles against the existing call sites, for
-example — the `implementer` profile becomes viable. See
-[content/agents/implementer.md](../../../agents/implementer.md).
+example — use a write-capable implementation role exposed by the current
+harness.
 
-The default remains `researcher` because:
+The default remains read-only and research-oriented because:
 
 - Probe code during this activity is rarely necessary; the deepening review
   catches most fatal interface mistakes before code is written.
 - Three implementers writing probe code in parallel risks three divergent
   partial implementations of the same module — a merge problem the user
   did not ask for.
-- If a probe is genuinely needed, the user can request `implementer`
-  explicitly, and the brief should constrain the probe to a single
-  throwaway file.
+- If a probe is genuinely needed, the user can request a write-capable role
+  explicitly, and the brief should constrain the probe to a single throwaway
+  file.
 
 ## The Brief
 
@@ -264,7 +263,7 @@ After the three sub-agents return:
 |-------|------------|
 | Prime agents with opposing constraints by default | Use identical briefs; let sampling produce variety |
 | Auto-trigger parallel exploration on every invocation | Invoke only when interface is non-obvious |
-| Use `implementer` profile for design sub-agents | Use `researcher`; switch to `implementer` only on explicit user request |
+| Use a write-capable role for design sub-agents | Default to a read-only research role; switch only on explicit user request |
 | Add a "lens" to the brief silently | Surface the tradeoff to the user before priming |
 | Pre-rank the three designs in the output | Present in arbitrary order, let the user pick |
 | Spawn 5+ agents by default to "be thorough" | Stick to 3; escalate only on explicit user request |
@@ -277,7 +276,3 @@ After the three sub-agents return:
   constraints in the brief
 - [deepening.md](deepening.md) — Dependency categories the brief must
   cite when justifying interface choices
-- [content/agents/researcher.md](../../../agents/researcher.md) — Default
-  agent profile for design sub-agents
-- [content/agents/implementer.md](../../../agents/implementer.md) —
-  Alternative profile when probe code is needed

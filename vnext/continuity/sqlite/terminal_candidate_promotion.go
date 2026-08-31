@@ -39,7 +39,7 @@ type preparedTerminalCandidatePromotionFrameV1 struct {
 	inbox                   OpaqueSyncFrame
 	inboxBytes              []byte
 	sealedFact              *storedFactV1
-	prunedReference         *VerifiedPruneReference
+	prunedReference         *legacyVerifiedPruneReferenceV1
 	prunedKind              continuity.FactKind
 	prunedArrivalDigest     [32]byte
 	newSource               bool
@@ -581,8 +581,8 @@ func terminalCandidatePromotionStoredFactV1(frame terminalCandidateFrameV1) (sto
 	return prepared[0].fact, nil
 }
 
-func terminalCandidatePruneReferenceV1(frame terminalCandidateFrameV1) VerifiedPruneReference {
-	return VerifiedPruneReference{
+func terminalCandidatePruneReferenceV1(frame terminalCandidateFrameV1) legacyVerifiedPruneReferenceV1 {
+	return legacyVerifiedPruneReferenceV1{
 		FactID:                 frame.factID,
 		EnvironmentID:          frame.environmentID,
 		EnvironmentSequence:    frame.environmentSequence,

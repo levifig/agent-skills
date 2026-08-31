@@ -295,6 +295,12 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 		"return 'Edit';",
 		"amp.helpers.shellCommandFromToolCall(event)",
 		"normalizedInput.cwd = shellCommand.dir",
+		"amp.on('agent.start', async () =>",
+		"loaf harness reconcile --target amp --json",
+		"Managed-content reconcile failed without blocking this session",
+		"Managed-content reconcile receipt",
+		"JSON.parse(detail)",
+		"receipt.outcome !== 'current'",
 		"amp.on('tool.call', async (event: AmpToolCallEvent) =>",
 		"amp.on('tool.result', async (event: AmpToolResultEvent) =>",
 		"return { action: 'reject-and-continue', message: result.stderr }",
@@ -314,7 +320,6 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	}
 	for _, unwanted := range []string{
 		"session.start",
-		"agent.start",
 		"arguments",
 		"$HOME/.amp/plugins",
 		"const sessionHooks",
@@ -338,6 +343,253 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "dist", "amp", ".codex", "hooks.json")); !os.IsNotExist(err) {
 		t.Fatalf("amp hooks stat = %v, want Amp plugin target without Codex hooks", err)
 	}
+}
+
+func TestSharedBuildPromotesTrackerNativeVNextFlowIntoAmp(t *testing.T) {
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeCodexBuildFixture(t, root)
+	for _, skill := range []string{"loaf-reference", "project-management", "linear", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration"} {
+		source := filepath.Join("..", "..", "vnext", "content", "skills", skill)
+		if err := copyDirContentsForInstall(source, filepath.Join(root, "vnext", "content", "skills", skill)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	giteaSource := filepath.Join(root, "vnext", "content", "skills", "gitea")
+	if err := copyDirContentsForInstall(filepath.Join("..", "..", "vnext", "content", "skills", "linear"), giteaSource); err != nil {
+		t.Fatal(err)
+	}
+	giteaSkill := strings.ReplaceAll(readBuildFileString(t, filepath.Join(giteaSource, "SKILL.md")), "Linear", "Gitea")
+	giteaSkill = strings.Replace(giteaSkill, "name: linear", "name: gitea", 1)
+	writeFile(t, filepath.Join(giteaSource, "SKILL.md"), giteaSkill)
+	giteaCapabilities := strings.ReplaceAll(readBuildFileString(t, filepath.Join(giteaSource, "capabilities.json")), "linear", "gitea")
+	writeFile(t, filepath.Join(giteaSource, "capabilities.json"), giteaCapabilities)
+	if err := copyDirContentsForInstall(filepath.Join("..", "..", "vnext", "content", "templates"), filepath.Join(root, "vnext", "content", "templates")); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build", "--target", "amp"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+	linear := readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "linear", "SKILL.md"))
+	for _, want := range []string{"project-management/v1", "harness-native", "Never install a connector"} {
+		if !strings.Contains(linear, want) {
+			t.Fatalf("linear skill missing %q:\n%s", want, linear)
+		}
+	}
+	for _, forbidden := range []string{"loaf issue reconcile", "LINEAR_API_KEY", "issue.authority"} {
+		if strings.Contains(linear, forbidden) {
+			t.Fatalf("linear skill contains legacy route %q:\n%s", forbidden, linear)
+		}
+	}
+	shape := readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "shape", "SKILL.md"))
+	if !strings.Contains(shape, "canonical native tracker") || !strings.Contains(shape, "templates/work-contract.md") {
+		t.Fatalf("shape skill is not packaged tracker-native with a local template link:\n%s", shape)
+	}
+	if _, err := os.Stat(filepath.Join(root, "dist", "amp", "skills", "shape", "templates", "work-contract.md")); err != nil {
+		t.Fatalf("shape template missing: %v", err)
+	}
+	if got := readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "gitea", "SKILL.md")); !strings.Contains(got, "name: gitea") || !strings.Contains(got, "project-management/v1") {
+		t.Fatalf("dynamically discovered provider skill was not packaged:\n%s", got)
+	}
+}
+
+func TestTrackerContractAndProviderCapabilitiesShipByteIdenticalToEveryTarget(t *testing.T) {
+	root := setupIsolatedRepositoryBuildRoot(t)
+	repo := testRepositoryRoot(t)
+	if err := os.Symlink(filepath.Join(repo, "vnext"), filepath.Join(root, "vnext")); err != nil {
+		t.Fatalf("Symlink(vnext) error = %v", err)
+	}
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+
+	sidecars := []string{
+		filepath.Join("project-management", "contract.json"),
+		filepath.Join("linear", "capabilities.json"),
+	}
+	for _, sidecar := range sidecars {
+		want := readBuildFileString(t, filepath.Join(root, "vnext", "content", "skills", sidecar))
+		for _, target := range defaultBuildTargets {
+			got := readBuildFileString(t, filepath.Join(nativeBuildSkillTreeDir(root, target), sidecar))
+			if got != want {
+				t.Errorf("%s skills/%s differs from canonical vNext source", target, filepath.ToSlash(sidecar))
+			}
+		}
+	}
+	for _, target := range defaultBuildTargets {
+		for _, skill := range []string{"project-management", "shape", "orchestration", "loaf-reference"} {
+			body := readBuildFileString(t, filepath.Join(nativeBuildSkillTreeDir(root, target), skill, "SKILL.md"))
+			if strings.Contains(body, "project-manager") {
+				t.Errorf("%s generated %s skill claims an unavailable project-manager profile", target, skill)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(nativeBuildTargetOutputDir(root, target), "agents", "project-manager.md")); !os.IsNotExist(err) {
+			t.Errorf("%s unexpectedly packages deferred project-manager profile: %v", target, err)
+		}
+	}
+}
+
+func TestGeneratedAmpActiveSkillsContainNoLegacyWorkAuthority(t *testing.T) {
+	root, err := loafRepositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillsRoot := filepath.Join(root, "dist", "amp", "skills")
+	forbidden := []string{
+		"loaf issue new", "loaf issue start", "loaf issue stop", "loaf issue status",
+		"loaf issue check", "loaf issue render", "loaf issue promote", "loaf issue bucket",
+		"loaf issue pull", "loaf issue push", "loaf issue reconcile", "issue.authority",
+		"Linear overlay", "integrations.linear.enabled", "loaf task refresh",
+	}
+	err = filepath.WalkDir(skillsRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".md" {
+			return nil
+		}
+		body := readBuildFileString(t, path)
+		for _, token := range forbidden {
+			if strings.Contains(body, token) {
+				t.Errorf("active generated Amp skill %s contains legacy work-authority token %q", strings.TrimPrefix(path, skillsRoot+string(filepath.Separator)), token)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plugin := readBuildFileString(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"))
+	activeHookSurfaces := map[string]string{
+		"Amp plugin":                          plugin,
+		"OpenCode plugin":                     readBuildFileString(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts")),
+		"OpenCode pre-PR instructions":        readBuildFileString(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks", "instructions", "pre-pr-checklist.md")),
+		"OpenCode post-merge instructions":    readBuildFileString(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks", "instructions", "post-merge.md")),
+		"Cursor hooks":                        readBuildFileString(t, filepath.Join(root, "dist", "cursor", "hooks.json")),
+		"Cursor pre-PR instructions":          readBuildFileString(t, filepath.Join(root, "dist", "cursor", "hooks", "instructions", "pre-pr-checklist.md")),
+		"Cursor post-merge instructions":      readBuildFileString(t, filepath.Join(root, "dist", "cursor", "hooks", "instructions", "post-merge.md")),
+		"Codex hooks":                         readBuildFileString(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json")),
+		"Claude Code hooks":                   readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "hooks", "hooks.json")),
+		"Claude Code pre-PR instructions":     readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "hooks", "instructions", "pre-pr-checklist.md")),
+		"Claude Code post-merge instructions": readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "hooks", "instructions", "post-merge.md")),
+	}
+	for surface, body := range activeHookSurfaces {
+		for _, token := range []string{
+			"detect-linear-magic", "generate-task-board", "loaf task refresh",
+			"loaf issue ", "issue-done", "worktree-stop", "LINEAR_API_KEY",
+		} {
+			if strings.Contains(body, token) {
+				t.Errorf("generated %s contains retired hook or work-authority route %q", surface, token)
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "dist", "opencode", "plugins", "hooks", "pre-tool", "orchestration-detect-linear-magic.py")); !os.IsNotExist(err) {
+		t.Errorf("retired OpenCode detect-linear-magic script remains in generated output: %v", err)
+	}
+}
+
+func TestGeneratedRefactorDeepenRelativeLinksResolveInEveryTarget(t *testing.T) {
+	root, err := loafRepositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{
+		filepath.Join(root, "plugins", "loaf", "skills", "refactor-deepen", "references", "interface-design.md"),
+		filepath.Join(root, "dist", "opencode", "skills", "refactor-deepen", "references", "interface-design.md"),
+		filepath.Join(root, "dist", "cursor", "skills", "refactor-deepen", "references", "interface-design.md"),
+		filepath.Join(root, "dist", "codex", "skills", "refactor-deepen", "references", "interface-design.md"),
+		filepath.Join(root, "dist", "amp", "skills", "refactor-deepen", "references", "interface-design.md"),
+	}
+	for _, path := range paths {
+		body := readBuildFileString(t, path)
+		for remaining := body; ; {
+			start := strings.Index(remaining, "](")
+			if start < 0 {
+				break
+			}
+			remaining = remaining[start+2:]
+			end := strings.IndexByte(remaining, ')')
+			if end < 0 {
+				t.Fatalf("%s contains an unterminated Markdown link", path)
+			}
+			target := strings.SplitN(remaining[:end], "#", 2)[0]
+			remaining = remaining[end+1:]
+			if target == "" || strings.HasPrefix(target, "#") || strings.Contains(target, "://") || filepath.IsAbs(target) {
+				continue
+			}
+			resolved := filepath.Clean(filepath.Join(filepath.Dir(path), filepath.FromSlash(target)))
+			if _, err := os.Stat(resolved); err != nil {
+				t.Errorf("%s link %q does not resolve inside the generated target: %v", path, target, err)
+			}
+		}
+	}
+}
+
+func TestSharedBuildRejectsMalformedDiscoveredProvider(t *testing.T) {
+	root := setupVNextProviderBuildFixture(t)
+	malformedRoot := filepath.Join(root, "vnext", "content", "skills", "gitea")
+	mkdirAll(t, malformedRoot)
+	writeFile(t, filepath.Join(malformedRoot, "SKILL.md"), "---\nname: gitea\ndescription: Maps project-management/v1. Use when Gitea is selected.\n---\n")
+	writeFile(t, filepath.Join(malformedRoot, "capabilities.json"), `{"schema":"loaf-provider-capabilities/v1","provider":"wrong-slug","contract":"project-management/v1","connection":"harness-native","runtime_capability_discovery":"required","operations":[{}]}`+"\n")
+
+	err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: root}).Run([]string{"build", "--target", "amp"})
+	if err == nil || !strings.Contains(err.Error(), "invalid or mismatched capability manifest") {
+		t.Fatalf("build error = %v, want malformed provider refusal", err)
+	}
+}
+
+func TestSharedBuildRejectsMalformedOrIncompleteProviderOperations(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		mutate func(string) string
+		want   string
+	}{
+		{name: "duplicate manifest field", mutate: func(body string) string {
+			return strings.Replace(body, `"provider": "gitea"`, `"provider": "gitea", "provider": "gitea"`, 1)
+		}, want: "duplicate object key"},
+		{name: "empty runtime capability", mutate: func(body string) string { return strings.Replace(body, `"connection.list"`, `""`, 1) }, want: "empty capability"},
+		{name: "omitted operation", mutate: func(body string) string {
+			var manifest vNextProviderManifest
+			if err := json.Unmarshal([]byte(body), &manifest); err != nil {
+				t.Fatal(err)
+			}
+			manifest.Operations = manifest.Operations[:len(manifest.Operations)-1]
+			encoded, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return string(encoded)
+		}, want: "want the complete"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := setupVNextProviderBuildFixture(t)
+			providerRoot := filepath.Join(root, "vnext", "content", "skills", "gitea")
+			if err := copyDirContentsForInstall(filepath.Join("..", "..", "vnext", "content", "skills", "linear"), providerRoot); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(providerRoot, "SKILL.md"), strings.Replace(strings.ReplaceAll(readBuildFileString(t, filepath.Join(providerRoot, "SKILL.md")), "Linear", "Gitea"), "name: linear", "name: gitea", 1))
+			capabilities := strings.ReplaceAll(readBuildFileString(t, filepath.Join(providerRoot, "capabilities.json")), "linear", "gitea")
+			writeFile(t, filepath.Join(providerRoot, "capabilities.json"), testCase.mutate(capabilities))
+			err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: root}).Run([]string{"build", "--target", "amp"})
+			if err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("build error = %v, want %q", err, testCase.want)
+			}
+		})
+	}
+}
+
+func setupVNextProviderBuildFixture(t *testing.T) string {
+	t.Helper()
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeCodexBuildFixture(t, root)
+	for _, skill := range []string{"loaf-reference", "project-management", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration"} {
+		if err := copyDirContentsForInstall(filepath.Join("..", "..", "vnext", "content", "skills", skill), filepath.Join(root, "vnext", "content", "skills", skill)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
 }
 
 func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
@@ -501,7 +753,6 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 		"case 'edit':",
 		"case 'write':",
 		"serializeHookPayload(toolName, toolInput, { input, output })",
-		"if (hook.id === 'detect-linear-magic' && !(await isOpenCodeRootSession(client, input.sessionID))) continue;",
 		"'experimental.chat.system.transform': async (input: { sessionID?: string; model?: unknown }, output: { system: string[] }) =>",
 		"runOpenCodeSessionHooks(sessionHooks.sessionstart, sessionID, 'system.transform', output.system)",
 		"'experimental.session.compacting': async (input: { sessionID: string }, output: { context: string[]; prompt?: string }) =>",
@@ -943,6 +1194,46 @@ func TestSkillTreeIsTargetInvariant(t *testing.T) {
 	}
 	if err := compareNativeBuildSkillTrees(root, defaultBuildTargets); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRideableIncrementDoctrineAndContractShipToEveryTarget(t *testing.T) {
+	root := setupIsolatedRepositoryBuildRoot(t)
+	repo := testRepositoryRoot(t)
+	if err := os.Symlink(filepath.Join(repo, "vnext"), filepath.Join(root, "vnext")); err != nil {
+		t.Fatalf("Symlink(vnext) error = %v", err)
+	}
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+
+	doctrineRel := filepath.Join("foundations", "references", "rideable-increments.md")
+	doctrineSource := readBuildFileString(t, filepath.Join(root, "content", "skills", doctrineRel))
+	for _, target := range defaultBuildTargets {
+		skillsRoot := nativeBuildSkillTreeDir(root, target)
+		if got := readBuildFileString(t, filepath.Join(skillsRoot, doctrineRel)); got != doctrineSource {
+			t.Errorf("%s %s differs from canonical authored doctrine", target, filepath.ToSlash(doctrineRel))
+		}
+		workContract := readBuildFileString(t, filepath.Join(skillsRoot, "shape", "templates", "work-contract.md"))
+		if !strings.Contains(workContract, "<!-- loaf:rideable-increment-contract -->") {
+			t.Errorf("%s generated work contract is missing rideable-increment guidance", target)
+		}
+		if got := strings.Count(workContract, "<!-- loaf:field "); got != 5 {
+			t.Errorf("%s generated work contract has %d semantic fields, want the unchanged 5-field contract", target, got)
+		}
+		for _, skill := range []string{"pitch", "shape", "implement", "ship", "release", "orchestration", "triage"} {
+			body := readBuildFileString(t, filepath.Join(skillsRoot, skill, "SKILL.md"))
+			if !strings.Contains(body, "rideable") {
+				t.Errorf("%s generated %s skill does not preserve rideable-increment behavior", target, skill)
+			}
+			if strings.Contains(body, "scratchpad") {
+				t.Errorf("%s generated %s skill reintroduces deferred scratchpad behavior", target, skill)
+			}
+			if !strings.Contains(body, `loaf journal log "skill(`) {
+				t.Errorf("%s generated %s skill does not attempt current-runtime private journal logging", target, skill)
+			}
+		}
 	}
 }
 

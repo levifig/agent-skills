@@ -122,18 +122,6 @@ func canonicalizeStoredContentV1(kind continuity.FactKind, payloadVersion int, c
 		}
 		payload.SuggestedSkills = normalizeStringsV1(payload.SuggestedSkills)
 		return requireCanonicalV1(payload, content)
-	case continuity.FactScratchpadOpened:
-		return canonicalizeWireV1[wireScratchpadOpenedV1](content)
-	case continuity.FactScratchpadParticipantIntroduced:
-		return canonicalizeWireV1[wireScratchpadParticipantV1](content)
-	case continuity.FactScratchpadMessageRecorded:
-		return canonicalizeWireV1[wireScratchpadMessageV1](content)
-	case continuity.FactScratchpadClaimRecorded:
-		return canonicalizeWireV1[wireScratchpadClaimV1](content)
-	case continuity.FactScratchpadClaimReleased:
-		return canonicalizeWireV1[wireScratchpadClaimReleaseV1](content)
-	case continuity.FactScratchpadClosed:
-		return canonicalizeWireV1[wireScratchpadCloseV1](content)
 	case continuity.FactExternalReferenceRegistered:
 		return canonicalizeWireV1[wireExternalReferenceRegistrationV1](content)
 	case continuity.FactExternalReferenceAttached:
@@ -339,48 +327,6 @@ func encodeHandoffRecordedV1(payload continuity.HandoffRecordedPayload) (canonic
 		QuestionsAndRisks: payload.QuestionsAndRisks,
 		SuggestedSkills:   normalizeStringsV1(payload.SuggestedSkills),
 	})
-}
-
-func encodeScratchpadOpenedV1(payload continuity.ScratchpadOpenedPayload) (canonicalContentV1, error) {
-	if err := payload.Validate(); err != nil {
-		return "", err
-	}
-	return encodeWireV1(wireScratchpadOpenedV1{Observation: toWireObservationV1(payload.Observation), Focus: toWireOptionalSubjectRefV1(payload.Focus), Label: payload.Label})
-}
-
-func encodeScratchpadParticipantV1(payload continuity.ScratchpadParticipantPayload) (canonicalContentV1, error) {
-	if err := payload.Validate(); err != nil {
-		return "", err
-	}
-	return encodeWireV1(wireScratchpadParticipantV1{Observation: toWireObservationV1(payload.Observation), ParticipantID: string(payload.ParticipantID), Name: payload.Name, Focus: toWireOptionalSubjectRefV1(payload.Focus)})
-}
-
-func encodeScratchpadMessageV1(payload continuity.ScratchpadMessagePayload) (canonicalContentV1, error) {
-	if err := payload.Validate(); err != nil {
-		return "", err
-	}
-	return encodeWireV1(wireScratchpadMessageV1{Observation: toWireObservationV1(payload.Observation), ParticipantID: string(payload.ParticipantID), Text: payload.Text})
-}
-
-func encodeScratchpadClaimV1(payload continuity.ScratchpadClaimPayload) (canonicalContentV1, error) {
-	if err := payload.Validate(); err != nil {
-		return "", err
-	}
-	return encodeWireV1(wireScratchpadClaimV1{Observation: toWireObservationV1(payload.Observation), ClaimID: string(payload.ClaimID), ParticipantID: string(payload.ParticipantID), Resource: payload.Resource, ExpiresAtMillis: payload.ExpiresAtMillis})
-}
-
-func encodeScratchpadClaimReleaseV1(payload continuity.ScratchpadClaimReleasePayload) (canonicalContentV1, error) {
-	if err := payload.Validate(); err != nil {
-		return "", err
-	}
-	return encodeWireV1(wireScratchpadClaimReleaseV1{Observation: toWireObservationV1(payload.Observation), ClaimID: string(payload.ClaimID), ReleasedBy: string(payload.ReleasedBy), Reason: payload.Reason})
-}
-
-func encodeScratchpadCloseV1(payload continuity.ScratchpadClosePayload) (canonicalContentV1, error) {
-	if err := payload.Validate(); err != nil {
-		return "", err
-	}
-	return encodeWireV1(wireScratchpadCloseV1{Observation: toWireObservationV1(payload.Observation), ClosedBy: string(payload.ClosedBy), Reason: payload.Reason})
 }
 
 func encodeExternalReferenceRegistrationV1(payload continuity.ExternalReferenceRegistrationPayload) (canonicalContentV1, error) {

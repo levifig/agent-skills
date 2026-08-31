@@ -249,52 +249,6 @@ type HandoffRecordedPayload struct {
 	SuggestedSkills   []string
 }
 
-// ScratchpadOpenedPayload is the semantic content of scratchpad.opened.
-type ScratchpadOpenedPayload struct {
-	Observation Observation
-	Focus       *SubjectRef
-	Label       string
-}
-
-// ScratchpadParticipantPayload is the semantic content of scratchpad.participant-introduced.
-type ScratchpadParticipantPayload struct {
-	Observation   Observation
-	ParticipantID SubjectID
-	Name          string
-	Focus         *SubjectRef
-}
-
-// ScratchpadMessagePayload is the semantic content of scratchpad.message-recorded.
-type ScratchpadMessagePayload struct {
-	Observation   Observation
-	ParticipantID SubjectID
-	Text          string
-}
-
-// ScratchpadClaimPayload is the semantic content of scratchpad.claim-recorded.
-type ScratchpadClaimPayload struct {
-	Observation     Observation
-	ClaimID         SubjectID
-	ParticipantID   SubjectID
-	Resource        string
-	ExpiresAtMillis int64
-}
-
-// ScratchpadClaimReleasePayload is the semantic content of scratchpad.claim-released.
-type ScratchpadClaimReleasePayload struct {
-	Observation Observation
-	ClaimID     SubjectID
-	ReleasedBy  SubjectID
-	Reason      string
-}
-
-// ScratchpadClosePayload is the semantic content of scratchpad.closed.
-type ScratchpadClosePayload struct {
-	Observation Observation
-	ClosedBy    SubjectID
-	Reason      string
-}
-
 // ExternalReferenceRegistrationPayload is the semantic content of external-reference.registered.
 type ExternalReferenceRegistrationPayload struct {
 	Observation Observation

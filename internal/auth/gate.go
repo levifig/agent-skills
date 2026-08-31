@@ -12,6 +12,7 @@ var exemptTopLevelCommands = map[string]bool{
 	"setup":   true,
 	"config":  true,
 	"hooks":   true,
+	"harness": true,
 	"migrate": true,
 	"serve":   true,
 	"check":   true,

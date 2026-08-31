@@ -135,10 +135,10 @@ func TestPruneBootstrapEntriesAreClosedBoundedAndOrdered(t *testing.T) {
 	}
 
 	for _, kind := range []continuity.FactKind{
-		continuity.FactScratchpadParticipantIntroduced,
-		continuity.FactScratchpadMessageRecorded,
-		continuity.FactScratchpadClaimRecorded,
-		continuity.FactScratchpadClaimReleased,
+		continuity.FactKind("scratchpad.participant-introduced"),
+		continuity.FactKind("scratchpad.message-recorded"),
+		continuity.FactKind("scratchpad.claim-recorded"),
+		continuity.FactKind("scratchpad.claim-released"),
 	} {
 		candidate := entry
 		candidate.FactKind = kind
@@ -147,8 +147,8 @@ func TestPruneBootstrapEntriesAreClosedBoundedAndOrdered(t *testing.T) {
 		}
 	}
 	for _, kind := range []continuity.FactKind{
-		continuity.FactScratchpadOpened,
-		continuity.FactScratchpadClosed,
+		continuity.FactKind("scratchpad.opened"),
+		continuity.FactKind("scratchpad.closed"),
 		continuity.FactJournalRecorded,
 		"scratchpad.unknown",
 	} {
@@ -221,7 +221,7 @@ func TestPruneBootstrapValidationRejectsCountDuplicatesAndUnsupportedSelectors(t
 		{name: "duplicate reference", mutate: func(value *PruneBootstrapPlaintext) {
 			value.Entries[1].PruneReferenceDigest = value.Entries[0].PruneReferenceDigest
 		}},
-		{name: "zero subject", mutate: func(value *PruneBootstrapPlaintext) { value.ScratchpadSubject = "" }},
+		{name: "zero subject", mutate: func(value *PruneBootstrapPlaintext) { value.LegacySubject = "" }},
 	}
 	for _, test := range tests {
 		test := test
@@ -339,17 +339,17 @@ func testPruneBootstrapPlaintext() PruneBootstrapPlaintext {
 		ClosureReferenceDigest:  testControlDigest(0xc1),
 		ManifestCount:           2,
 		ManifestDigest:          testControlDigest(0xc2),
-		ScratchpadSubject:       "scratchpad-1",
+		LegacySubject:           "scratchpad-1",
 		EntryCount:              2,
 		Entries: []PruneBootstrapEntry{
 			{
 				PruneReferenceDigest: testControlDigest(0xd0),
-				FactKind:             continuity.FactScratchpadMessageRecorded,
+				FactKind:             continuity.FactKind("scratchpad.message-recorded"),
 				HLC:                  continuity.HybridTime{WallMillis: 100, Logical: 2},
 			},
 			{
 				PruneReferenceDigest: testControlDigest(0xd1),
-				FactKind:             continuity.FactScratchpadClaimReleased,
+				FactKind:             continuity.FactKind("scratchpad.claim-released"),
 				HLC:                  continuity.HybridTime{WallMillis: 101, Logical: 0},
 			},
 		},

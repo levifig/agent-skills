@@ -23,7 +23,7 @@ func TestContinuityProjectionContractPinsExactSourceAndValidation(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read projection source: %v", err)
 	}
-	if got, want := fmt.Sprintf("%x", sha256.Sum256(contents)), "6aa14fa88bc39dc8a80b95cbcc9446c8c4dd75c49265869789a994641b45e75a"; got != want {
+	if got, want := fmt.Sprintf("%x", sha256.Sum256(contents)), "6efb1576f9d013f92fab28157409948469ff65c88d04cc433d492d4a8cf54e53"; got != want {
 		t.Errorf("projection exact source digest = %q, want %q", got, want)
 	}
 
@@ -53,8 +53,6 @@ func TestContinuityProjectionContractPinsClosedStateVocabularies(t *testing.T) {
 		"IdeaArchived":       {typeName: "IdeaDisposition", value: "archived"},
 		"IdeaPromoted":       {typeName: "IdeaDisposition", value: "promoted"},
 		"IdeaResolved":       {typeName: "IdeaDisposition", value: "resolved"},
-		"ScratchpadClosed":   {typeName: "ScratchpadState", value: "closed"},
-		"ScratchpadOpen":     {typeName: "ScratchpadState", value: "open"},
 	}
 
 	path := filepath.Join(continuityRoot, "projections.go")

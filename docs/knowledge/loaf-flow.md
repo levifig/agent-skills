@@ -2,36 +2,36 @@
 topics:
   - workflow
   - pitch
-  - changes
-  - bootstrap
+  - tracker-native
+  - rideable-increments
 covers:
-  - content/skills/pitch/**/*
-  - content/skills/shape/**/*
-  - content/skills/triage/SKILL.md
-  - content/skills/bootstrap/**/*
-  - content/skills/explore/**/*
-  - content/skills/brainstorm/**/*
-  - content/skills/implement/**/*
-  - content/skills/ship/**/*
-  - content/skills/release/**/*
+  - vnext/content/skills/pitch/**/*
+  - vnext/content/skills/shape/**/*
+  - vnext/content/skills/triage/**/*
+  - vnext/content/skills/implement/**/*
+  - vnext/content/skills/ship/**/*
+  - vnext/content/skills/release/**/*
+  - vnext/content/skills/orchestration/**/*
 consumers:
   - implementer
   - reviewer
   - researcher
-last_reviewed: '2026-07-30'
+last_reviewed: '2026-08-31'
 ---
 
 # The Loaf Flow
 
 ## Contents
+
 - The pipeline
+- Authority boundary
+- Rideable progress
 - Two scales
 - Problem-space vs solution-space
-- Where explore and brainstorm sit
-- Capture, park, and promote
+- Supporting techniques and continuity
 - Operating links
 
-How work enters and leaves Loaf after the pitch-entrypoint change. This is the ceremony view; [work-model.md](work-model.md) is the anatomy and evidence view. They describe one pipeline, not two. Rationale: [ADR-025](../decisions/ADR-025-entry-stage-pitch.md) (entry stage; amends brief semantics in [ADR-022](../decisions/ADR-022-change-anatomy-and-release-cohorts.md)).
+Loaf supplies one portable method for taking a problem from discovery through verified release. The selected external tracker owns shared work; Loaf never creates or synchronizes a second work authority.
 
 ## The pipeline
 
@@ -39,62 +39,64 @@ How work enters and leaves Loaf after the pitch-entrypoint change. This is the c
 pitch → shape → implement → ship → release
 ```
 
-| Stage | Owns | Ships as |
-|-------|------|----------|
-| **pitch** | Problem discovery; authors the brief | Human ceremony only (`/pitch`); agents never open one |
-| **shape** | Solution-space contract + task packets | `/shape`; promotes capture-only folders in place |
-| **implement** | Task commits that flip packet checkboxes | `/implement` orchestrating implementers |
-| **ship** | Land the change PR | `/ship` |
-| **release** | Publish a version from already-landed work; gate stable cuts on cohort receipts | `/release` |
+| Stage | Reads | Produces |
+|-------|-------|----------|
+| **pitch** | Human context and relevant live tracker context | A problem narrative; no shared work record |
+| **shape** | Problem narrative and current native tracker state | A bounded work contract on one canonical native record |
+| **implement** | Live native contract and repository state | Code and observed verification evidence |
+| **ship** | Live contract, candidate diff, and evidence | A quality verdict and verified native transition when authorized |
+| **release** | Already-landed work, Git history, and live native records | A verified repository-native release outcome |
 
-Reflect distills durable outputs on the branch before merge. The project journal carries decisions across every stage. Pitch is the recommended front door for raw concepts; it is **optional** at change scale — shape still runs full narrowing when no brief exists.
+Triage decides which existing native candidates advance, defer, close, or return to discovery. Orchestration coordinates bounded execution against the same live contract. Neither owns another queue or work unit.
+
+## Authority Boundary
+
+| Authority | Owns |
+|-----------|------|
+| Tracker | Shared work identity, definition, definition of done, status, hierarchy, assignment, and collaboration |
+| Loaf | Flow instructions, templates, profiles, private continuity, derived context, and deterministic local mechanics |
+| Harness | Tracker connection, authentication, model execution, and native tools |
+| Git | Code and deliberately promoted artifacts |
+
+Provider skills implement the stable `project-management/v1` behavior through the current harness's authenticated connection. They preserve provider-native fidelity and verify writes by readback. Loaf never asks for provider API keys, installs or authenticates connectors, proxies provider traffic, mirrors tracker fields, or stores ongoing local-to-remote mappings.
+
+Legacy local work records are migration evidence only. Moving them into a tracker is a one-time, agentic, verified migration, never synchronization, reconciliation, push/pull, or dual authority.
+
+## Rideable Progress
+
+The unit of progress is a [rideable increment](../../content/skills/foundations/references/rideable-increments.md): a complete, useful operator journey rather than a finished horizontal layer. Shape makes the Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals concrete inside the existing native work definition and criteria.
+
+Breadth may shrink; integrity may not. Foundation work stays beside the immediate journey that exercises it, and real dogfood earns later complexity. This sharpens the existing Flow and work contract—it adds no lifecycle, record, schema, status, score, or approval gate.
 
 ## Two scales
 
-| Scale | When | Pitch output | Next |
-|-------|------|--------------|------|
-| **Change** | Existing project + a concept | `loaf change init <slug> --brief` then authored `brief.md` | Shape-now (slug branch, hand to `/shape`) or park per landing matrix |
-| **Project** | Greenfield / empty or minimal directory | `docs/BRIEF.md` with `source: pitch` | Hand to `/bootstrap` (gap interview + series-prep of captured changes) |
+| Scale | Pitch output | Shape or bootstrap action |
+|-------|--------------|---------------------------|
+| Existing project and one direction | Ephemeral problem narrative | Shape creates or updates one canonical native tracker record and verifies readback |
+| New project | `docs/BRIEF.md` as a frozen intake snapshot | Bootstrap extracts operating documents and offers user-confirmed native backlog records for independently rideable concepts |
 
-Both scales share one problem-space brief skeleton (problem, who, alternatives, value, constraints, sequencing prose, sources, open questions). Change-scale evidence lands under the change's `research/`; project-scale evidence is inline source links in the BRIEF.
+At either scale, pitch remains problem-space discovery. It can name the first useful journey but does not design the entry point, implementation, proof, or decomposition. Shape owns those decisions and writes them once to the tracker.
 
 ## Problem-space vs solution-space
 
-- **Pitch** grills what, who, and why-valuable. A brief that reads like a pseudo-shape is a failure.
-- **Shape** grills how, boundaries, decomposition, and verification. With a brief present it restates the problem from the brief and does not re-discover it; without a brief it narrows from the raw ask as before.
-- The brief may **accrete** parked problem-space sentences until shaping starts; it **freezes** when `shape.md` exists and is then archeological. It is never mechanically load-bearing — brief-only folders still derive `captured` regardless of richness.
+- **Pitch** asks who experiences the problem, what happens now, why it matters, what observable outcome is desired, and which first complete journey is worth shaping.
+- **Shape** bounds the solution, proof, risks, deferrals, hierarchy, and dependencies on the canonical native record.
+- **Implement** preserves that live contract while choosing the smallest coherent code change and rejecting machinery the journey does not exercise.
+- **Ship** independently proves criteria, end-to-end usability, dogfood, and integrity before any authorized landing or native transition.
+- **Release** describes the larger real journey made possible by already-landed work; it does not repeat ship's quality gate.
 
-## Where explore and brainstorm sit
+## Supporting Techniques and Continuity
 
-They are **agent-side techniques**, not user slash front doors.
+Explore and brainstorm are agent techniques for uncertainty and divergence; they do not mint shared work. Sparks, ideas, journal entries, wraps, handoffs, and derived context remain private Loaf continuity. When a captured direction becomes shared work, pitch or shape routes it once into the selected tracker through the provider skill.
 
-- **Explore** remains the durable Exploration / checkpoint / Intent machinery; its Claude Code sidecar is `user-invocable: false`, and its description routes human "explore this" intent to `/pitch`. Agents reach for it from inside pitch (or other work) when the direction is genuinely undecided.
-- **Brainstorm** is the divergent stance consumed by explore (and shape's internal techniques); already non-invocable; description routes user entry intent to `/pitch`.
-
-Triage dispositions: items needing problem discovery hand to `/pitch`; well-understood directions hand to `/shape`; "explore" means the agent technique after (or instead of) forcing a false brief.
-
-## Capture, park, and promote
-
-**Landing matrix** (park and bootstrap series-prep):
-
-| Intent | Where it lands | `target_release` |
-|--------|----------------|------------------|
-| Shape now | Slug branch; hand to `/shape` (no park-commit first) | Optional stamp when known |
-| Park targeted | Docs-only commit on the **default** branch (promise-carrier exception) | Present |
-| Park untargeted | Docs-only on the **slug** branch, or stay intake (Intent/spark) | Absent — never on main |
-
-Every capture landing: explicit-path `loaf change check <folder>` (zero violations, captured state) plus direct `change.json` read-back of the intended target, then one docs-only commit per capture. Pitch and bootstrap prepare commits; they never push or open PRs.
-
-**Promotion.** A capture-only folder (`change.json` + `brief.md`) becomes shaped when `/shape` (or the human) runs ordinary `loaf change init <slug>`: brief and metadata preserved verbatim; `shape.md` and seeded `tasks/` materialize; skills never copy templates by hand. Fully materialized folders still reject as duplicates.
-
-**Series-prep.** After bootstrap populates operating documents from a pitched BRIEF, it enumerates initial work as captured changes (user-confirmed, one commit each, coarse target when ready). Concepts without a target binding stay BRIEF lines, sparks, or Intents — not minted Changes.
+If the configured tracker connection or a required native capability is unavailable, tracker-mutating Flow steps stop clearly. They never fall back to a local issue authority. Scratchpad is deferred from the immediate vNext Flow and is not an execution or continuity dependency.
 
 ## Operating links
 
 | Topic | Where |
 |-------|--------|
-| Anatomy, task evidence, cohorts, receipts | [work-model.md](work-model.md) |
-| CLI surfaces and capture `init` promotion | [task-system.md](task-system.md) |
-| Term definitions | [glossary.md](glossary.md) |
-| Entry-stage decision | [ADR-025](../decisions/ADR-025-entry-stage-pitch.md) |
-| Change anatomy (brief semantics amended) | [ADR-022](../decisions/ADR-022-change-anatomy-and-release-cohorts.md) |
+| vNext ceremony and continuity semantics | [Flow semantics](../../vnext/content/skills/loaf-reference/references/flow-semantics.md) |
+| Work and service authority | [Authority model](../../vnext/content/skills/loaf-reference/references/authority-model.md) |
+| Stable provider behavior | [Project management](../../vnext/content/skills/project-management/SKILL.md) |
+| Contributor provider boundary | [Provider modules](../../vnext/content/skills/project-management/references/provider-modules.md) |
+| Increment doctrine | [Rideable increments](../../content/skills/foundations/references/rideable-increments.md) |

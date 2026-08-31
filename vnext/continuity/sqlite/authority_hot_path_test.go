@@ -447,7 +447,7 @@ func terminalHotPathFramesV2(
 	previousDigest := firstDigest
 	for sequence := 2; sequence <= count; sequence++ {
 		digest := sha256.Sum256([]byte(fmt.Sprintf("terminal-hot-envelope:%s:%d", projectID, sequence)))
-		reference := VerifiedPruneReference{
+		reference := legacyVerifiedPruneReferenceV1{
 			FactID:                 continuity.FactID(fmt.Sprintf("fact-terminal-hot-pruned-%04d", sequence)),
 			EnvironmentID:          environmentID,
 			EnvironmentSequence:    int64(sequence),
@@ -467,7 +467,7 @@ func terminalHotPathFramesV2(
 		pruned := VerifiedTerminalPrunedFrame{
 			Reference:          reference,
 			PruneCertificateID: sha256.Sum256([]byte("terminal-hot-prune-certificate")),
-			FactKind:           continuity.FactScratchpadMessageRecorded,
+			FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                continuity.HybridTime{WallMillis: int64(99 + sequence)},
 		}
 		frames = append(frames, VerifiedTerminalCandidateFrame{Inbox: opaque[len(opaque)-1], Pruned: &pruned})

@@ -16,10 +16,11 @@ Evaluate the candidate against the live [work contract](../../templates/work-con
 
 ## Critical Rules
 
-- As the first action, emit a private `skill(ship)` continuity event when the vNext continuity capability is present. Never put invocation bookkeeping in the tracker.
+- As the first action, run `loaf journal log "skill(ship): <concise intent>"` against the current private local journal. If the write fails, report the failure and continue only when the work can safely proceed; never put invocation bookkeeping in the tracker.
 - Re-read the canonical record, relationships, workflow state, and relevant collaboration through [`project-management/v1`](../project-management/SKILL.md).
 - Inspect the actual candidate diff and repository instructions. Do not accept an implementer's summary as evidence.
 - Review correctness, maintainability, security boundaries, scope, and every completion criterion with fresh eyes; use independent read-only reviewers when available and proportionate.
+- Review the rideable increment inside this same quality gate: can the named rider use the result today, does the journey exercise the machinery added, what real dogfood and integrity evidence support the claims, and could less preserve the same safe outcome?
 - Return validated findings to implement and rerun affected gates after fixes. Do not waive an unproven criterion as a documentation detail.
 - Build review or change-request text from the live native contract and observed diff, not from a synchronized local projection.
 - Preserve external-action authority. A quality verdict does not itself authorize commit, push, merge, publication, or destructive action.
@@ -31,6 +32,8 @@ Evaluate the candidate against the live [work contract](../../templates/work-con
 
 - The reviewed commit or diff identity is exact and the working tree contains no unexplained changes.
 - Every completion criterion has direct evidence from code, tests, native state, or an explicit human verdict.
+- The complete journey works from its named entry point to observable outcome; no future-only machinery is presented as delivered value.
+- Dogfood and safety/integrity evidence match the contract, and learning plus remaining deferrals are reported honestly.
 - Required focused, affected, full-suite, format, lint, static-analysis, and build gates were run in proportion to risk.
 - All findings have an evidence-backed disposition and fixes were re-reviewed.
 - Any native transition matches the observed landed state and was confirmed by readback.

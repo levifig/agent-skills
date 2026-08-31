@@ -8,7 +8,7 @@ description: >-
   infrastructure-management).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Git Workflow
@@ -26,7 +26,7 @@ Git conventions for branching, commits, PRs, and merge workflow.
 - Use Conventional Commits format for all commit messages
 - Commit complete units of work -- don't commit partial or in-progress changes
 - Squash merge feature branches -- never merge commits directly
-- One branch per shippable root; `loaf issue start` walks to that root and creates or joins `issue/<root-alias-or-id>` (or use `feat/{slug}` / `fix/{slug}` when not starting from an issue). Related child issues share the parent's branch and the PR to main.
+- One branch per shippable root. Read the canonical native tracker record through the selected provider, then use the repository's branch convention (normally `feat/<slug>`, `fix/<slug>`, or `chore/<slug>`). Related child work shares the parent's branch and PR when the tracker hierarchy says it is one shipping unit.
 - Never force-push to `main` or shared branches
 - Never push without explicit user confirmation
 
@@ -40,7 +40,7 @@ Git conventions for branching, commits, PRs, and merge workflow.
 
 | Action | Command/Pattern |
 |--------|----------------|
-| Branch naming | `issue/<root-alias-or-id>` from `loaf issue start`; else `feat/{slug}`, `fix/{slug}`, `chore/{slug}` |
+| Branch naming | Repository convention, normally `feat/{slug}`, `fix/{slug}`, or `chore/{slug}`; include the native tracker key only when the repository convention calls for it |
 | Commit format | `type: description` |
 | Squash merge | `gh pr merge --squash` |
 | PR creation | `gh pr create --title "..." --body "..."` |

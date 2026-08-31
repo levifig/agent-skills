@@ -175,46 +175,6 @@ type wireHandoffRecordedV1 struct {
 	SuggestedSkills   []string          `json:"suggested_skills"`
 }
 
-type wireScratchpadOpenedV1 struct {
-	Observation wireObservationV1 `json:"observation"`
-	Focus       *wireSubjectRefV1 `json:"focus"`
-	Label       string            `json:"label"`
-}
-
-type wireScratchpadParticipantV1 struct {
-	Observation   wireObservationV1 `json:"observation"`
-	ParticipantID string            `json:"participant_id"`
-	Name          string            `json:"name"`
-	Focus         *wireSubjectRefV1 `json:"focus"`
-}
-
-type wireScratchpadMessageV1 struct {
-	Observation   wireObservationV1 `json:"observation"`
-	ParticipantID string            `json:"participant_id"`
-	Text          string            `json:"text"`
-}
-
-type wireScratchpadClaimV1 struct {
-	Observation     wireObservationV1 `json:"observation"`
-	ClaimID         string            `json:"claim_id"`
-	ParticipantID   string            `json:"participant_id"`
-	Resource        string            `json:"resource"`
-	ExpiresAtMillis int64             `json:"expires_at_millis"`
-}
-
-type wireScratchpadClaimReleaseV1 struct {
-	Observation wireObservationV1 `json:"observation"`
-	ClaimID     string            `json:"claim_id"`
-	ReleasedBy  string            `json:"released_by"`
-	Reason      string            `json:"reason"`
-}
-
-type wireScratchpadCloseV1 struct {
-	Observation wireObservationV1 `json:"observation"`
-	ClosedBy    string            `json:"closed_by"`
-	Reason      string            `json:"reason"`
-}
-
 type wireExternalReferenceRegistrationV1 struct {
 	Observation wireObservationV1 `json:"observation"`
 	Locator     string            `json:"locator"`
@@ -265,12 +225,6 @@ type wireValueV1 interface {
 		wireFindingCorrectionV1 |
 		wireFindingRetractionV1 |
 		wireHandoffRecordedV1 |
-		wireScratchpadOpenedV1 |
-		wireScratchpadParticipantV1 |
-		wireScratchpadMessageV1 |
-		wireScratchpadClaimV1 |
-		wireScratchpadClaimReleaseV1 |
-		wireScratchpadCloseV1 |
 		wireExternalReferenceRegistrationV1 |
 		wireExternalReferenceAttachmentV1 |
 		wireExternalReferenceDetachmentV1 |

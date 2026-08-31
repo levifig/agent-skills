@@ -139,7 +139,9 @@ ORDER BY
 			rows.Close()
 			return nil, err
 		}
-		facts = append(facts, fact)
+		if !legacyScratchpadFactV1(fact.subject, fact.kind) {
+			facts = append(facts, fact)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()

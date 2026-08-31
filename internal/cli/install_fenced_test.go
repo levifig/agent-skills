@@ -15,11 +15,11 @@ func TestGenerateFencedContentIsJournalFirst(t *testing.T) {
 	if strings.Contains(content, "loaf task/spec") || strings.Contains(content, "promote to tasks") {
 		t.Fatalf("fenced content still uses retired task/spec guidance:\n%s", content)
 	}
-	if !strings.Contains(content, "loaf issue/kb") {
-		t.Fatalf("fenced content missing `loaf issue/kb` command listing:\n%s", content)
+	if !strings.Contains(content, "project-management/v1") || !strings.Contains(content, "Local-to-tracker synchronization does not exist") {
+		t.Fatalf("fenced content missing tracker-native authority guidance:\n%s", content)
 	}
-	if !strings.Contains(content, "Action items to file as issues") {
-		t.Fatalf("fenced content missing issue-model todo guidance:\n%s", content)
+	if !strings.Contains(content, "frozen migration compatibility only") {
+		t.Fatalf("fenced content does not quarantine legacy issue commands:\n%s", content)
 	}
 	if !strings.Contains(content, "loaf journal log") {
 		t.Fatalf("fenced content missing `loaf journal log` guidance:\n%s", content)
@@ -41,6 +41,18 @@ func TestGenerateFencedContentIsJournalFirst(t *testing.T) {
 	}
 	if strings.Contains(content, "<!-- loaf:managed:start v") {
 		t.Fatalf("fenced content still embeds a version stamp:\n%s", content)
+	}
+}
+
+func TestRepositoryManagedInstructionsMatchGenerator(t *testing.T) {
+	root := testRepositoryRoot(t)
+	body := string(readFileBytes(t, filepath.Join(root, "AGENTS.md")))
+	section, ok := findFencedSectionRange(body)
+	if !ok {
+		t.Fatal("tracked AGENTS.md has no managed Loaf section")
+	}
+	if got, want := body[section.start:section.end], generateFencedContent(); got != want {
+		t.Fatal("tracked AGENTS.md managed section is stale; refresh it from generateFencedContent()")
 	}
 }
 

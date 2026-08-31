@@ -50,11 +50,9 @@ No scope prefixes. No SPEC/TASK IDs in the title.
 
 ### 3. PR body
 
-The body is `loaf issue render <ref>` output. No project headers, no hand-edited summary. Checkboxes stay unchecked until `loaf issue status <ref> done`.
+Build the body from the live canonical tracker record and the observed branch diff. Through the selected `project-management/v1` provider skill and harness-native connection, re-read the native reference, problem, definition of done, exclusions, relationships, and current status. Include the native reference, a concise change summary, criterion-by-criterion evidence, verification actually run, and remaining risk.
 
-```
-gh pr create --title "type: summary" --body "$(loaf issue render <ref>)"
-```
+Do not render or synchronize a Loaf-local work record. If the tracker connection or a required read capability is unavailable, stop and report the connection-specific gap rather than inventing or reconstructing canonical work state. After creating the PR, read the PR body back and confirm that it matches the live work contract and observed diff.
 
 ### 4. Merge strategy
 
@@ -62,4 +60,4 @@ Squash merge. Write a clean extended description (2-4 lines summarizing the bran
 
 ---
 
-Complete these steps, then re-run `gh pr create`.
+Complete these steps, then re-run `gh pr create` with the prepared body.

@@ -41,7 +41,7 @@ func TestTerminalCandidateCodecIdentityAndPrunedBodyAreDeterministicV1(t *testin
 	body := terminalCandidatePrunedBodyV1{
 		ReferenceDigest:  testAuthorityDigest(0x51),
 		InboxFrameDigest: sha256.Sum256([]byte("exact-pruned-arrival")),
-		FactKind:         continuity.FactScratchpadMessageRecorded,
+		FactKind:         continuity.FactKind("scratchpad.message-recorded"),
 		Clock:            continuity.HybridTime{WallMillis: 1234, Logical: 5},
 	}
 	encoded, err := encodeTerminalCandidatePrunedBodyV1(body)
@@ -293,10 +293,10 @@ func TestTerminalCandidatePrunedBodyIsStrictAndSchemaBoundedV1(t *testing.T) {
 	t.Parallel()
 
 	for _, kind := range []continuity.FactKind{
-		continuity.FactScratchpadParticipantIntroduced,
-		continuity.FactScratchpadMessageRecorded,
-		continuity.FactScratchpadClaimRecorded,
-		continuity.FactScratchpadClaimReleased,
+		continuity.FactKind("scratchpad.participant-introduced"),
+		continuity.FactKind("scratchpad.message-recorded"),
+		continuity.FactKind("scratchpad.claim-recorded"),
+		continuity.FactKind("scratchpad.claim-released"),
 	} {
 		body := terminalCandidatePrunedBodyV1{
 			ReferenceDigest:  sha256.Sum256([]byte("reference:" + string(kind))),
@@ -331,11 +331,11 @@ func TestTerminalCandidatePrunedBodyIsStrictAndSchemaBoundedV1(t *testing.T) {
 	}
 
 	invalid := []terminalCandidatePrunedBodyV1{
-		{FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{}},
-		{ReferenceDigest: testAuthorityDigest(0x60), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{}},
-		{ReferenceDigest: testAuthorityDigest(0x61), InboxFrameDigest: testAuthorityDigest(0x71), FactKind: continuity.FactScratchpadOpened, Clock: continuity.HybridTime{}},
-		{ReferenceDigest: testAuthorityDigest(0x62), InboxFrameDigest: testAuthorityDigest(0x72), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{WallMillis: -1}},
-		{ReferenceDigest: testAuthorityDigest(0x63), InboxFrameDigest: testAuthorityDigest(0x73), FactKind: continuity.FactScratchpadMessageRecorded, Clock: continuity.HybridTime{Logical: -1}},
+		{FactKind: continuity.FactKind("scratchpad.message-recorded"), Clock: continuity.HybridTime{}},
+		{ReferenceDigest: testAuthorityDigest(0x60), FactKind: continuity.FactKind("scratchpad.message-recorded"), Clock: continuity.HybridTime{}},
+		{ReferenceDigest: testAuthorityDigest(0x61), InboxFrameDigest: testAuthorityDigest(0x71), FactKind: continuity.FactKind("scratchpad.opened"), Clock: continuity.HybridTime{}},
+		{ReferenceDigest: testAuthorityDigest(0x62), InboxFrameDigest: testAuthorityDigest(0x72), FactKind: continuity.FactKind("scratchpad.message-recorded"), Clock: continuity.HybridTime{WallMillis: -1}},
+		{ReferenceDigest: testAuthorityDigest(0x63), InboxFrameDigest: testAuthorityDigest(0x73), FactKind: continuity.FactKind("scratchpad.message-recorded"), Clock: continuity.HybridTime{Logical: -1}},
 	}
 	for _, body := range invalid {
 		if _, err := encodeTerminalCandidatePrunedBodyV1(body); !terminalCandidateErrorIsV1(err, terminalCandidateInvalidErrorV1) {
@@ -352,7 +352,7 @@ func TestTerminalCandidatePrunedBodyIsStrictAndSchemaBoundedV1(t *testing.T) {
 		maximumTerminalCandidatePrunedBodyBytesV1,
 		terminalCandidateUint16BytesV1(1),
 		legacyReferenceDigest[:],
-		[]byte(continuity.FactScratchpadMessageRecorded),
+		[]byte("scratchpad.message-recorded"),
 		terminalCandidateInt64BytesV1(1),
 		terminalCandidateInt32BytesV1(0),
 	)
@@ -669,7 +669,7 @@ func terminalCandidateCodecVectorFixtureV1(t *testing.T) terminalCandidateCodecV
 	prunedBody, err := encodeTerminalCandidatePrunedBodyV1(terminalCandidatePrunedBodyV1{
 		ReferenceDigest:  sha256.Sum256([]byte("terminal-candidate-vector-reference")),
 		InboxFrameDigest: sha256.Sum256([]byte("terminal-candidate-vector-inbox")),
-		FactKind:         continuity.FactScratchpadMessageRecorded,
+		FactKind:         continuity.FactKind("scratchpad.message-recorded"),
 		Clock:            continuity.HybridTime{WallMillis: 1_727_000_000_123, Logical: 17},
 	})
 	if err != nil {
@@ -778,7 +778,7 @@ func terminalCodecPrunedFrameV1(t *testing.T) terminalCandidateFrameV1 {
 	frame.candidateBytes, err = encodeTerminalCandidatePrunedBodyV1(terminalCandidatePrunedBodyV1{
 		ReferenceDigest:  referenceDigest,
 		InboxFrameDigest: sha256.Sum256([]byte("terminal-codec-pruned-arrival")),
-		FactKind:         continuity.FactScratchpadClaimRecorded,
+		FactKind:         continuity.FactKind("scratchpad.claim-recorded"),
 		Clock:            frame.clock,
 	})
 	if err != nil {

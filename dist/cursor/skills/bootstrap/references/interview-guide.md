@@ -362,23 +362,24 @@ Series-prep (bootstrap Finalization) turns the project BRIEF's scoped concepts i
 
 ### Earns its own backlog issue when both are true
 
-1. **Independently shippable** — the concept could land as a meaningful release unit without waiting on the other scoped concepts to ship in the same commit or PR. Sharing an advisory bucket is fine (buckets are labels, never bindings); hard entanglement is not.
+1. **Independently rideable** — the concept names a complete operator journey that could land as a meaningful release unit without waiting on the other scoped concepts to become useful. A storage, backend, protocol, API, UI, or verification layer alone does not pass. Sharing optional native metadata is fine; hard entanglement is not.
 2. **Specifiability (mint test)** — a concept mints only if its problem can be **stated precisely now** (not answered now): a cold reader can name the friction, who has it, the current alternative, and the value for *this* concept alone, without needing sibling issues or inventing what was meant. Everything vaguer stays a BRIEF line or spark — never pre-sliced into a fake row.
 
-When both hold, mint: `loaf issue new "<title>" --body "<problem narrative>" --status backlog`, seed problem-space-only, optionally `loaf issue bucket <ref> now|next|later` (buckets are labels, never bindings). Run `loaf issue check <ref>` only when the capture is shaped enough to check; a backlog issue with a problem body needs no ceremony. No folders, no docs-only commits — rows, not files.
+When both hold, create a canonical backlog record through the selected `project-management/v1` provider's `work.create` operation, seed the problem-space-only narrative, and use only exact provider-supported fields. Read the record back with `work.get` and verify its native identity and content. No parallel local work rows, folders, or docs-only commits.
 
 ### Stays a BRIEF line or spark when any is true
 
 - The concept only makes sense as a clause of a larger problem (it cannot be stated alone).
 - Its problem cannot yet be stated precisely — coarse intent only; minting would invent precision.
 - It is a solution-space detail, implementation task, or "nice-to-have" flavor — not a shippable problem boundary.
+- It is a foundation or component layer whose value appears only after a future record; keep it inside the immediate consuming journey.
 - Splitting would create two issues that always ship as one unit — keep one issue and name the sub-concerns in Sequencing prose.
 
 ### Interview moves during series-prep
 
 - Recommend a decomposition first (list candidate issues + what stays in the BRIEF), then confirm each mint one at a time.
 - Challenge over-splitting: "Can this problem be stated precisely now without that one?" If no, merge candidates or leave as BRIEF lines.
-- Challenge under-splitting: "Is this independently shippable, or are we smuggling two products into one issue?"
+- Challenge under-splitting: "Is this independently rideable, or are we smuggling two products into one tracker record?"
 - Never invent priority ranks, dates, or machine dependency fields — sequencing is prose; buckets are labels, never bindings.
 
 ### Standalone cold-read test (H3)

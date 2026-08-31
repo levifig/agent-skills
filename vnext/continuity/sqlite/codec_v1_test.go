@@ -326,48 +326,6 @@ func TestContinuityCodecHasIndependentGoldenJSONForEveryFactKind(t *testing.T) {
 			want: `{"observation":` + observationJSON + `,"focus":null,"purpose":"x","situation":"","next_actions":"","questions_and_risks":"","suggested_skills":[]}`,
 		},
 		{
-			kind: continuity.FactScratchpadOpened,
-			encode: func() (canonicalContentV1, error) {
-				return encodeScratchpadOpenedV1(continuity.ScratchpadOpenedPayload{Observation: observation, Label: "x"})
-			},
-			want: `{"observation":` + observationJSON + `,"focus":null,"label":"x"}`,
-		},
-		{
-			kind: continuity.FactScratchpadParticipantIntroduced,
-			encode: func() (canonicalContentV1, error) {
-				return encodeScratchpadParticipantV1(continuity.ScratchpadParticipantPayload{Observation: observation, ParticipantID: "participant-1", Name: "x"})
-			},
-			want: `{"observation":` + observationJSON + `,"participant_id":"participant-1","name":"x","focus":null}`,
-		},
-		{
-			kind: continuity.FactScratchpadMessageRecorded,
-			encode: func() (canonicalContentV1, error) {
-				return encodeScratchpadMessageV1(continuity.ScratchpadMessagePayload{Observation: observation, ParticipantID: "participant-1", Text: "x"})
-			},
-			want: `{"observation":` + observationJSON + `,"participant_id":"participant-1","text":"x"}`,
-		},
-		{
-			kind: continuity.FactScratchpadClaimRecorded,
-			encode: func() (canonicalContentV1, error) {
-				return encodeScratchpadClaimV1(continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "x", ExpiresAtMillis: 2})
-			},
-			want: `{"observation":` + observationJSON + `,"claim_id":"claim-1","participant_id":"participant-1","resource":"x","expires_at_millis":2}`,
-		},
-		{
-			kind: continuity.FactScratchpadClaimReleased,
-			encode: func() (canonicalContentV1, error) {
-				return encodeScratchpadClaimReleaseV1(continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-1", ReleasedBy: "participant-1"})
-			},
-			want: `{"observation":` + observationJSON + `,"claim_id":"claim-1","released_by":"participant-1","reason":""}`,
-		},
-		{
-			kind: continuity.FactScratchpadClosed,
-			encode: func() (canonicalContentV1, error) {
-				return encodeScratchpadCloseV1(continuity.ScratchpadClosePayload{Observation: observation})
-			},
-			want: `{"observation":` + observationJSON + `,"closed_by":"","reason":""}`,
-		},
-		{
 			kind: continuity.FactExternalReferenceRegistered,
 			encode: func() (canonicalContentV1, error) {
 				return encodeExternalReferenceRegistrationV1(continuity.ExternalReferenceRegistrationPayload{Observation: observation, Locator: "opaque:x"})
@@ -397,8 +355,8 @@ func TestContinuityCodecHasIndependentGoldenJSONForEveryFactKind(t *testing.T) {
 		},
 	}
 
-	if len(tests) != 32 {
-		t.Fatalf("golden codec cases = %d, want 32", len(tests))
+	if len(tests) != len(continuity.FactCatalog()) {
+		t.Fatalf("golden codec cases = %d, want %d", len(tests), len(continuity.FactCatalog()))
 	}
 	seen := make(map[continuity.FactKind]struct{}, len(tests))
 	for _, test := range tests {
