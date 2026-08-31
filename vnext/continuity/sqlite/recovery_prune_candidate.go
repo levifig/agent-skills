@@ -67,6 +67,27 @@ func (VerifiedSyncRecoveryPruneRecord) GoString() string {
 	return "sqlite.VerifiedSyncRecoveryPruneRecord([REDACTED])"
 }
 
+// SyncRecoveryPruneTargetMatch is the exact joined prune-record and target
+// projection for one arrival under an immutable READY recovery candidate.
+// PruneID binds the opaque relay arrival; the remaining fields are sufficient
+// to construct and revalidate a verified terminal pruned frame.
+type SyncRecoveryPruneTargetMatch struct {
+	PruneID              [32]byte
+	PruneCertificateID   [32]byte
+	MembershipGeneration uint32
+	Reference            VerifiedPruneReference
+	FactKind             continuity.FactKind
+	HLC                  continuity.HybridTime
+}
+
+func (SyncRecoveryPruneTargetMatch) String() string {
+	return "[REDACTED recovery prune target match]"
+}
+
+func (SyncRecoveryPruneTargetMatch) GoString() string {
+	return "sqlite.SyncRecoveryPruneTargetMatch([REDACTED])"
+}
+
 // SyncRecoveryPruneCandidatePage is one bounded, already-verified checkpoint
 // advance. ResultingRollingDigest and LastMembershipGeneration are cumulative
 // values after this page. Records is the exact minimal projection covered
@@ -136,6 +157,72 @@ func (candidate SyncRecoveryPruneCandidate) Checkpoint() SyncRecoveryPruneCandid
 	}
 }
 
+// SyncRecoveryPruneTargetByArrival resolves one authenticated target from the
+// exact immutable READY recovery candidate. A false result is authoritative
+// only because this method rejects staging, stale, missing, and recreated
+// candidates before consulting the point index.
+func (store *Store) SyncRecoveryPruneTargetByArrival(
+	ctx context.Context,
+	projectID continuity.ProjectID,
+	expected SyncRecoveryPruneCandidate,
+	arrivalSequence int64,
+) (SyncRecoveryPruneTargetMatch, bool, error) {
+	if err := validateSyncRecoveryPruneCandidateV1(expected); err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, err
+	}
+	if expected.ProjectID != projectID {
+		return SyncRecoveryPruneTargetMatch{}, false, syncProblem(SyncErrorInvalid, "candidate", "does not match the requested project")
+	}
+	if !expected.Ready {
+		return SyncRecoveryPruneTargetMatch{}, false, syncProblem(SyncErrorInvalid, "candidate", "must be ready")
+	}
+	if arrivalSequence < 1 || arrivalSequence > expected.Snapshot.Authority.InventoryArrivalHead {
+		return SyncRecoveryPruneTargetMatch{}, false, syncProblem(SyncErrorInvalid, "arrival_sequence", "is outside the exact recovery prefix")
+	}
+	if store == nil {
+		return SyncRecoveryPruneTargetMatch{}, false, syncProblem(SyncErrorStore, "", "store is closed")
+	}
+	if ctx == nil {
+		return SyncRecoveryPruneTargetMatch{}, false, syncProblem(SyncErrorInvalid, "context", "must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, err
+	}
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	if store.closed || store.db == nil {
+		return SyncRecoveryPruneTargetMatch{}, false, syncProblem(SyncErrorStore, "", "store is closed")
+	}
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelSerializable})
+	if err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, syncTransactionProblem(ctx)
+	}
+	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, err
+	}
+	if err := requireExactSyncRecoveryPruneCandidateV1(ctx, tx, projectID, expected); err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, err
+	}
+	match, found, err := readSyncRecoveryPruneTargetMatchV1(ctx, tx, projectID, expected.CandidateID, arrivalSequence)
+	if err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, err
+	}
+	if !found {
+		if err := validateSyncRecoveryPruneCandidateIndexV1(ctx, tx, expected); err != nil {
+			return SyncRecoveryPruneTargetMatch{}, false, err
+		}
+	}
+	if found && match.MembershipGeneration > expected.Snapshot.Authority.MembershipGeneration {
+		return SyncRecoveryPruneTargetMatch{}, false, corruptSyncRecoveryPruneCandidateV1("indexed prune target generation exceeds the ready authority")
+	}
+	if err := tx.Commit(); err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, syncTransactionProblem(ctx)
+	}
+	return match, found, nil
+}
+
 // StageVerifiedSyncRecoveryPruneCandidatePage creates, advances, or exactly
 // replays one bounded, already-verified prune inventory checkpoint. The exact
 // predecessor token makes an unknown commit outcome safely retryable without
@@ -182,6 +269,9 @@ func (store *Store) StageVerifiedSyncRecoveryPruneCandidatePage(
 		return SyncRecoveryPruneCandidate{}, err
 	}
 	if err := requireExactSyncRecoveryPruneSnapshotFenceV1(ctx, tx, projectID, snapshot); err != nil {
+		return SyncRecoveryPruneCandidate{}, err
+	}
+	if err := requireNoPromotedTerminalReceiptAtRecoveryCutoffV1(ctx, tx, projectID, snapshot.Authority); err != nil {
 		return SyncRecoveryPruneCandidate{}, err
 	}
 	activeAuthorityCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
@@ -543,6 +633,28 @@ func (store *Store) DiscardSyncRecoveryPruneCandidate(
 	if current.Checkpoint() != checkpoint {
 		return syncProblem(SyncErrorConflict, "checkpoint", "does not match the active recovery prune candidate")
 	}
+	terminalCandidateFound, err := activeTerminalCandidateExistsV1(ctx, tx, projectID)
+	if err != nil {
+		return err
+	}
+	if terminalCandidateFound {
+		return syncProblem(SyncErrorConflict, "terminal_candidate", "must be promoted or discarded before the recovery prune candidate")
+	}
+	if err := deleteExactSyncRecoveryPruneCandidateV1(ctx, tx, current); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return syncProblem(SyncErrorStore, "", "recovery prune candidate discard outcome is unknown")
+	}
+	return nil
+}
+
+func deleteExactSyncRecoveryPruneCandidateV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	candidate SyncRecoveryPruneCandidate,
+) error {
+	checkpoint := candidate.Checkpoint()
 	state := "staging"
 	var inventoryDigest any
 	if checkpoint.Ready {
@@ -559,11 +671,11 @@ WHERE project_id = ? AND candidate_id = ? AND state = ?
   AND through_prune_sequence = ? AND last_membership_generation = ?
   AND rolling_inventory_digest = ?
   AND ((? IS NULL AND inventory_digest IS NULL) OR inventory_digest = ?)`,
-		string(projectID), checkpoint.CandidateID[:], state,
-		current.Snapshot.Authority.ChannelID[:], current.Snapshot.Authority.RelayGeneration[:],
-		current.Snapshot.Authority.AdminPublicKey[:], current.Snapshot.Authority.MembershipGeneration,
-		current.Snapshot.Authority.InventoryArrivalHead, current.Snapshot.Authority.AuthorityDigestVersion,
-		current.Snapshot.Authority.AuthorityDigest[:], current.Snapshot.PruneHead,
+		string(candidate.ProjectID), checkpoint.CandidateID[:], state,
+		candidate.Snapshot.Authority.ChannelID[:], candidate.Snapshot.Authority.RelayGeneration[:],
+		candidate.Snapshot.Authority.AdminPublicKey[:], candidate.Snapshot.Authority.MembershipGeneration,
+		candidate.Snapshot.Authority.InventoryArrivalHead, candidate.Snapshot.Authority.AuthorityDigestVersion,
+		candidate.Snapshot.Authority.AuthorityDigest[:], candidate.Snapshot.PruneHead,
 		checkpoint.PageCount, checkpoint.PruneCount, checkpoint.TargetCount,
 		checkpoint.ThroughPruneSequence, checkpoint.LastMembershipGeneration,
 		checkpoint.RollingInventoryDigest[:], inventoryDigest, inventoryDigest,
@@ -573,9 +685,6 @@ WHERE project_id = ? AND candidate_id = ? AND state = ?
 	}
 	if err := requireOneAffectedV1(result, ctx); err != nil {
 		return syncProblem(SyncErrorConflict, "checkpoint", "active recovery prune candidate changed")
-	}
-	if err := tx.Commit(); err != nil {
-		return syncProblem(SyncErrorStore, "", "recovery prune candidate discard outcome is unknown")
 	}
 	return nil
 }
@@ -935,6 +1044,46 @@ func requireExactSyncRecoveryPruneSnapshotFenceV1(
 	return nil
 }
 
+func requireNoPromotedTerminalReceiptAtRecoveryCutoffV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	authority SyncAuthorityBinding,
+) error {
+	var candidateCount int64
+	var candidateID []byte
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*), MIN(candidate_id)
+FROM continuity_sync_terminal_candidates
+WHERE project_id = ? AND state = 'promoted'
+  AND channel_id = ? AND relay_generation = ?
+  AND membership_generation = ? AND authority_digest = ?
+  AND resulting_applied_cursor = ?`,
+		string(projectID), authority.ChannelID[:], authority.RelayGeneration[:],
+		authority.MembershipGeneration, authority.AuthorityDigest[:], authority.InventoryArrivalHead,
+	).Scan(&candidateCount, &candidateID); err != nil {
+		return syncTransactionProblem(ctx)
+	}
+	if candidateCount == 0 {
+		return nil
+	}
+	if candidateCount != 1 || len(candidateID) != 32 || isZeroDigestBytesV2(candidateID) {
+		return syncProblem(SyncErrorStore, "", "promoted terminal recovery receipt inventory is corrupt")
+	}
+	var exactCandidateID [32]byte
+	copy(exactCandidateID[:], candidateID)
+	receipt, found, err := readPromotedTerminalCandidateReceiptV1(ctx, tx, projectID, exactCandidateID)
+	if err != nil {
+		return err
+	}
+	if !found || receipt.ChannelID != authority.ChannelID || receipt.RelayGeneration != authority.RelayGeneration ||
+		receipt.MembershipGeneration != authority.MembershipGeneration || receipt.AuthorityDigest != authority.AuthorityDigest ||
+		receipt.ResultingAppliedCursor != authority.InventoryArrivalHead {
+		return syncProblem(SyncErrorStore, "", "promoted terminal recovery receipt inventory is inconsistent")
+	}
+	return syncProblem(SyncErrorConflict, "terminal_candidate", "promoted terminal history already covers the recovery cutoff")
+}
+
 func insertSyncRecoveryPruneCandidateV1(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -1095,6 +1244,94 @@ func requireExactSyncRecoveryPruneCandidatePageRecordsV1(
 		}
 	}
 	return nil
+}
+
+func requireExactSyncRecoveryPruneCandidateV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	expected SyncRecoveryPruneCandidate,
+) error {
+	if err := requireExactSyncRecoveryPruneSnapshotFenceV1(ctx, tx, projectID, expected.Snapshot); err != nil {
+		return err
+	}
+	current, found, err := readSyncRecoveryPruneCandidateV1(ctx, tx, projectID)
+	if err != nil {
+		return err
+	}
+	if !found || current != expected || !current.Ready {
+		return syncProblem(SyncErrorConflict, "checkpoint", "does not match the exact ready recovery prune candidate")
+	}
+	return nil
+}
+
+func readSyncRecoveryPruneTargetMatchV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	candidateID [32]byte,
+	arrivalSequence int64,
+) (SyncRecoveryPruneTargetMatch, bool, error) {
+	match := SyncRecoveryPruneTargetMatch{}
+	var pruneID, pruneCertificateID []byte
+	var factID, environmentID, factKind string
+	var envelopeDigest, certificateID, previousEnvelopeDigest, nonce []byte
+	var membershipGeneration, keyGeneration, hlcLogical int64
+	err := tx.QueryRowContext(ctx, `
+SELECT records.prune_id, records.prune_certificate_id, records.membership_generation,
+       targets.fact_id, targets.environment_id, targets.environment_sequence,
+       targets.arrival_sequence, targets.envelope_digest, targets.certificate_id,
+       targets.previous_envelope_digest, targets.key_generation, targets.nonce,
+       targets.fact_kind, targets.hlc_wall_millis, targets.hlc_logical
+FROM continuity_sync_recovery_prune_targets AS targets
+JOIN continuity_sync_recovery_prune_records AS records
+  ON records.project_id = targets.project_id
+ AND records.candidate_id = targets.candidate_id
+ AND records.prune_sequence = targets.prune_sequence
+WHERE targets.project_id = ? AND targets.candidate_id = ?
+  AND targets.arrival_sequence = ?`,
+		string(projectID), candidateID[:], arrivalSequence,
+	).Scan(
+		&pruneID, &pruneCertificateID, &membershipGeneration,
+		&factID, &environmentID, &match.Reference.EnvironmentSequence,
+		&match.Reference.ArrivalSequence, &envelopeDigest, &certificateID,
+		&previousEnvelopeDigest, &keyGeneration, &nonce,
+		&factKind, &match.HLC.WallMillis, &hlcLogical,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SyncRecoveryPruneTargetMatch{}, false, nil
+	}
+	if err != nil {
+		return SyncRecoveryPruneTargetMatch{}, false, syncTransactionProblem(ctx)
+	}
+	if len(pruneID) != len(match.PruneID) || isZeroDigestBytesV2(pruneID) ||
+		len(pruneCertificateID) != len(match.PruneCertificateID) || isZeroDigestBytesV2(pruneCertificateID) ||
+		membershipGeneration < 1 || membershipGeneration > math.MaxUint32 ||
+		len(envelopeDigest) != len(match.Reference.EnvelopeDigest) ||
+		len(certificateID) != len(match.Reference.CertificateID) ||
+		len(previousEnvelopeDigest) != len(match.Reference.PreviousEnvelopeDigest) ||
+		len(nonce) != len(match.Reference.Nonce) || keyGeneration < 1 || keyGeneration > math.MaxUint32 ||
+		hlcLogical < 0 || hlcLogical > math.MaxInt32 {
+		return SyncRecoveryPruneTargetMatch{}, false, corruptSyncRecoveryPruneCandidateV1("indexed prune target match is malformed")
+	}
+	copy(match.PruneID[:], pruneID)
+	copy(match.PruneCertificateID[:], pruneCertificateID)
+	match.MembershipGeneration = uint32(membershipGeneration)
+	match.Reference.FactID = continuity.FactID(factID)
+	match.Reference.EnvironmentID = continuity.EnvironmentID(environmentID)
+	match.Reference.KeyGeneration = uint32(keyGeneration)
+	copy(match.Reference.EnvelopeDigest[:], envelopeDigest)
+	copy(match.Reference.CertificateID[:], certificateID)
+	copy(match.Reference.PreviousEnvelopeDigest[:], previousEnvelopeDigest)
+	copy(match.Reference.Nonce[:], nonce)
+	match.FactKind = continuity.FactKind(factKind)
+	match.HLC.Logical = int32(hlcLogical)
+	if match.Reference.ArrivalSequence != arrivalSequence ||
+		validateVerifiedPruneReferenceV1(match.Reference, "persisted_target.reference") != nil ||
+		!prunableScratchpadFactKindV1(match.FactKind) || match.HLC.WallMillis < 0 {
+		return SyncRecoveryPruneTargetMatch{}, false, corruptSyncRecoveryPruneCandidateV1("indexed prune target match is inconsistent")
+	}
+	return match, true, nil
 }
 
 func readSyncRecoveryPruneRecordV1(
