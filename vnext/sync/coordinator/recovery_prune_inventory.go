@@ -433,12 +433,7 @@ func (coordinator *Coordinator) verifyRecoveryPruneInventoryRecord(
 	}
 	plaintext, err := crypto.OpenPruneBootstrap(parsed.Capsule, bootstrapKey)
 	if err != nil {
-		if contextErr := ctx.Err(); contextErr != nil {
-			return verifiedRecoveryPrune{}, contextErr
-		}
-		// Wrong protected authority, authentication-tag corruption, and
-		// authenticated plaintext disagreement share one static oracle.
-		return verifiedRecoveryPrune{}, newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
+		return verifiedRecoveryPrune{}, mapRecoveryPruneBootstrapError(ctx, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return verifiedRecoveryPrune{}, err
@@ -625,6 +620,20 @@ func cloneVerifiedRecoveryPrunes(prunes []verifiedRecoveryPrune) []verifiedRecov
 
 func malformedRecoveryPruneInventory() error {
 	return newProblem(CodeRemote, PhasePruneInventory, ActionRestartRecovery)
+}
+
+func mapRecoveryPruneBootstrapError(ctx context.Context, err error) error {
+	if contextErr := contextError(ctx, err); contextErr != nil {
+		return contextErr
+	}
+	if errors.Is(err, crypto.ErrPruneBootstrapAuthenticationFailed) {
+		// Wrong protected authority, key, associated data, ciphertext, and tag
+		// share one static local-credential conflict oracle.
+		return newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
+	}
+	// Authenticated plaintext disagreement and malformed capsule/plaintext
+	// originate in retained relay material, not in the local credential.
+	return malformedRecoveryPruneInventory()
 }
 
 func mapRecoveryPruneInventoryRelayError(ctx context.Context, err error) error {
