@@ -33,11 +33,12 @@ Human problem-discovery ceremony. Narrows sparks and ideas into a framed problem
 1. **Agents never initiate a pitch.** This ceremony is human-invoked only. On Claude Code the sidecar sets `disable-model-invocation: true`; on every target this rule binds behaviorally. Agent legwork *inside* a human-opened pitch (competitive scans, file writes the skill directs) is fine — opening one is not.
 2. **Log invocation first** — `loaf journal log "skill(pitch): <idea, problem, spark, or intake item>"` before interviewing.
 3. **Problem-space only** — grill what, who, and why-valuable. Approach, architecture, decomposition, and verification design belong to shape. A narrative that reads like a pseudo-shape is a failure; rewrite before landing.
-4. **One question at a time, recommendation-first** — using your harness's structured question tool if it has one (otherwise one inline question per message). Never a multi-field form. Order by impact on the narrative. Full mechanics: [references/interview-guide.md](references/interview-guide.md).
-5. **Never bound, never ship** — do not add definition-of-done criteria, do not write an out-of-scope statement, do not run `loaf issue check` or `loaf issue promote`, do not push, do not open PRs. Never auto-run shape or bootstrap.
-6. **Shape mints on the happy path** — same-session shape-now hands the authored narrative; shape runs `loaf issue new` with that body. Pitch writes an issue body only when parking an unshaped row or when `$ARGUMENTS` already names an issue (`loaf issue edit` replaces the body).
-7. **Titles name the concept** — propose a working title, never another work unit's alias. Provenance lives in the issue row, the spark/idea resolution, and frontmatter on `docs/BRIEF.md`.
-8. **Log the outcome** — `loaf journal log "decision(pitch): <title, ref, or project> — <shape-now|park-issue|park-idea|handed-to-bootstrap>"`.
+4. **Seek the first rideable journey** — identify the smallest valuable end-to-end change for a real operator, without designing it. Sequencing names useful outcomes, not layers such as database, API, then UI. Shape later makes the [increment contract](../foundations/references/rideable-increments.md) concrete.
+5. **One question at a time, recommendation-first** — using your harness's structured question tool if it has one (otherwise one inline question per message). Never a multi-field form. Order by impact on the narrative. Full mechanics: [references/interview-guide.md](references/interview-guide.md).
+6. **Never bound, never ship** — do not add definition-of-done criteria, do not write an out-of-scope statement, do not run `loaf issue check` or `loaf issue promote`, do not push, do not open PRs. Never auto-run shape or bootstrap.
+7. **Shape mints on the happy path** — same-session shape-now hands the authored narrative; shape runs `loaf issue new` with that body. Pitch writes an issue body only when parking an unshaped row or when `$ARGUMENTS` already names an issue (`loaf issue edit` replaces the body).
+8. **Titles name the concept** — propose a working title, never another work unit's alias. Provenance lives in the issue row, the spark/idea resolution, and frontmatter on `docs/BRIEF.md`.
+9. **Log the outcome** — `loaf journal log "decision(pitch): <title, ref, or project> — <shape-now|park-issue|park-idea|handed-to-bootstrap>"`.
 
 ---
 
@@ -46,6 +47,7 @@ Human problem-discovery ceremony. Narrows sparks and ideas into a framed problem
 - Issue-scale: a problem narrative exists against the shared skeleton; it was handed to shape, written into an existing issue body, or minted as an unshaped triage row with that body and no criteria
 - Project-scale: `docs/BRIEF.md` exists with `source: pitch` and the shared problem-space skeleton
 - Cold-read: problem, who, alternative, and value nameable in one pass; zero solution-space content; no out-of-scope statement and no criteria added by this skill
+- The first useful operator journey is nameable, and sequencing is expressed as outcomes rather than component layers
 - Named sparks were promoted to an idea when pitching them; ideas and sparks were resolved against the issue only after a row exists
 - No push; no PR; shape and bootstrap were not auto-run
 - Journal shows skill invocation and outcome entries
@@ -244,6 +246,7 @@ The journal line is mechanical; the human-facing close is the closing ceremony i
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Interview guide | [references/interview-guide.md](references/interview-guide.md) | Running or adapting the problem-discovery grill |
+| Rideable increments | [../foundations/references/rideable-increments.md](../foundations/references/rideable-increments.md) | Framing the first useful journey and outcome-led sequencing |
 
 ## Artifact Naming
 

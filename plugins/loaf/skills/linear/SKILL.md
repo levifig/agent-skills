@@ -9,7 +9,7 @@ description: >-
   Not for configuring or authenticating MCP servers.
 user-invocable: true
 argument-hint: '[goal, issue, project, or team scope]'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Linear

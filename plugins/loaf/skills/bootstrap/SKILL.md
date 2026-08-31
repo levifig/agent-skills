@@ -10,7 +10,7 @@ description: >-
 user-invocable: true
 argument-hint: '[brief or path]'
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Bootstrap
@@ -48,6 +48,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes (including series-prep reading scoped concepts from it), the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents and minted issue bodies must stand on their own.
 - **Series-prep never auto-shapes and never creates branches** -- every mint is user-confirmed; no priority, date, or dependency fields; buckets are labels, never bindings; concepts that fail granularity stay BRIEF lines or sparks
+- **Prepare an arc of rideable outcomes, not layers** -- series-prep describes the operator journeys that later shape will make concrete; storage, backend, API, UI, and verification are not milestones by themselves
 - **Record, don't provision Linear** -- when the project exposes a Linear MCP, record its server name in `.agents/loaf.json`; never install, connect, or authenticate it
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
 - **Log first** -- log invocation before interviewing: `loaf journal log "skill(bootstrap): <project or intake>"`
@@ -60,7 +61,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - All expected operating documents (`docs/VISION.md`, `AGENTS.md` at minimum) exist and contain populated content
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
 - When `source: pitch`, the interview was gap-only (no re-excavation of already-specific problem sections)
-- When series-prep ran: each minted row is a backlog issue (`loaf issue new "<title>" --body "<problem narrative>" --status backlog`) with a standalone problem-space body; an advisory bucket (`loaf issue bucket <ref> now|next|later`) may be set — buckets are labels, never bindings; `loaf issue check <ref>` only when a capture is shaped enough to check, otherwise nothing (a backlog issue with a problem body needs no ceremony); no folders, no docs-only commits; no branches created for the series; no auto-shape
+- When series-prep ran: each minted row is a backlog issue (`loaf issue new "<title>" --body "<problem narrative>" --status backlog`) with a standalone problem-space body and a nameable operator outcome rather than a component layer; an advisory bucket (`loaf issue bucket <ref> now|next|later`) may be set — buckets are labels, never bindings; `loaf issue check <ref>` only when a capture is shaped enough to check, otherwise nothing (a backlog issue with a problem body needs no ceremony); no folders, no docs-only commits; no branches created for the series; no auto-shape
 - Root `AGENTS.md` is a real file; on Claude Code, the compatibility symlink `.claude/CLAUDE.md -> ../AGENTS.md` exists (see Finalization)
 - When a Linear MCP was active, `.agents/loaf.json` records its exact server name under `integrations.linear.mcp_server_name`; bootstrap did not install or authenticate it
 - Key decisions and interview outcomes were logged with `loaf journal log` and are readable with `loaf journal recent`
@@ -444,7 +445,7 @@ After operating documents are populated (and Knowledge Base Scaffolding above ha
 **Procedure**
 
 1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options using your harness's structured question tool if it has one.
-2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own backlog issue when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line or becomes a spark — never a half-minted row.
+2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own backlog issue when it names a complete operator outcome that is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line or becomes a spark — never a half-minted row. Component layers remain inside the future consuming slice.
 3. **Per confirmed concept (one at a time — never batch):**
    1. Confirm mint with the builder (title, optional advisory bucket, one-line problem restatement). Buckets are labels, never bindings — a missing bucket does not block mint. If the concept fails granularity, do not mint — park as spark or BRIEF line.
    2. Propose a **working title** that names the concept, never another work unit (issue aliases, task ids). Confirm the title.

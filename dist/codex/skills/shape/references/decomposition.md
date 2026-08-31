@@ -4,6 +4,7 @@ Shaping's tail, not a separate ceremony: dependency awareness, granularity judgm
 
 ## Contents
 - When to split
+- Rideability before mechanics
 - The sizing rule
 - Expand–contract
 - Promote, don't mint
@@ -18,9 +19,13 @@ A parent gets children only when its DoD needs more than one coherent slice. One
 
 Same problem, another slice → another criterion on this issue, or a promoted child if that slice now has its own DoD. A different problem discovered mid-shaping → a new backlog contract (`loaf issue new --ref <ref> --status backlog`), not a child of this one.
 
+## Rideability before mechanics
+
+Decompose by complete vertical journeys, never by storage, backend, protocol, UI, or verification layers. Every shaped child must still make a real rider's end-to-end outcome possible and carry the eight elements from the rideable-increment contract. Foundation work may span commits inside that slice, but it does not earn a foundation-only child or a succession of strategy milestones. If a proposed child is only a wheel, merge it into or reshape it as the immediate slice that mounts the wheel.
+
 ## The sizing rule
 
-One test, replacing the old four-question checklist: **a slice is right-sized when it is verifiable alone and revertible alone.**
+After rideability, apply the mechanical test: **a slice is right-sized when it is verifiable alone and revertible alone.**
 
 - **Verifiable alone** — the done-check can run (or be reviewed) without another slice landing first. If not, split and `loaf issue link <predecessor> blocks <successor>`, or merge — do not leave a criterion that is only true in combination.
 - **Revertible alone** — the slice's landing can be reverted without undoing a sibling. If reverting would require coordinated rollback across slices, split or sequence with `blocks` edges.

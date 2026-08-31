@@ -111,6 +111,8 @@ Example shape:
 
 Prioritize answers that would rewrite the narrative. Typical order: **destination pin** → problem → who → alternatives → value → constraints → sequencing/open questions. Reorder when the human's first utterance already settles an early dimension.
 
+When discussing sequencing, frame the first and later outcomes as progressively larger journeys a real operator can complete. Database, backend, API, and UI layers are solution design, not milestones.
+
 Before asking, check whether reading resolves it — journal, prior issue, intake item, BRIEF. Only ask what reading could not answer.
 
 ### Adaptive depth
