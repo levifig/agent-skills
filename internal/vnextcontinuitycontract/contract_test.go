@@ -53,6 +53,7 @@ func TestContinuityDomainContractHasExactSourceAndExports(t *testing.T) {
 		"sqlite/filesystem_windows.go",
 		"sqlite/prune.go",
 		"sqlite/read.go",
+		"sqlite/recovery_prune_candidate.go",
 		"sqlite/relay_watermark.go",
 		"sqlite/relay_watermark_migration.go",
 		"sqlite/schema.go",

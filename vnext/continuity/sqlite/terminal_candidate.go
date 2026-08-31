@@ -116,6 +116,9 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
 		return TerminalCandidate{}, err
 	}
+	if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
+		return TerminalCandidate{}, err
+	}
 
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
