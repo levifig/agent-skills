@@ -12,7 +12,7 @@ description: >-
   records — when a decision evolves, revise the record in place with a dated
   revision note; supersession is reserved for topic splits and recategorization.
 subtask: false
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Architecture

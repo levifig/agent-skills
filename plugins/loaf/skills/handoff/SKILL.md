@@ -9,7 +9,7 @@ description: >-
   artifact that housekeeping deletes after confirmed deprecation.
 user-invocable: true
 argument-hint: '[next-session focus]'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Handoff

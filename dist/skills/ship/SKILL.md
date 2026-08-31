@@ -43,10 +43,11 @@ Review, verify, and land one PR. Ship's review is the quality gate for everythin
 4. **Bind the PR to an authority ref** — the PR body is `loaf issue render <ref>` (paste-ready, no manual editing). The issue's definition-of-done criteria are the review checklist. `loaf issue verify <ref>` runs the executable (V-tier) rows and writes nothing. Landing means `loaf issue status <ref> done`. Then `loaf issue stop <ref>` removes the started worktree.
 5. **Detect-first** — auto-detect the PR from the current branch, and the authority ref from `$ARGUMENTS` or the started workspace, before asking for a PR number or issue ref.
 6. **Review before merge** — inspect code, docs, tests, changelog, the rendered issue body, definition of done, and CI state before approval.
-7. **Never merge without explicit confirmation** — present the PR, checks, review notes, and squash body first, using your harness's structured question tool if it has one.
-8. **Detect the stack before merging** — another open PR may use this PR's head branch as its base. Find out before merge, never after, and never delete a head branch while a child PR still points at it.
-9. **Clean squash body** — write an intentional squash commit body; never accept the automatic commit dump.
-10. **Keep landed and released distinct** — after merge, describe the PR as landed or shipped. It is not released until release publishes a version.
+7. **Review rideability, not only completion** — confirm the named rider can use the result today as a complete small product, the journey exercises the machinery added, and dogfood plus safety/integrity evidence support the claims. This sharpens the existing review; it creates no new status or gate. See the foundations Rideable Increments reference.
+8. **Never merge without explicit confirmation** — present the PR, checks, review notes, and squash body first, using your harness's structured question tool if it has one.
+9. **Detect the stack before merging** — another open PR may use this PR's head branch as its base. Find out before merge, never after, and never delete a head branch while a child PR still points at it.
+10. **Clean squash body** — write an intentional squash commit body; never accept the automatic commit dump.
+11. **Keep landed and released distinct** — after merge, describe the PR as landed or shipped. It is not released until release publishes a version.
 
 ---
 
@@ -57,6 +58,7 @@ Review, verify, and land one PR. Ship's review is the quality gate for everythin
 - The PR is bound to one authority ref; `loaf issue show <ref>` is the contract surface
 - PR body matches `loaf issue render <ref>` with no manual editing
 - Every definition-of-done criterion was reviewed against the diff; H-tier by reading, V-tier by `loaf issue verify <ref>` (writes nothing; exit non-zero blocks)
+- Rideability review found a usable end-to-end journey, no unexercised machinery, and dogfood plus safety/integrity evidence that support the result today
 - CI status is passing or the user explicitly accepts named non-blocking checks
 - Relevant local checks pass or failures are fixed before merge
 - PR body and durable docs do not overclaim relative to the diff
@@ -205,6 +207,15 @@ loaf issue show <ref>
    - comments or runbooks use stale vocabulary
 5. If `loaf issue show` lists child issues that are not `done`, name them before asking to merge. Do not mark those children done unless this PR is theirs.
 6. Fix blocking drift and unmet criteria before merge. For non-blocking polish, name it and let the user decide.
+
+Apply the rideable-increment review from the foundations Rideable Increments reference to the contract and diff:
+
+- Is the result usable today by the named rider?
+- Is it a complete small product or a fragment?
+- Did the PR add machinery this journey does not exercise?
+- What observed evidence demanded the complexity?
+- Could less deliver the same outcome without reducing integrity?
+- If this is only a wheel, which immediate slice makes it rideable?
 
 For high-risk PRs, use the project's review skill or read-only review flow before proceeding.
 

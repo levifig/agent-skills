@@ -12,7 +12,7 @@ description: >-
   a brief first (use pitch), or open-ended divergent thinking (agent technique:
   explore / brainstorm — user entry routes to pitch).
 subtask: false
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Shape
@@ -41,11 +41,12 @@ Prepare a bounded, reviewable issue.
 6. **Grill one question at a time, with a recommendation** — Because parallel questions hide trade-offs, use your harness's structured question tool if it has one (otherwise one inline question per message — same semantics). Never a form to fill in one pass. Order by architectural impact: questions whose answer would change the architecture go first, cosmetic questions last.
 7. **Techniques return fog entries, not decisions** — Because the human adjudicates, blindspot passes, grilling, and reaction artifacts hand back named unknowns and evidence for the human to adjudicate. Reconnaissance, not orders.
 8. **Decomposition is the tail** — Because premature splitting obscures the problem, a parent gets children only when its DoD needs more than one coherent slice. A criterion becomes a child the moment it earns its own DoD, via `loaf issue new --ref <child-ref> --parent <parent-ref>`. Own those boundaries autonomously; ask only when two orderings carry genuinely different trade-offs.
-9. **One sizing criterion** — Because unattended autonomy appreciates per-slice proof and bounded revert (while executor window-fit decays with better continuity), a slice is right-sized when it is verifiable alone and revertible alone. Window-fit ("fits one fresh context window") is a labeled **runtime heuristic** owned by implement — shape decomposes for verification; implement sub-decomposes for execution per executor via handoffs and scratchpad, and that runtime carving never appears in the contract tree. Expand–contract is the named exception for wide mechanical refactors. See [references/decomposition.md](references/decomposition.md).
-10. **Surface misalignment, never silently adjust** — Because strategic drift hidden in a reshaped issue wastes implementer time, when the idea conflicts with strategic docs, prior issues, or the journal, tell the user and let them decide. Don't quietly reshape their idea.
-11. **Critique before finalizing** — Because agents won't interrogate their own scope without a gate, run the Critique Gate as the last shaping step, before `loaf issue check <ref>`.
-12. **A diagnosed one-line fix is two commands** — Because ceremony should match uncertainty, `loaf issue new --ref <ref>` with a body that states the problem and `Out of scope: …`, then one `loaf issue dod add <ref>`. No problem-space ceremony. Confirm scope with the user before minting a contract on anything larger.
-13. **Log the outcome** — Because shaped issues are audit events, `loaf journal log "decision(shape): linear:ENG-42 shaped — N children, N open fog entries"`.
+9. **Rideability is the higher-order sizing rule** — Every shaped milestone or work unit must be a complete, useful operator journey. Make its Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals concrete in the existing body and criteria; no mandatory headings or storage schema. Then require that slice to be verifiable and revertible alone. Foundation-only layers stay within the immediate consuming slice. See [references/decomposition.md](references/decomposition.md) and the foundations Rideable Increments reference.
+10. **Window-fit remains a runtime heuristic** — Window-fit ("fits one fresh context window") is owned by implement, which may sub-decompose for execution via handoffs and scratchpad without changing the contract tree. Expand–contract remains the named exception for wide mechanical refactors.
+11. **Surface misalignment, never silently adjust** — Because strategic drift hidden in a reshaped issue wastes implementer time, when the idea conflicts with strategic docs, prior issues, or the journal, tell the user and let them decide. Don't quietly reshape their idea.
+12. **Critique before finalizing** — Because agents won't interrogate their own scope without a gate, run the Critique Gate as the last shaping step, before `loaf issue check <ref>`.
+13. **A diagnosed one-line fix is two commands** — Because ceremony should match uncertainty, `loaf issue new --ref <ref>` with a body that states the problem and `Out of scope: …`, then one `loaf issue dod add <ref>`. When rideability answers are obvious, collapse them into that existing prose and criterion; do not add headings or ceremony. Confirm scope with the user before minting a contract on anything larger.
+14. **Log the outcome** — Because shaped issues are audit events, `loaf journal log "decision(shape): linear:ENG-42 shaped — N children, N open fog entries"`.
 
 ---
 
@@ -53,6 +54,7 @@ Prepare a bounded, reviewable issue.
 
 - The issue body states the problem and contains an explicit out-of-scope statement (`out of scope`, case-insensitive — that substring is what `loaf issue check` reads)
 - At least one definition-of-done criterion exists; V-tier criteria carry `--command` (and `--expect` when the check is more than exit 0); H-tier otherwise
+- The contract concretely identifies all eight rideable-increment elements in natural prose and criteria; it is a complete small product rather than a component layer
 - Every open unknown is either parked in create-time `fog`, held in the session register until it sharpens, graduated to a `--kind decision` child (or sibling) with a sharp question, or written into the body as a decided answer
 - `loaf issue check <ref>` reports the issue shaped (delivery) or ready (decision). When children exist, coverage failures were fixed and containment orphans were filed as sibling backlog issues using the printed remedy
 - Problem-boundary test applied: a discovered different problem becomes a new backlog issue, not another criterion on this one
@@ -98,12 +100,12 @@ Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a brief f
 A diagnosed fix that already has a problem and a done-check:
 
 ```bash
-loaf issue new --ref linear:ENG-42 "Fix missing --json in list help" --body "issue list --help omits --json. Out of scope: rewriting other help pages."
-loaf issue dod add linear:ENG-42 "issue list help names --json" --command "loaf issue list --help" --expect "contains \`--json\`"
+loaf issue new --ref linear:ENG-42 "Make malformed issue refs recoverable" --body "A Loaf operator entering a malformed ref at \`loaf issue show\` gets a misleading lookup instead of a recoverable error, so the issue-inspection journey stops. Refuse before state access, name the accepted ref forms, and dogfood the error in Loaf's own issue flow. A focused regression test must prove deterministic guidance and no state mutation, showing whether that guidance enables self-recovery. Out of scope: changing ref syntax or auto-correcting input."
+loaf issue dod add linear:ENG-42 "Malformed refs fail before state access and name accepted forms" --command "go test ./internal/cli -run TestIssueShowRejectsMalformedRef" --expect "exit 0"
 loaf issue check linear:ENG-42
 ```
 
-Two writes, then the readiness verdict. No grilling, no children, no files.
+The body naturally carries rider, journey, entry point, outcome, dogfood, integrity proof, learning, and deferrals; the criterion makes the outcome and proof executable. Two writes, then the readiness verdict. No grilling, no children, no files.
 
 ---
 
@@ -132,6 +134,8 @@ Out of scope: migrating existing sessions; third-party IdP support." \
 Default kind is `delivery`; default status is `triage`. `--status` accepts `triage`, `backlog`, `todo`, `active`, or `done`. Use `--body -` or `--body-file <path>` for a longer body; `loaf issue edit <ref>` later **replaces** the body, it does not patch it.
 
 A delivery contract is shaped when the body is nonempty (the problem), at least one criterion exists, and the body contains an explicit out-of-scope statement. Fill those as understanding solidifies — create can carry the first body; criteria come next.
+
+Before finalizing, make the rideable increment from the foundations Rideable Increments reference concrete in that same body and criteria: Rider; complete Journey; Entry point; observable Outcome; real Dogfood; Safety/integrity proof; Learning sought; explicit Deferrals. These are required decisions, not required headings. If the proposed work is only infrastructure, name and include the immediate end-to-end slice that consumes it.
 
 A discovered different problem is a new backlog contract, not a child of this one:
 
@@ -211,6 +215,7 @@ The contract lives in SQLite keyed to the authority ref. There is no folder to c
 | Grilling | [references/grilling.md](references/grilling.md) | Running the one-question-at-a-time interview for `[KU]` entries |
 | Reaction artifacts | [references/reaction-artifact.md](references/reaction-artifact.md) | Resolving `[UK]` entries with a variant, mock, or prototype |
 | Decomposition | [references/decomposition.md](references/decomposition.md) | Sizing slices, promoting criteria, reading coverage and containment |
+| Rideable increments | Foundations Rideable Increments reference | Making the work contract a complete, useful operator journey |
 | CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf issue` output, authoring `--command`/`--expect`, or explaining `loaf issue check` |
 | Critique Gate | [references/critique-gate.md](references/critique-gate.md) | Self-challenging scope and boundaries before finalizing |
 

@@ -8,7 +8,7 @@ description: >-
   architecture.
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, Bash(python:*), Bash(*.sh)'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Power Systems Reference

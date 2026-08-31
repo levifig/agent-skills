@@ -18,7 +18,7 @@ consumers:
   - implementer
   - reviewer
   - researcher
-last_reviewed: '2026-07-30'
+last_reviewed: '2026-08-31'
 ---
 
 # The Loaf Flow
@@ -48,6 +48,8 @@ pitch → shape → implement → ship → release
 | **release** | Publish a version from already-landed work; gate stable cuts on cohort receipts | `/release` |
 
 Reflect distills durable outputs on the branch before merge. The project journal carries decisions across every stage. Pitch is the recommended front door for raw concepts; it is **optional** at change scale — shape still runs full narrowing when no brief exists.
+
+At both scales, progress is a [rideable increment](../../content/skills/foundations/references/rideable-increments.md): a complete, useful operator journey, not a horizontal layer. The Flow reuses its existing briefs, issue contracts, criteria, review, and release evidence to make that journey concrete; it adds no parallel lifecycle or work record.
 
 ## Two scales
 

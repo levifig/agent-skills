@@ -38,6 +38,7 @@ Process the intake queue. Triage is the public funnel where captured material me
 - Capture, issue, and Exploration are different claims: a spark or idea is retained material, a backlog issue is deliberately tracked work, an Exploration is an inquiry. Do not conflate them to save a step.
 - One pass through the queue — don't loop or re-present items.
 - **Two doors into issue work:** items needing problem discovery hand to pitch; well-understood directions hand to shape (issue preparation). Worth keeping but not ready for either door files as a backlog issue (`loaf issue new "<title>" --status backlog`, optional `--parent`, optional `loaf issue bucket`). Triage never runs `loaf issue start`, never opens PRs, and never invents Git artifacts.
+- Prefer directions that complete the next useful operator journey over isolated layers. If an item is foundation work, retain its explicit link to the immediate rideable slice that consumes it; triage does not invent that slice or shape the contract.
 
 ## Verification
 
@@ -58,7 +59,7 @@ Process the intake queue. Triage is the public funnel where captured material me
 
 1. **Scan.** Run `loaf intake list --json`. Summarize counts by kind, then list each item with its title, disposition or status, and read command.
 2. **Read on demand.** Use each item's `read_command` verbatim when the user wants detail before deciding. If a read command fails, record the exact command and error in the summary as `unreadable`, make no semantic disposition for that item, continue the pass, and offer a factual diagnostic step (`loaf state doctor --json`) afterward. Never persist unreadable as a status.
-3. **Decide per item.** Present the applicable dispositions and perform exactly the chosen one.
+3. **Decide per item.** Present the applicable dispositions and perform exactly the chosen one. When comparing related directions, identify which one completes a real operator journey and which ones are only enabling layers.
 4. **Summarize.** Report what was discarded, retained, filed as backlog issues, resumed as explorations, resolved, or handed to pitch or shape, and journal notable decisions.
 
 ## Dispositions

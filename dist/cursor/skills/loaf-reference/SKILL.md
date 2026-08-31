@@ -7,7 +7,7 @@ description: >-
   when asked to upgrade, diagnose, repair, configure, or bring a Loaf project
   current. Not for workflow guidance (workflow skills own their CLI contracts)
   or build internals.
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Loaf Reference

@@ -10,7 +10,7 @@ description: >-
   shape), or agent-side divergent inquiry when direction is undecided (use
   explore as a technique).
 subtask: false
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Idea
