@@ -88,7 +88,7 @@ Strategy discovery requires **extensive interviewing**. Interview extensively us
 
 ### Step 3: Draft Updates
 
-Create additions/updates to STRATEGY.md following the [strategy template](templates/strategy.md). Express sequencing as [rideable increments](../foundations/references/rideable-increments.md), not completed architecture layers.
+Create additions/updates to STRATEGY.md following the [strategy template](templates/strategy.md). Express sequencing as rideable increments from the foundations Rideable Increments reference, not completed architecture layers.
 
 ### Step 4: Present for Approval
 

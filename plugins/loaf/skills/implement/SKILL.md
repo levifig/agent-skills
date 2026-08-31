@@ -46,7 +46,7 @@ You are the coordinator. Work units are provider-qualified authority refs.
 - **The delegation brief is the work contract** — `loaf issue show <ref>` / `loaf issue render <ref>`: body, definition-of-done criteria, children. Address the contract as `linear:<KEY>`, `branch:<name>`, or `pr:<number>`. There is no other packet.
 - **One agent, one worktree.** Worktree start in v1 is `loaf issue start branch:<name>`. Contract show/check/verify/render/status take the authority ref (`linear:`, `branch:`, or `pr:`). Before dispatch, run `loaf issue list --started`. Never send two agents into the same worktree. Do not start a second workspace on an occupied path.
 - **Definition of done is the completion contract.** `loaf issue verify <ref>` runs V-tier criteria from the repository root and writes nothing. H-tier is reviewed by a human or this orchestrator. Completion is the work landing plus `loaf issue status <ref> done`. Do not flip checkboxes. Provenance is the delivering commits and the PR whose body is `loaf issue render <ref>`.
-- **Preserve the rideable increment.** Before dispatch, confirm the contract concretely names the Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals in natural prose and criteria. If it describes layers or unused machinery instead, return it to shape. Executor-sized carving may split commits and handoffs, never the end-to-end value contract. See [Rideable Increments](../foundations/references/rideable-increments.md).
+- **Preserve the rideable increment.** Before dispatch, confirm the contract concretely names the Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals in natural prose and criteria. If it describes layers or unused machinery instead, return it to shape. Executor-sized carving may split commits and handoffs, never the end-to-end value contract. See the foundations Rideable Increments reference.
 - Shape prepares contracts. If `loaf issue check <ref>` does not report the delivery contract shaped (or the ledger decision ready), stop and send the work to shape. Do not mint an internal issue row from this skill.
 - **Window-fit is a runtime heuristic, not a tree edge.** Shape sizes slices for verification and revertibility alone. When an executor slice still exceeds one fresh context window, implement sub-decomposes for execution — via handoffs, scratchpad, and agent spawns — without minting child contracts. That carving never appears in the contract tree.
 
@@ -266,7 +266,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 | Batch Orchestration | [batch-orchestration.md](references/batch-orchestration.md) | Running a parent or a set of issue refs with dependency-ready rounds |
 | Branch and Completion | [branch-and-completion.md](references/branch-and-completion.md) | Team routing, diagrams, exploration, journaling alongside `loaf issue start` / `stop` |
 | Working issues locally | [../orchestration/references/local-tasks.md](../orchestration/references/local-tasks.md) | Frontier, started worktrees, status vocabulary, definition of done |
-| Rideable increments | [../foundations/references/rideable-increments.md](../foundations/references/rideable-increments.md) | Preserving end-to-end value across executor-sized work |
+| Rideable increments | Foundations Rideable Increments reference | Preserving end-to-end value across executor-sized work |
 
 ---
 

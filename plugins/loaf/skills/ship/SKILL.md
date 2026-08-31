@@ -46,7 +46,7 @@ Review, verify, and land one PR. Ship's review is the quality gate for everythin
 4. **Bind the PR to an authority ref** — the PR body is `loaf issue render <ref>` (paste-ready, no manual editing). The issue's definition-of-done criteria are the review checklist. `loaf issue verify <ref>` runs the executable (V-tier) rows and writes nothing. Landing means `loaf issue status <ref> done`. Then `loaf issue stop <ref>` removes the started worktree.
 5. **Detect-first** — auto-detect the PR from the current branch, and the authority ref from `$ARGUMENTS` or the started workspace, before asking for a PR number or issue ref.
 6. **Review before merge** — inspect code, docs, tests, changelog, the rendered issue body, definition of done, and CI state before approval.
-7. **Review rideability, not only completion** — confirm the named rider can use the result today as a complete small product, the journey exercises the machinery added, and dogfood plus safety/integrity evidence support the claims. This sharpens the existing review; it creates no new status or gate. See [Rideable Increments](../foundations/references/rideable-increments.md).
+7. **Review rideability, not only completion** — confirm the named rider can use the result today as a complete small product, the journey exercises the machinery added, and dogfood plus safety/integrity evidence support the claims. This sharpens the existing review; it creates no new status or gate. See the foundations Rideable Increments reference.
 8. **Never merge without explicit confirmation** — present the PR, checks, review notes, and squash body first, using your harness's structured question tool if it has one.
 9. **Detect the stack before merging** — another open PR may use this PR's head branch as its base. Find out before merge, never after, and never delete a head branch while a child PR still points at it.
 10. **Clean squash body** — write an intentional squash commit body; never accept the automatic commit dump.
@@ -211,7 +211,7 @@ loaf issue show <ref>
 5. If `loaf issue show` lists child issues that are not `done`, name them before asking to merge. Do not mark those children done unless this PR is theirs.
 6. Fix blocking drift and unmet criteria before merge. For non-blocking polish, name it and let the user decide.
 
-Apply the [rideable-increment review](../foundations/references/rideable-increments.md) to the contract and diff:
+Apply the rideable-increment review from the foundations Rideable Increments reference to the contract and diff:
 
 - Is the result usable today by the named rider?
 - Is it a complete small product or a fragment?
