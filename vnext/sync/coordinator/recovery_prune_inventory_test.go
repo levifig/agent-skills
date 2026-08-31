@@ -158,9 +158,9 @@ func TestScanRecoveryPruneInventoryResumesPinnedSuffixAndPropagatesCallbackFailu
 	_, err := fixture.coordinator.scanRecoveryPruneInventory(
 		context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
 		recoveryPruneInventoryScanOptions{
-			firstRequestSnapshot:      &snapshot,
-			firstAfterPruneSequence:   1,
-			firstMembershipGeneration: fixture.binding.MembershipGeneration,
+			firstCheckpoint: testRecoveryPruneInventoryCheckpoint(
+				t, fixture, snapshot, 1, fixture.binding.MembershipGeneration, 0x41,
+			),
 			onPage: func(page verifiedRecoveryPruneInventoryPage) error {
 				if page.afterPruneSequence != 1 || len(page.prunes) != 1 || page.prunes[0].pruneSequence != 2 || page.more {
 					t.Fatalf("verified suffix page = %#v, want only prune sequence 2", page)
@@ -180,7 +180,7 @@ func TestScanRecoveryPruneInventoryResumesPinnedSuffixAndPropagatesCallbackFailu
 	fixture.remote.pruneRequests = nil
 	_, err = fixture.coordinator.scanRecoveryPruneInventory(
 		context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
-		recoveryPruneInventoryScanOptions{firstAfterPruneSequence: 1},
+		recoveryPruneInventoryScanOptions{firstCheckpoint: &recoveryPruneInventoryCheckpoint{throughPruneSequence: 1}},
 	)
 	assertProblem(t, err, CodeInvalid, PhasePruneInventory, ActionRestartRecovery)
 	if len(fixture.remote.pruneRequests) != 0 {
@@ -214,9 +214,9 @@ func TestScanRecoveryPruneInventoryRejectsMaxSequenceDuplicateWithoutOverflow(t 
 	_, err := fixture.coordinator.scanRecoveryPruneInventory(
 		context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
 		recoveryPruneInventoryScanOptions{
-			firstRequestSnapshot:      &snapshot,
-			firstAfterPruneSequence:   math.MaxInt64 - 1,
-			firstMembershipGeneration: fixture.binding.MembershipGeneration,
+			firstCheckpoint: testRecoveryPruneInventoryCheckpoint(
+				t, fixture, snapshot, math.MaxInt64-1, fixture.binding.MembershipGeneration, 0x42,
+			),
 			onPage: func(verifiedRecoveryPruneInventoryPage) error {
 				callbacks++
 				return nil
@@ -299,9 +299,7 @@ func TestScanRecoveryPruneInventoryUsesHistoricalWitnessesAndFencesResumeGenerat
 		_, err := fixture.coordinator.scanRecoveryPruneInventory(
 			context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
 			recoveryPruneInventoryScanOptions{
-				firstRequestSnapshot:      &snapshot,
-				firstAfterPruneSequence:   1,
-				firstMembershipGeneration: 2,
+				firstCheckpoint: testRecoveryPruneInventoryCheckpoint(t, fixture, snapshot, 1, 2, 0x43),
 				onPage: func(verifiedRecoveryPruneInventoryPage) error {
 					callbacks++
 					return nil
@@ -512,8 +510,9 @@ func TestScanRecoveryPruneInventoryHandlesEmptySnapshotsAndCancellation(t *testi
 		_, err := fixture.coordinator.scanRecoveryPruneInventory(
 			context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
 			recoveryPruneInventoryScanOptions{
-				firstRequestSnapshot: &snapshot, firstAfterPruneSequence: 1,
-				firstMembershipGeneration: fixture.binding.MembershipGeneration,
+				firstCheckpoint: testRecoveryPruneInventoryCheckpoint(
+					t, fixture, snapshot, 1, fixture.binding.MembershipGeneration, 0x44,
+				),
 				onPage: func(page verifiedRecoveryPruneInventoryPage) error {
 					callbacks++
 					if len(page.prunes) != 0 || page.afterPruneSequence != 1 {
