@@ -310,8 +310,6 @@ func doctorChecks() []doctorCheck {
 		checkDuplicateFencedSections(),
 		checkHarnessContentDrift(),
 		checkLeftoverAbsorbWork(),
-		checkIssuePrefixLeak(),
-		checkIssuePrefixConfig(),
 	}
 }
 
@@ -380,62 +378,6 @@ func checkLeftoverAbsorbWork() doctorCheck {
 				}
 			}
 			return leftoverAbsorbDoctorResult(report)
-		},
-	}
-}
-
-func checkIssuePrefixLeak() doctorCheck {
-	return doctorCheck{
-		Name:        "issue-prefix",
-		Description: "Local issue prefix matches the project slug",
-		Run: func(ctx doctorContext) doctorResult {
-			root, err := project.ResolveRoot(ctx.projectRoot)
-			if err != nil {
-				return doctorResult{Status: doctorSkip, Message: "Project root is not resolvable"}
-			}
-			from, to, leaked, err := state.IssuePrefixLeak(context.Background(), root, state.PathResolver{StateHome: ctx.stateHome})
-			if state.LeftoverAbsorbUnavailable(err) {
-				return doctorResult{Status: doctorSkip, Message: leftoverAbsorbSkipMessage(err)}
-			}
-			if err != nil {
-				return doctorResult{Status: doctorWarn, Message: "Could not inspect issue prefix", Detail: err.Error()}
-			}
-			if leaked {
-				return doctorResult{
-					Status:  doctorWarn,
-					Message: fmt.Sprintf("Issue prefix %s does not match project slug %s; preview with `%s`", from, to, state.IssuePrefixAlignCommand),
-					Detail:  fmt.Sprintf("Apply: loaf issue identity --align"),
-				}
-			}
-			return doctorResult{Status: doctorPass, Message: "No leaked LOAF issue prefix"}
-		},
-	}
-}
-
-func checkIssuePrefixConfig() doctorCheck {
-	return doctorCheck{
-		Name:        "issue-config",
-		Description: "Issue identity is recorded in .agents/loaf.json",
-		Run: func(ctx doctorContext) doctorResult {
-			root, err := project.ResolveRoot(ctx.projectRoot)
-			if err != nil {
-				return doctorResult{Status: doctorSkip, Message: "Project root is not resolvable"}
-			}
-			report, err := state.ReportIssuePrefixConfig(context.Background(), root, state.PathResolver{StateHome: ctx.stateHome})
-			if state.LeftoverAbsorbUnavailable(err) {
-				return doctorResult{Status: doctorSkip, Message: leftoverAbsorbSkipMessage(err)}
-			}
-			if err != nil {
-				return doctorResult{Status: doctorWarn, Message: "Could not inspect issue config", Detail: err.Error()}
-			}
-			message, detail := report.DoctorMessage()
-			if message != "" {
-				return doctorResult{Status: doctorWarn, Message: message, Detail: detail}
-			}
-			if report.HasIdentity {
-				return doctorResult{Status: doctorPass, Message: "Issue identity is recorded in .agents/loaf.json"}
-			}
-			return doctorResult{Status: doctorPass, Message: "No materialized issue identity"}
 		},
 	}
 }

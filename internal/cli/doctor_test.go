@@ -68,7 +68,7 @@ func TestRunnerDoctorFixPromptsBeforeEachRepairAndAcceptsYes(t *testing.T) {
 		t.Fatalf("stale cursor file still exists: %v", err)
 	}
 	output := stripANSI(stdout.String())
-	for _, want := range []string{"Create .claude/CLAUDE.md", "Remove stale .cursor/rules/loaf.mdc", "[y/N]", "2 fixed", "5 passed", "5 skipped"} {
+	for _, want := range []string{"Create .claude/CLAUDE.md", "Remove stale .cursor/rules/loaf.mdc", "[y/N]", "2 fixed", "5 passed", "3 skipped"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor --fix output = %q, want %q", output, want)
 		}
@@ -451,7 +451,7 @@ func writeDoctorFixture(t *testing.T, version string) string {
 	// doctor fixture pins them and the check's verdict stays the same on a
 	// laptop with Loaf installed as on a bare CI runner.
 	harnessDriftHome(t)
-	// leftover-absorb, issue-prefix, and issue-config open SQLite through XDG when StateHome
+	// leftover-absorb opens SQLite through XDG when StateHome
 	// is unset. Pin the data home so doctor fixtures never inventory the
 	// operator database.
 	t.Setenv("XDG_DATA_HOME", t.TempDir())

@@ -897,7 +897,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "doctor",
-			Description: "Diagnose Loaf project alignment (symlinks, stale files, leftover SQLite work, issue prefix and config)",
+			Description: "Diagnose Loaf project alignment (symlinks, stale files, managed content, and leftover migration work)",
 			Options: []cliReferenceOption{
 				{Flags: "--fix", Description: "Offer each safe repair and prompt y/N before applying it"},
 				{Flags: "--force", Description: "With --fix, apply every offered repair without prompting"},

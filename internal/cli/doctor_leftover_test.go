@@ -262,47 +262,6 @@ func namedLeftoverDoctorProject(t *testing.T, name string) (string, string) {
 	return root, stateHome
 }
 
-func TestIssuePrefixCheckIsRegisteredAndReportOnly(t *testing.T) {
-	for _, check := range doctorChecks() {
-		if check.Name != "issue-prefix" {
-			continue
-		}
-		if check.Fix != nil || check.RepairID != "" || check.Repair != "" {
-			t.Fatalf("issue-prefix check = %#v, want no repair surface", check)
-		}
-		return
-	}
-	t.Fatal("doctorChecks() does not register issue-prefix")
-}
-
-func TestRunnerDoctorWarnsLeakedIssuePrefixAndDoesNotAlignOnFix(t *testing.T) {
-	workingDir, stateHome := namedLeftoverDoctorProject(t, "vcam")
-	root := leftoverDoctorRoot(t, workingDir)
-	resolver := state.PathResolver{StateHome: stateHome}
-	if _, err := state.SetIssueIdentity(context.Background(), root, resolver, state.IssueIdentityOptions{Prefix: "LOAF"}); err != nil {
-		t.Fatalf("SetIssueIdentity() error = %v", err)
-	}
-	if _, err := state.CreateIssue(context.Background(), root, resolver, state.IssueCreateOptions{Title: "Leaked"}); err != nil {
-		t.Fatalf("CreateIssue() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := (Runner{Stdout: &stdout, Stdin: strings.NewReader("y\n"), WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"doctor", "--fix"})
-	if err != nil {
-		t.Fatalf("doctor --fix error = %v\n%s", err, stdout.String())
-	}
-	output := stripANSI(stdout.String())
-	if !strings.Contains(output, "issue-prefix") || !strings.Contains(output, state.IssuePrefixAlignCommand) {
-		t.Fatalf("doctor output = %q, want issue-prefix warn naming identity --align --dry-run", output)
-	}
-	if strings.Contains(output, "failed") {
-		t.Fatalf("doctor output = %q, want prefix warn without failure", output)
-	}
-	if _, err := state.GetIssue(context.Background(), root, resolver, "LOAF-1"); err != nil {
-		t.Fatalf("GetIssue(LOAF-1) error = %v, want unchanged after doctor --fix", err)
-	}
-}
-
 func TestRunnerStateDoctorNamesIssuePrefixLeak(t *testing.T) {
 	workingDir, stateHome := namedIssueCLIFixture(t, "vcam")
 	root := leftoverDoctorRoot(t, workingDir)
@@ -325,38 +284,6 @@ func TestRunnerStateDoctorNamesIssuePrefixLeak(t *testing.T) {
 	action := findStateRepairAction(t, status.RepairPlan, "align-issue-prefix")
 	if action.Safe || action.Applied || action.Command != state.IssuePrefixAlignCommand {
 		t.Fatalf("repair action = %#v, want manual prefix align preview", action)
-	}
-}
-
-func TestIssueConfigCheckIsRegisteredAndReportOnly(t *testing.T) {
-	for _, check := range doctorChecks() {
-		if check.Name != "issue-config" {
-			continue
-		}
-		if check.Fix != nil || check.RepairID != "" || check.Repair != "" {
-			t.Fatalf("issue-config check = %#v, want no repair surface", check)
-		}
-		return
-	}
-	t.Fatal("doctorChecks() does not register issue-config")
-}
-
-func TestRunnerDoctorWarnsMissingIssueConfig(t *testing.T) {
-	workingDir, stateHome := namedLeftoverDoctorProject(t, "vcam")
-	root := leftoverDoctorRoot(t, workingDir)
-	resolver := state.PathResolver{StateHome: stateHome}
-	if _, err := state.CreateIssue(context.Background(), root, resolver, state.IssueCreateOptions{Title: "Derived"}); err != nil {
-		t.Fatalf("CreateIssue() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"doctor"})
-	if err != nil {
-		t.Fatalf("doctor error = %v\n%s", err, stdout.String())
-	}
-	output := stripANSI(stdout.String())
-	if !strings.Contains(output, "issue-config") || !strings.Contains(output, state.IssuePrefixPersistCommand("VCAM")) {
-		t.Fatalf("doctor output = %q, want issue-config persist VCAM", output)
 	}
 }
 
