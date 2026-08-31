@@ -305,6 +305,45 @@ func TestRunnerMigrateVNextRehearsalJSONFailureAfterReservationEmitsStructuredEv
 	}
 }
 
+func TestRunnerMigrateVNextRehearsalReportsCombinedRunAndCloseFailure(t *testing.T) {
+	fixture := prepareVNextRehearsalCLIFixture(t)
+	destination := filepath.Join(filepath.Dir(fixture.workingDir), "combined-run-close-failure")
+	workingDirectory, err := project.ResolveWorkingDirectory(fixture.workingDir)
+	if err != nil {
+		t.Fatalf("project.ResolveWorkingDirectory() error = %v", err)
+	}
+	var stdout bytes.Buffer
+	err = (Runner{WorkingDir: fixture.workingDir, StateHome: fixture.stateHome}).runMigrateVNextRehearsalWithOperations(
+		[]string{"--backup", fixture.backup.BackupPath, "--to", destination, "--json"},
+		&stdout,
+		state.NewRuntime(workingDirectory),
+		migrateVNextRehearsalOperations{
+			run: func(context.Context, state.VNextRehearsalExportOptions, *continuitysqlite.Store) (state.VNextRehearsalResult, error) {
+				return state.VNextRehearsalResult{}, errors.New("private run detail")
+			},
+			close: func(store *continuitysqlite.Store) error {
+				_ = store.Close()
+				return errors.New("private close detail")
+			},
+		},
+	)
+	var silent interface {
+		ExitCode() int
+		Silent() bool
+	}
+	if !errors.As(err, &silent) || silent.ExitCode() != 1 || !silent.Silent() {
+		t.Fatalf("combined failure error = %#v, want silent exit 1", err)
+	}
+	var result migrateVNextRehearsalResult
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &result); decodeErr != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", stdout.String(), decodeErr)
+	}
+	if result.ErrorCode != "rehearsal_close_failed" || result.Succeeded ||
+		strings.Contains(stdout.String(), "private run detail") || strings.Contains(stdout.String(), "private close detail") {
+		t.Fatalf("combined failure evidence = %#v, output=%s", result, stdout.String())
+	}
+}
+
 func TestRunnerMigrateVNextRehearsalRefusesRelocatedDestinationBeforeRun(t *testing.T) {
 	fixture := prepareVNextRehearsalCLIFixture(t)
 	destination := filepath.Join(filepath.Dir(fixture.workingDir), "relocated-after-open")
@@ -313,6 +352,7 @@ func TestRunnerMigrateVNextRehearsalRefusesRelocatedDestinationBeforeRun(t *test
 		t.Fatalf("project.ResolveWorkingDirectory() error = %v", err)
 	}
 	runCalled := false
+	closeCalled := false
 	var stdout bytes.Buffer
 	err = (Runner{WorkingDir: fixture.workingDir, StateHome: fixture.stateHome}).runMigrateVNextRehearsalWithOperations(
 		[]string{"--backup", fixture.backup.BackupPath, "--to", destination, "--json"},
@@ -334,6 +374,11 @@ func TestRunnerMigrateVNextRehearsalRefusesRelocatedDestinationBeforeRun(t *test
 				}
 				return store, nil
 			},
+			close: func(store *continuitysqlite.Store) error {
+				closeCalled = true
+				_ = store.Close()
+				return errors.New("private validation close detail")
+			},
 			run: func(context.Context, state.VNextRehearsalExportOptions, *continuitysqlite.Store) (state.VNextRehearsalResult, error) {
 				runCalled = true
 				return state.VNextRehearsalResult{}, nil
@@ -342,6 +387,9 @@ func TestRunnerMigrateVNextRehearsalRefusesRelocatedDestinationBeforeRun(t *test
 	)
 	if runCalled {
 		t.Fatal("rehearsal run was called after destination relocation")
+	}
+	if !closeCalled {
+		t.Fatal("destination close was not attempted after relocation")
 	}
 	var silent interface {
 		ExitCode() int
@@ -354,7 +402,7 @@ func TestRunnerMigrateVNextRehearsalRefusesRelocatedDestinationBeforeRun(t *test
 	if decodeErr := json.Unmarshal(stdout.Bytes(), &result); decodeErr != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v", stdout.String(), decodeErr)
 	}
-	if result.ErrorCode != "destination_validation_failed" || result.Succeeded {
+	if result.ErrorCode != "destination_validation_close_failed" || result.Succeeded || strings.Contains(stdout.String(), "private validation close detail") {
 		t.Fatalf("relocation failure evidence = %#v", result)
 	}
 }

@@ -219,8 +219,11 @@ func (r Runner) runMigrateVNextRehearsalWithOperations(args []string, out io.Wri
 		closeDestination = func(store *continuitysqlite.Store) error { return store.Close() }
 	}
 	if err := validateOpenedVNextRehearsalDestination(options.targetRoot, root.Path(), liveDatabasePath, pinnedParent, reservedRoot); err != nil {
-		_ = closeDestination(destination)
-		return writeMigrateVNextRehearsalFailure(out, options.jsonOutput, evidence, "destination_validation_failed", nil, false)
+		stageCode := "destination_validation_failed"
+		if closeErr := closeDestination(destination); closeErr != nil {
+			stageCode = "destination_validation_close_failed"
+		}
+		return writeMigrateVNextRehearsalFailure(out, options.jsonOutput, evidence, stageCode, nil, false)
 	}
 	runRehearsal := operations.run
 	if runRehearsal == nil {
@@ -234,7 +237,11 @@ func (r Runner) runMigrateVNextRehearsalWithOperations(args []string, out io.Wri
 	}, destination)
 	closeErr := closeDestination(destination)
 	if runErr != nil {
-		return writeMigrateVNextRehearsalFailure(out, options.jsonOutput, evidence, "rehearsal_failed", &rehearsal, false)
+		stageCode := "rehearsal_failed"
+		if closeErr != nil {
+			stageCode = "rehearsal_close_failed"
+		}
+		return writeMigrateVNextRehearsalFailure(out, options.jsonOutput, evidence, stageCode, &rehearsal, false)
 	}
 	if closeErr != nil {
 		return writeMigrateVNextRehearsalFailure(out, options.jsonOutput, evidence, "destination_close_failed", &rehearsal, true)
@@ -314,8 +321,12 @@ func migrateVNextRehearsalFailureMessage(stageCode string) string {
 		return "isolated destination could not be opened"
 	case "destination_validation_failed":
 		return "opened destination failed pinned identity or containment validation"
+	case "destination_validation_close_failed":
+		return "opened destination failed safety validation and could not be closed cleanly"
 	case "rehearsal_failed":
 		return "isolated continuity rehearsal failed"
+	case "rehearsal_close_failed":
+		return "isolated continuity rehearsal failed and its destination could not be closed cleanly"
 	case "destination_close_failed":
 		return "completed rehearsal destination could not be closed cleanly"
 	case "archive_evidence_failed":
