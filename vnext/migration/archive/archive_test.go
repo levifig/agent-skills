@@ -41,6 +41,9 @@ func TestSealMarshalParseIsDeterministicAndIntegrityProtected(t *testing.T) {
 	if bytes.Contains(encoded, []byte(`"handoff_rows"`)) || bytes.Contains(encoded, []byte(`"handoff_count"`)) {
 		t.Fatalf("handoff-free v1 archive changed its canonical zero-field shape: %s", encoded)
 	}
+	if bytes.Contains(encoded, []byte(`"normalized_journal_category_rows"`)) || bytes.Contains(encoded, []byte(`"journal_category_mapping"`)) {
+		t.Fatalf("zero-normalization v1 archive changed its canonical byte shape: %s", encoded)
+	}
 	parsed, err := Parse(encoded)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -231,6 +234,47 @@ func TestSealRejectsInvalidOrderDuplicateSubjectsAndIncompleteFamilyDeclaration(
 			test.mutate(&content)
 			if _, err := Seal(content); err == nil {
 				t.Fatal("Seal(invalid content) error = nil")
+			}
+		})
+	}
+}
+
+func TestSealValidatesUnsupportedJournalCategoryNormalizationEvidence(t *testing.T) {
+	content := validContentV1()
+	content.Records[1].Journal.Category = continuity.JournalNote
+	content.Source.NormalizedJournalCategoryRows = 1
+	content.Source.JournalCategoryMapping = JournalCategoryMappingUnsupportedToNoteV1
+	if _, err := Seal(content); err != nil {
+		t.Fatalf("Seal(normalization evidence) error = %v", err)
+	}
+
+	for name, mutate := range map[string]func(*Content){
+		"positive count without mapping": func(content *Content) {
+			content.Source.NormalizedJournalCategoryRows = 1
+		},
+		"mapping without count": func(content *Content) {
+			content.Source.JournalCategoryMapping = JournalCategoryMappingUnsupportedToNoteV1
+		},
+		"unknown mapping": func(content *Content) {
+			content.Source.NormalizedJournalCategoryRows = 1
+			content.Source.JournalCategoryMapping = "future_mapping"
+		},
+		"count exceeds journal records": func(content *Content) {
+			content.Source.NormalizedJournalCategoryRows = 2
+			content.Source.JournalCategoryMapping = JournalCategoryMappingUnsupportedToNoteV1
+		},
+		"count exceeds note records": func(content *Content) {
+			content.Source.NormalizedJournalCategoryRows = 1
+			content.Source.JournalCategoryMapping = JournalCategoryMappingUnsupportedToNoteV1
+			content.Records[1].Journal.Category = continuity.JournalDiscover
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			content := validContentV1()
+			content.Records[1].Journal.Category = continuity.JournalNote
+			mutate(&content)
+			if _, err := Seal(content); err == nil {
+				t.Fatal("Seal(invalid normalization evidence) error = nil")
 			}
 		})
 	}

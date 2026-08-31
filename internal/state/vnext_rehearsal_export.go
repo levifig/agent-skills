@@ -27,6 +27,7 @@ const (
 	vnextRehearsalIDDomainV1                 = "loaf-vnext-rehearsal-v1"
 	vnextRehearsalMaxRecordsV1               = 100_000
 	vnextRehearsalMaxAggregatePayloadBytesV1 = 32 << 20
+	vnextRehearsalMaxLegacyEntryTypeBytesV1  = 64
 )
 
 // VNextRehearsalExportOptions selects one project from one explicit verified
@@ -1322,6 +1323,7 @@ func buildVNextRehearsalContentV1(
 		Observation: archive.Observation{ObservedAtMillis: projectObservedAt},
 		Project:     &archive.ProjectRecord{Label: project.Label},
 	})
+	normalizedJournalCategoryRows := 0
 	for _, root := range roots {
 		if root.Family == FactKindHandoffRecorded {
 			handoffID := root.SubjectID
@@ -1361,6 +1363,9 @@ func buildVNextRehearsalContentV1(
 			Branch:           projected.ObservedBranch,
 			Worktree:         projected.ObservedWorktree,
 		}
+		if err := validateVNextRehearsalLegacyEntryTypeV1(projected.EntryType); err != nil {
+			return archive.Content{}, fmt.Errorf("export vNext rehearsal archive: journal %q: %w", entryID, err)
+		}
 		if projected.EntryType == string(continuity.JournalWrap) {
 			records = append(records, archive.Record{
 				Kind: archive.RecordWrap, SourceID: entryID,
@@ -1371,9 +1376,9 @@ func buildVNextRehearsalContentV1(
 			})
 			continue
 		}
-		category, err := vnextRehearsalJournalCategoryV1(projected.EntryType)
-		if err != nil {
-			return archive.Content{}, fmt.Errorf("export vNext rehearsal archive: journal %q: %w", entryID, err)
+		category, normalized := vnextRehearsalJournalCategoryV1(projected.EntryType)
+		if normalized {
+			normalizedJournalCategoryRows++
 		}
 		records = append(records, archive.Record{
 			Kind: archive.RecordJournal, SourceID: entryID,
@@ -1387,19 +1392,25 @@ func buildVNextRehearsalContentV1(
 	if len(handoffProjection) > 0 {
 		handoffMapping = archive.HandoffMappingUnparsedLegacyV1
 	}
+	journalCategoryMapping := ""
+	if normalizedJournalCategoryRows > 0 {
+		journalCategoryMapping = archive.JournalCategoryMappingUnsupportedToNoteV1
+	}
 	return archive.Content{
 		Source: archive.Source{
-			LegacySchemaVersion:   verification.SchemaVersion,
-			BackupSHA256:          verification.SHA256,
-			BackupBytes:           verification.Bytes,
-			JournalFactRows:       fold.FactRows,
-			JournalProjectionRows: len(projection),
-			CollapsedRevisionRows: fold.FactRows - len(projection),
-			JournalOriginRows:     originRows,
-			DroppedSpecLinks:      droppedSpecLinks,
-			DroppedTaskLinks:      droppedTaskLinks,
-			HandoffRows:           len(handoffProjection),
-			HandoffMapping:        handoffMapping,
+			LegacySchemaVersion:           verification.SchemaVersion,
+			BackupSHA256:                  verification.SHA256,
+			BackupBytes:                   verification.Bytes,
+			JournalFactRows:               fold.FactRows,
+			JournalProjectionRows:         len(projection),
+			CollapsedRevisionRows:         fold.FactRows - len(projection),
+			JournalOriginRows:             originRows,
+			DroppedSpecLinks:              droppedSpecLinks,
+			DroppedTaskLinks:              droppedTaskLinks,
+			HandoffRows:                   len(handoffProjection),
+			HandoffMapping:                handoffMapping,
+			NormalizedJournalCategoryRows: normalizedJournalCategoryRows,
+			JournalCategoryMapping:        journalCategoryMapping,
 		},
 		Project:  archive.ProjectMapping{LegacyProjectID: project.ID, ProjectID: projectID, Label: project.Label},
 		Families: archive.FamilyManifest{Project: true, Journal: true, Wrap: true, Handoffs: len(handoffProjection) > 0},
@@ -1407,16 +1418,31 @@ func buildVNextRehearsalContentV1(
 	}, nil
 }
 
-func vnextRehearsalJournalCategoryV1(entryType string) (continuity.JournalCategory, error) {
+func validateVNextRehearsalLegacyEntryTypeV1(entryType string) error {
+	if len(entryType) == 0 || len(entryType) > vnextRehearsalMaxLegacyEntryTypeBytesV1 {
+		return fmt.Errorf("legacy journal entry_type must contain 1 to %d ASCII bytes", vnextRehearsalMaxLegacyEntryTypeBytesV1)
+	}
+	for index := 0; index < len(entryType); index++ {
+		character := entryType[index]
+		if (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') ||
+			(character >= '0' && character <= '9') || character == '_' || character == '-' {
+			continue
+		}
+		return fmt.Errorf("legacy journal entry_type must match [A-Za-z0-9_-]+ exactly")
+	}
+	return nil
+}
+
+func vnextRehearsalJournalCategoryV1(entryType string) (continuity.JournalCategory, bool) {
 	category := continuity.JournalCategory(entryType)
 	switch category {
 	case continuity.JournalNote, continuity.JournalSkill, continuity.JournalCommit,
 		continuity.JournalDecision, continuity.JournalDiscover, continuity.JournalBlock,
 		continuity.JournalUnblock, continuity.JournalSpark, continuity.JournalTodo,
 		continuity.JournalFinding:
-		return category, nil
+		return category, false
 	default:
-		return "", fmt.Errorf("unsupported legacy journal category %q", entryType)
+		return continuity.JournalNote, true
 	}
 }
 

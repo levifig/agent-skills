@@ -45,6 +45,7 @@ type migrateVNextRehearsalArchiveEvidence struct {
 	Version       int                        `json:"version"`
 	ContentSHA256 string                     `json:"content_sha256"`
 	RecordCount   int                        `json:"record_count"`
+	Source        archive.Source             `json:"source"`
 	Families      archive.FamilyManifest     `json:"families"`
 	Expected      archive.ProjectionManifest `json:"expected_projection"`
 	Actual        archive.ProjectionManifest `json:"actual_projection"`
@@ -245,7 +246,7 @@ func (r Runner) runMigrateVNextRehearsalWithOperations(args []string, out io.Wri
 	result := evidence
 	result.Archive = migrateVNextRehearsalArchiveEvidence{
 		Format: sealed.Format, Version: sealed.Version, ContentSHA256: sealed.ContentSHA256,
-		RecordCount: len(sealed.Content.Records), Families: sealed.Content.Families,
+		RecordCount: len(sealed.Content.Records), Source: sealed.Content.Source, Families: sealed.Content.Families,
 		Expected: rehearsal.Report.Expected, Actual: rehearsal.Report.Actual,
 	}
 	result.ProjectionVerified = rehearsal.Report.Expected == rehearsal.Report.Actual
@@ -280,7 +281,7 @@ func writeMigrateVNextRehearsalFailure(out io.Writer, jsonOutput bool, result mi
 		if sealed, err := archive.Parse(rehearsal.Archive); err == nil {
 			result.Archive = migrateVNextRehearsalArchiveEvidence{
 				Format: sealed.Format, Version: sealed.Version, ContentSHA256: sealed.ContentSHA256,
-				RecordCount: len(sealed.Content.Records), Families: sealed.Content.Families,
+				RecordCount: len(sealed.Content.Records), Source: sealed.Content.Source, Families: sealed.Content.Families,
 				Expected: sealed.Content.Expected,
 			}
 		}
@@ -549,6 +550,15 @@ func writeMigrateVNextRehearsalHuman(out io.Writer, result migrateVNextRehearsal
 	fmt.Fprintf(out, "destination database: %s\n", result.Destination.Database)
 	fmt.Fprintf(out, "environment: %s\n", result.Destination.EnvironmentID)
 	fmt.Fprintf(out, "archive: %s v%d (%s, %d records)\n", result.Archive.Format, result.Archive.Version, result.Archive.ContentSHA256, result.Archive.RecordCount)
+	if result.Archive.Source.NormalizedJournalCategoryRows == 0 {
+		fmt.Fprintln(out, "journal category normalization: none (0 rows)")
+	} else {
+		fmt.Fprintf(
+			out, "journal category normalization: %s (%d rows)\n",
+			result.Archive.Source.JournalCategoryMapping,
+			result.Archive.Source.NormalizedJournalCategoryRows,
+		)
+	}
 	fmt.Fprintf(out, "projection verified: %t\n", result.ProjectionVerified)
 	fmt.Fprintln(out, "disposable: true")
 	fmt.Fprintln(out, "activation performed: false")

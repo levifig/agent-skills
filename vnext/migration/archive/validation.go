@@ -28,7 +28,8 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	if content.Source.BackupBytes < 1 || content.Source.JournalFactRows < 0 ||
 		content.Source.JournalProjectionRows < 0 || content.Source.CollapsedRevisionRows < 0 ||
 		content.Source.JournalOriginRows < 0 || content.Source.DroppedSpecLinks < 0 ||
-		content.Source.DroppedTaskLinks < 0 || content.Source.HandoffRows < 0 {
+		content.Source.DroppedTaskLinks < 0 || content.Source.HandoffRows < 0 ||
+		content.Source.NormalizedJournalCategoryRows < 0 {
 		return fmt.Errorf("source counts and backup bytes must be nonnegative with a nonempty backup")
 	}
 	if content.Source.CollapsedRevisionRows != content.Source.JournalFactRows-content.Source.JournalProjectionRows {
@@ -58,6 +59,7 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	subjects := make(map[string]struct{}, len(content.Records))
 	projectRecords := 0
 	journalProjectionRecords := 0
+	noteJournalRecords := 0
 	handoffRecords := 0
 	for index := range content.Records {
 		record := content.Records[index]
@@ -77,6 +79,11 @@ func validateContentV1(content Content, verifyExpected bool) error {
 			projectRecords++
 		} else if record.Kind == RecordJournal || record.Kind == RecordWrap {
 			journalProjectionRecords++
+			if record.Kind == RecordJournal {
+				if record.Journal != nil && record.Journal.Category == continuity.JournalNote {
+					noteJournalRecords++
+				}
+			}
 		} else if record.Kind == RecordHandoff {
 			handoffRecords++
 		}
@@ -89,6 +96,16 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	}
 	if handoffRecords != content.Source.HandoffRows {
 		return fmt.Errorf("handoff row count must equal archived handoff records")
+	}
+	if content.Source.NormalizedJournalCategoryRows > noteJournalRecords {
+		return fmt.Errorf("normalized journal category rows cannot exceed archived note records")
+	}
+	if content.Source.NormalizedJournalCategoryRows == 0 {
+		if content.Source.JournalCategoryMapping != "" {
+			return fmt.Errorf("journal category mapping must be absent when no journal categories were normalized")
+		}
+	} else if content.Source.JournalCategoryMapping != JournalCategoryMappingUnsupportedToNoteV1 {
+		return fmt.Errorf("positive normalized journal category rows require the unsupported-to-note mapping")
 	}
 	if content.Source.HandoffMapping != "" && content.Source.HandoffMapping != HandoffMappingUnparsedLegacyV1 {
 		return fmt.Errorf("handoff mapping must be absent or the unparsed legacy handoff mapping")

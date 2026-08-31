@@ -1194,7 +1194,7 @@ func TestDecodeVNextRehearsalJournalFactPayloadV1RejectsLossyJSON(t *testing.T) 
 	}
 }
 
-func TestExportVNextRehearsalArchiveRejectsUnknownLegacyJournalCategory(t *testing.T) {
+func TestExportVNextRehearsalArchiveNormalizesUnsupportedLegacyJournalCategory(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)
 	resolver := PathResolver{StateHome: t.TempDir()}
@@ -1208,7 +1208,7 @@ func TestExportVNextRehearsalArchiveRejectsUnknownLegacyJournalCategory(t *testi
 	}
 	now := time.Now().UTC()
 	payload := JournalFactPayload{
-		EntryType: "legacy_session", Scope: "migration", Message: "must not coerce",
+		EntryType: "legacy_session", Scope: "migration", Message: "preserve exact text",
 		CreatedAt: now.Format(time.RFC3339Nano), UpdatedAt: now.Format(time.RFC3339Nano),
 	}
 	tx, err := store.db.BeginTx(ctx, nil)
@@ -1235,11 +1235,103 @@ func TestExportVNextRehearsalArchiveRejectsUnknownLegacyJournalCategory(t *testi
 		t.Fatalf("Backup() error = %v", err)
 	}
 
-	_, err = ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{
+	encoded, err := ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{
 		Backup: backup, ProjectID: status.ProjectID, Root: root, Resolver: resolver,
 	})
-	if err == nil || !strings.Contains(err.Error(), "legacy_session") || !strings.Contains(err.Error(), "legacy-journal-unknown") {
-		t.Fatalf("unknown category export error = %v", err)
+	if err != nil {
+		t.Fatalf("ExportVNextRehearsalArchive() error = %v", err)
+	}
+	sealed, err := archive.Parse(encoded)
+	if err != nil {
+		t.Fatalf("archive.Parse() error = %v", err)
+	}
+	if sealed.Content.Source.NormalizedJournalCategoryRows != 1 ||
+		sealed.Content.Source.JournalCategoryMapping != archive.JournalCategoryMappingUnsupportedToNoteV1 {
+		t.Fatalf("journal normalization source evidence = %#v", sealed.Content.Source)
+	}
+	if len(sealed.Content.Records) != 2 {
+		t.Fatalf("records = %#v, want project plus normalized journal", sealed.Content.Records)
+	}
+	record := sealed.Content.Records[1]
+	if record.Kind != archive.RecordJournal || record.SourceID != "legacy-journal-unknown" || record.Journal == nil ||
+		record.Journal.Category != continuity.JournalNote || record.Journal.Scope != payload.Scope || record.Journal.Text != payload.Message {
+		t.Fatalf("normalized journal record = %#v", record)
+	}
+}
+
+func TestVNextRehearsalJournalCategoryV1PreservesClosedVocabulary(t *testing.T) {
+	for _, category := range []continuity.JournalCategory{
+		continuity.JournalNote, continuity.JournalSkill, continuity.JournalCommit,
+		continuity.JournalDecision, continuity.JournalDiscover, continuity.JournalBlock,
+		continuity.JournalUnblock, continuity.JournalSpark, continuity.JournalTodo, continuity.JournalFinding,
+	} {
+		got, normalized := vnextRehearsalJournalCategoryV1(string(category))
+		if got != category || normalized {
+			t.Fatalf("vnextRehearsalJournalCategoryV1(%q) = (%q, %t), want unchanged", category, got, normalized)
+		}
+	}
+	got, normalized := vnextRehearsalJournalCategoryV1("legacy_session")
+	if got != continuity.JournalNote || !normalized {
+		t.Fatalf("unsupported category = (%q, %t), want note normalization", got, normalized)
+	}
+}
+
+func TestExportVNextRehearsalArchiveRejectsInvalidLegacyJournalCategories(t *testing.T) {
+	for name, entryType := range map[string]string{
+		"empty":       "",
+		"whitespace":  " ",
+		"punctuation": "legacy.session",
+		"unicode":     "légacy",
+		"control":     "legacy\nkind",
+		"over bound":  strings.Repeat("a", vnextRehearsalMaxLegacyEntryTypeBytesV1+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			root := projectRoot(t)
+			resolver := PathResolver{StateHome: t.TempDir()}
+			status, err := Initialize(ctx, root, resolver)
+			if err != nil {
+				t.Fatalf("Initialize() error = %v", err)
+			}
+			store, err := OpenStore(status.DatabasePath)
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			now := time.Now().UTC()
+			payload := JournalFactPayload{
+				EntryType: entryType, Scope: "migration", Message: "must fail closed",
+				CreatedAt: now.Format(time.RFC3339Nano), UpdatedAt: now.Format(time.RFC3339Nano),
+			}
+			tx, err := store.db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatalf("begin invalid-category seed: %v", err)
+			}
+			if _, err := appendJournalFactTx(ctx, tx, status.ProjectID, "legacy-journal-invalid", payload, now); err != nil {
+				t.Fatalf("append invalid-category fact: %v", err)
+			}
+			if err := insertJournalProjectionTx(ctx, tx, status.ProjectID, "legacy-journal-invalid", payload); err != nil {
+				t.Fatalf("insert invalid-category projection: %v", err)
+			}
+			if err := insertJournalSearchTx(ctx, tx, status.ProjectID, "legacy-journal-invalid", "", payload.EntryType, payload.Scope, payload.Message); err != nil {
+				t.Fatalf("insert invalid-category search: %v", err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("commit invalid-category seed: %v", err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatalf("close invalid-category store: %v", err)
+			}
+			backup, err := Backup(ctx, root, resolver)
+			if err != nil {
+				t.Fatalf("Backup() error = %v", err)
+			}
+			_, err = ExportVNextRehearsalArchive(ctx, VNextRehearsalExportOptions{
+				Backup: backup, ProjectID: status.ProjectID, Root: root, Resolver: resolver,
+			})
+			if err == nil || !strings.Contains(err.Error(), "entry_type") {
+				t.Fatalf("invalid legacy category export error = %v, want entry_type refusal", err)
+			}
+		})
 	}
 }
 
