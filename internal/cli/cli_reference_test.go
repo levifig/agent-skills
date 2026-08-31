@@ -63,7 +63,7 @@ func TestRunnerGenerateCLIReferenceWritesSkillNatively(t *testing.T) {
 		"repair journal-search",
 		"migrate schema",
 		"| `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, journal-first, worktree-storage |",
-		"| `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, leftover SQLite work, issue prefix and config) | — |",
+		"| `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, managed content, and leftover migration work) | — |",
 		"## Topics",
 		"[references/configuration.md](references/configuration.md)",
 		"[references/command-routing.md](references/command-routing.md)",

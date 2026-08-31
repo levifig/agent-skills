@@ -89,7 +89,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf bundle` | Manage bundles in native SQLite state | list, create, update, show, add, remove |
 | `loaf link` | Manage explicit relationships in native SQLite state | create, list, remove |
 | `loaf check` | Run enforcement hook checks | — |
-| `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, leftover SQLite work, issue prefix and config) | — |
+| `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, managed content, and leftover migration work) | — |
 
 ## Topics
 

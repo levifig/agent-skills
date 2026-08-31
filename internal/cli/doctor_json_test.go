@@ -105,11 +105,8 @@ func TestDoctorJSONMatchesHumanChecksAndNeverMutates(t *testing.T) {
 	if !names["leftover-absorb"] {
 		t.Fatal("doctor JSON missing leftover-absorb check")
 	}
-	if !names["issue-prefix"] {
-		t.Fatal("doctor JSON missing issue-prefix check")
-	}
-	if !names["issue-config"] {
-		t.Fatal("doctor JSON missing issue-config check")
+	if names["issue-prefix"] || names["issue-config"] {
+		t.Fatal("doctor JSON still publishes retired local-issue identity checks")
 	}
 	if names["fenced-version"] {
 		t.Fatal("doctor JSON still publishes retired fenced-version check")
