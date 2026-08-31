@@ -1106,6 +1106,9 @@ SELECT EXISTS (
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncProgress{}, err
+	}
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
 		return SyncProgress{}, err
@@ -1123,6 +1126,22 @@ SELECT EXISTS (
 	binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, verifiedAuthority)
 	if err != nil {
 		return SyncProgress{}, err
+	}
+	if progress.ChannelID != binding.ChannelID {
+		return SyncProgress{}, syncProblem(SyncErrorConflict, "channel_id", "does not match the exact authority binding")
+	}
+	if binding.AuthorityDigestVersion == 2 {
+		if err := requireKnownExactSyncRelayWatermarkV1(
+			ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+		); err != nil {
+			return SyncProgress{}, err
+		}
+		if progress.RelayHead != binding.InventoryArrivalHead {
+			return SyncProgress{}, syncProblem(SyncErrorCursor, "relay_head", "does not match the exact authority cutoff")
+		}
+		if progress.DownloadedCursor > binding.InventoryArrivalHead {
+			return SyncProgress{}, syncProblem(SyncErrorCursor, "downloaded_cursor", "exceeds the exact authority cutoff")
+		}
 	}
 	if len(prepared) == 0 {
 		if err := tx.Commit(); err != nil {
@@ -1448,19 +1467,39 @@ WHERE project_id = ? AND arrival_sequence = ? AND frame_kind = 'sealed'`,
 			return SyncProgress{}, err
 		}
 	}
+	resultingAppliedCursor := progress.AppliedCursor
 	if applyCount != 0 {
-		progress.AppliedCursor = prepared[applyCount-1].arrival
-		result, err := tx.ExecContext(ctx, `
+		resultingAppliedCursor = prepared[applyCount-1].arrival
+	}
+	result, err := tx.ExecContext(ctx, `
 UPDATE continuity_sync_projects
 SET applied_cursor = ?
-WHERE project_id = ?`, progress.AppliedCursor, string(projectID))
-		if err != nil {
-			return SyncProgress{}, syncTransactionProblem(ctx)
-		}
-		if err := requireOneAffectedV1(result, ctx); err != nil {
-			return SyncProgress{}, err
-		}
+	WHERE project_id = ?
+	  AND channel_id = ? AND relay_generation = ? AND admin_public_key = ?
+	  AND membership_generation = ? AND activation_state = ?
+	  AND applied_cursor = ? AND downloaded_cursor = ? AND relay_head = ?
+	  AND EXISTS (
+	    SELECT 1
+	    FROM continuity_sync_authorities
+	    WHERE project_id = continuity_sync_projects.project_id
+	      AND digest_version = ? AND authority_digest = ? AND inventory_arrival_head = ?
+	  )`,
+		resultingAppliedCursor, string(projectID),
+		binding.ChannelID[:], binding.RelayGeneration[:], binding.AdminPublicKey[:],
+		binding.MembershipGeneration, progress.ActivationState,
+		progress.AppliedCursor, progress.DownloadedCursor, progress.RelayHead,
+		binding.AuthorityDigestVersion, binding.AuthorityDigest[:], binding.InventoryArrivalHead)
+	if err != nil {
+		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return SyncProgress{}, syncTransactionProblem(ctx)
+	}
+	if affected != 1 {
+		return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_progress", "changed during sync batch apply")
+	}
+	progress.AppliedCursor = resultingAppliedCursor
 	if err := tx.Commit(); err != nil {
 		return SyncProgress{}, syncProblem(SyncErrorStore, "", "apply commit outcome is unknown")
 	}
