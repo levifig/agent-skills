@@ -710,6 +710,8 @@ func TestRecoveryPruneInventoryErrorMappingsAreSecretFree(t *testing.T) {
 	}{
 		{name: "authority race", storeErr: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorConflict, Field: "sync_authority", Detail: secretMarker}, wantCode: CodeConflict, wantAction: ActionRetry},
 		{name: "candidate race", storeErr: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorConflict, Field: "sync_authority_candidate", Detail: secretMarker}, wantCode: CodeConflict, wantAction: ActionRetry},
+		{name: "prune candidate race", storeErr: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorConflict, Field: "sync_recovery_prune_candidate", Detail: secretMarker}, wantCode: CodeConflict, wantAction: ActionRetry},
+		{name: "checkpoint race", storeErr: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorConflict, Field: "checkpoint", Detail: secretMarker}, wantCode: CodeConflict, wantAction: ActionRetry},
 		{name: "witness overflow", storeErr: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorConflict, Field: "prune_witness_authority", Detail: secretMarker}, wantCode: CodeConflict, wantAction: ActionRestartRecovery},
 		{name: "other conflict", storeErr: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorConflict, Field: "other", Detail: secretMarker}, wantCode: CodeConflict, wantAction: ActionRestartRecovery},
 		{name: "corruption", storeErr: &continuitysqlite.SyncError{Code: continuitysqlite.SyncErrorStore, Field: "sync_authority", Detail: secretMarker}, wantCode: CodeInternal, wantAction: ActionRepairLocalStore},
