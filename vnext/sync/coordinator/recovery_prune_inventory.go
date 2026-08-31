@@ -669,7 +669,8 @@ func mapRecoveryPruneInventoryStoreError(ctx context.Context, err error) error {
 	switch syncErr.Code {
 	case continuitysqlite.SyncErrorConflict:
 		switch syncErr.Field {
-		case "sync_authority", "sync_authority_candidate", "sync_authority_recovery":
+		case "sync_authority", "sync_authority_candidate", "sync_authority_recovery",
+			"sync_recovery_prune_candidate", "checkpoint":
 			return newProblem(CodeConflict, PhasePruneInventory, ActionRetry)
 		case "prune_witness_authority":
 			return newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
