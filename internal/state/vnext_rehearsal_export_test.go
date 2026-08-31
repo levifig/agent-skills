@@ -1274,6 +1274,28 @@ func TestVNextRehearsalJournalCategoryV1PreservesClosedVocabulary(t *testing.T) 
 	if got != continuity.JournalNote || !normalized {
 		t.Fatalf("unsupported category = (%q, %t), want note normalization", got, normalized)
 	}
+	longLegacyCategory := strings.Repeat("a", 65)
+	if err := validateVNextRehearsalLegacyEntryTypeV1(longLegacyCategory); err != nil {
+		t.Fatalf("grammar-valid long legacy category error = %v", err)
+	}
+	got, normalized = vnextRehearsalJournalCategoryV1(longLegacyCategory)
+	if got != continuity.JournalNote || !normalized {
+		t.Fatalf("long unsupported category = (%q, %t), want note normalization", got, normalized)
+	}
+}
+
+func TestVNextRehearsalArchiveBudgetV1CountsLegacyCategoryBytes(t *testing.T) {
+	entryType := strings.Repeat("a", 65)
+	budget := vnextRehearsalArchiveBudgetV1ForJournal(
+		vnextRehearsalProjectV1{Label: "Loaf"},
+		map[string]vnextRehearsalProjectionV1{
+			"journal-1": {Payload: JournalFactPayload{EntryType: entryType}},
+		},
+	)
+	want := 2*len("Loaf") + len("journal-1") + len(entryType)
+	if budget.RecordCount != 2 || budget.PayloadBytes != want {
+		t.Fatalf("journal budget = %#v, want record_count=2 payload_bytes=%d", budget, want)
+	}
 }
 
 func TestExportVNextRehearsalArchiveRejectsInvalidLegacyJournalCategories(t *testing.T) {
@@ -1283,7 +1305,6 @@ func TestExportVNextRehearsalArchiveRejectsInvalidLegacyJournalCategories(t *tes
 		"punctuation": "legacy.session",
 		"unicode":     "légacy",
 		"control":     "legacy\nkind",
-		"over bound":  strings.Repeat("a", vnextRehearsalMaxLegacyEntryTypeBytesV1+1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()

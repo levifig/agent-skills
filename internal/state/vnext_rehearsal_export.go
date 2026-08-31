@@ -27,7 +27,6 @@ const (
 	vnextRehearsalIDDomainV1                 = "loaf-vnext-rehearsal-v1"
 	vnextRehearsalMaxRecordsV1               = 100_000
 	vnextRehearsalMaxAggregatePayloadBytesV1 = 32 << 20
-	vnextRehearsalMaxLegacyEntryTypeBytesV1  = 64
 )
 
 // VNextRehearsalExportOptions selects one project from one explicit verified
@@ -769,7 +768,7 @@ func vnextRehearsalArchiveBudgetV1ForJournal(
 	}
 	for entryID, projected := range projection {
 		payload := projected.Payload
-		budget.PayloadBytes += len(entryID) + len(payload.HarnessSessionID) + len(payload.ObservedBranch) +
+		budget.PayloadBytes += len(entryID) + len(payload.EntryType) + len(payload.HarnessSessionID) + len(payload.ObservedBranch) +
 			len(payload.ObservedWorktree) + len(payload.Scope) + len(payload.Message)
 	}
 	return budget
@@ -1419,8 +1418,8 @@ func buildVNextRehearsalContentV1(
 }
 
 func validateVNextRehearsalLegacyEntryTypeV1(entryType string) error {
-	if len(entryType) == 0 || len(entryType) > vnextRehearsalMaxLegacyEntryTypeBytesV1 {
-		return fmt.Errorf("legacy journal entry_type must contain 1 to %d ASCII bytes", vnextRehearsalMaxLegacyEntryTypeBytesV1)
+	if len(entryType) == 0 {
+		return fmt.Errorf("legacy journal entry_type must be nonempty")
 	}
 	for index := 0; index < len(entryType); index++ {
 		character := entryType[index]
