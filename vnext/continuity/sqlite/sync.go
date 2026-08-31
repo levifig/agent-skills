@@ -851,14 +851,17 @@ func (store *Store) stageSyncPage(
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	var (
+		binding                SyncAuthorityBinding
+		terminalCandidate      TerminalCandidate
+		terminalCandidateFound bool
+	)
 	if expectedAuthority != nil {
-		binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, *expectedAuthority)
-		if err != nil {
+		if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
 			return SyncProgress{}, err
 		}
-		if err := requireKnownExactSyncRelayWatermarkV1(
-			ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
-		); err != nil {
+		binding, err = requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, *expectedAuthority)
+		if err != nil {
 			return SyncProgress{}, err
 		}
 	}
@@ -867,26 +870,237 @@ func (store *Store) stageSyncPage(
 	if err != nil {
 		return SyncProgress{}, err
 	}
+	var updateProgress func(int64, bool) error
 	if !found {
 		return SyncProgress{}, syncProblem(SyncErrorNotFound, "project_id", "has no pinned sync authority")
 	} else {
 		if progress.ChannelID != channelID {
 			return SyncProgress{}, syncProblem(SyncErrorConflict, "channel_id", "does not match the retained channel")
 		}
+		if expectedAuthority != nil {
+			terminalCandidate, terminalCandidateFound, err = readActiveTerminalCandidateV1(ctx, tx, projectID)
+			if err != nil {
+				return SyncProgress{}, err
+			}
+			if terminalCandidateFound {
+				candidateID, err := deriveTerminalCandidateIDFromAuthorityBindingV1(
+					projectID, binding, terminalCandidate.StartArrivalSequence,
+				)
+				if err != nil {
+					return SyncProgress{}, syncProblem(SyncErrorStore, "", "terminal candidate identity could not be derived")
+				}
+				if !terminalCandidateHeaderMatchesAuthorityBindingV2(terminalCandidate, binding, candidateID) {
+					return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority", "active terminal candidate is bound to another authority snapshot")
+				}
+				if terminalCandidate.StartArrivalSequence-1 != progress.AppliedCursor {
+					return SyncProgress{}, syncProblem(SyncErrorConflict, "applied_cursor", "changed while a terminal candidate is active")
+				}
+				if terminalCandidate.ThroughArrivalSequence > progress.DownloadedCursor {
+					return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_progress", "active terminal candidate exceeds downloaded progress")
+				}
+				if binding.AuthorityDigestVersion == 2 && terminalCandidate.ThroughArrivalSequence > binding.InventoryArrivalHead {
+					return SyncProgress{}, syncProblem(SyncErrorCursor, "inventory_arrival_head", "active terminal candidate exceeds the exact authority cutoff")
+				}
+			}
+			activeAuthorityCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
+			if err != nil {
+				return SyncProgress{}, err
+			}
+			if activeAuthorityCandidate {
+				return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority_candidate", "must be promoted or discarded before authority-bound page staging")
+			}
+			if err := requireKnownExactSyncRelayWatermarkV1(
+				ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+			); err != nil {
+				return SyncProgress{}, err
+			}
+			if progress.RelayHead > binding.InventoryArrivalHead {
+				return SyncProgress{}, syncProblem(SyncErrorCursor, "relay_head", "exceeds the exact authority cutoff")
+			}
+			if progress.DownloadedCursor > binding.InventoryArrivalHead {
+				return SyncProgress{}, syncProblem(SyncErrorCursor, "downloaded_cursor", "exceeds the exact authority cutoff")
+			}
+		}
 		if relayHead < progress.RelayHead {
 			return SyncProgress{}, syncProblem(SyncErrorCursor, "relay_head", "regressed below the retained watermark")
+		}
+		updateProgress = func(downloaded int64, replay bool) error {
+			if expectedAuthority == nil {
+				if replay {
+					if _, err := tx.ExecContext(ctx, `
+UPDATE continuity_sync_projects
+SET relay_head = ?
+WHERE project_id = ?`, relayHead, string(projectID)); err != nil {
+						return syncTransactionProblem(ctx)
+					}
+					return nil
+				}
+				result, err := tx.ExecContext(ctx, `
+UPDATE continuity_sync_projects
+SET downloaded_cursor = ?, relay_head = ?
+WHERE project_id = ?`, downloaded, relayHead, string(projectID))
+				if err != nil {
+					return syncTransactionProblem(ctx)
+				}
+				return requireOneAffectedV1(result, ctx)
+			}
+			expectedInboxStates := make(map[int64]string, len(frames))
+			for _, frame := range frames {
+				if frame.ArrivalSequence <= progress.AppliedCursor {
+					continue
+				}
+				expectedInboxStates[frame.ArrivalSequence] = "staged"
+				if replay {
+					var state string
+					if err := tx.QueryRowContext(ctx, `
+SELECT state
+FROM continuity_sync_inbox
+WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.ArrivalSequence).Scan(&state); err != nil {
+						return syncTransactionProblem(ctx)
+					}
+					expectedInboxStates[frame.ArrivalSequence] = state
+				}
+			}
+			query := `
+UPDATE continuity_sync_projects
+SET downloaded_cursor = ?, relay_head = ?
+WHERE project_id = ?
+  AND channel_id = ? AND relay_generation = ? AND admin_public_key = ?
+  AND membership_generation = ? AND activation_state = ?
+  AND downloaded_cursor = ? AND applied_cursor = ? AND relay_head = ?
+  AND EXISTS (
+    SELECT 1
+    FROM continuity_sync_authorities
+    WHERE project_id = continuity_sync_projects.project_id
+      AND digest_version = ? AND authority_digest = ? AND inventory_arrival_head = ?
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM continuity_sync_relay_watermarks
+    WHERE project_id = continuity_sync_projects.project_id
+      AND channel_id = ? AND relay_generation = ? AND admin_public_key = ?
+      AND membership_generation = ? AND relay_head = ? AND membership_floor_known = 1
+  )`
+			args := []any{
+				downloaded, relayHead, string(projectID),
+				binding.ChannelID[:], binding.RelayGeneration[:], binding.AdminPublicKey[:],
+				binding.MembershipGeneration, progress.ActivationState,
+				progress.DownloadedCursor, progress.AppliedCursor, progress.RelayHead,
+				binding.AuthorityDigestVersion, binding.AuthorityDigest[:], binding.InventoryArrivalHead,
+				binding.ChannelID[:], binding.RelayGeneration[:], binding.AdminPublicKey[:],
+				binding.MembershipGeneration, binding.InventoryArrivalHead,
+			}
+			if terminalCandidateFound {
+				query += `
+  AND EXISTS (
+    SELECT 1
+    FROM continuity_sync_terminal_candidates
+    WHERE project_id = continuity_sync_projects.project_id AND state = 'staging'
+      AND candidate_id = ? AND channel_id = ? AND relay_generation = ?
+      AND membership_generation = ? AND authority_digest = ?
+      AND start_arrival_sequence = ? AND through_arrival_sequence = ?
+      AND frame_count = ? AND rolling_candidate_digest = ?
+      AND post_promotion_corpus_digest IS NULL AND resulting_applied_cursor IS NULL
+  )`
+				args = append(args,
+					terminalCandidate.CandidateID[:], terminalCandidate.ChannelID[:], terminalCandidate.RelayGeneration[:],
+					terminalCandidate.MembershipGeneration, terminalCandidate.AuthorityDigest[:],
+					terminalCandidate.StartArrivalSequence, terminalCandidate.ThroughArrivalSequence,
+					terminalCandidate.FrameCount, terminalCandidate.RollingCandidateDigest[:],
+				)
+			} else {
+				query += `
+  AND NOT EXISTS (
+    SELECT 1
+    FROM continuity_sync_terminal_candidates
+    WHERE project_id = continuity_sync_projects.project_id AND state = 'staging'
+  )`
+			}
+			query += `
+  AND NOT EXISTS (
+    SELECT 1
+    FROM continuity_sync_authority_recovery_transitions
+    WHERE project_id = continuity_sync_projects.project_id
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM continuity_sync_authority_candidates
+    WHERE project_id = continuity_sync_projects.project_id AND state IN ('staging', 'ready')
+  )`
+			result, err := tx.ExecContext(ctx, query, args...)
+			if err != nil {
+				return syncTransactionProblem(ctx)
+			}
+			affected, err := result.RowsAffected()
+			if err != nil {
+				return syncTransactionProblem(ctx)
+			}
+			if affected != 1 {
+				return syncProblem(SyncErrorConflict, "sync_progress", "changed during authority-bound page staging")
+			}
+			changedDuringStage := func() error {
+				return syncProblem(SyncErrorConflict, "sync_progress", "changed during authority-bound page staging")
+			}
+			mapFinalFenceError := func(err error) error {
+				if err == nil {
+					return nil
+				}
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return ctxErr
+				}
+				return changedDuringStage()
+			}
+			if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+				return mapFinalFenceError(err)
+			}
+			if _, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, binding); err != nil {
+				return mapFinalFenceError(err)
+			}
+			observedProgress, found, err := readSyncProgressV1(ctx, tx, projectID)
+			if err != nil {
+				return err
+			}
+			wantProgress := progress
+			wantProgress.DownloadedCursor = downloaded
+			wantProgress.RelayHead = relayHead
+			if !found || observedProgress != wantProgress {
+				return changedDuringStage()
+			}
+			activeAuthorityCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
+			if err != nil {
+				return err
+			}
+			if activeAuthorityCandidate {
+				return changedDuringStage()
+			}
+			if err := requireKnownExactSyncRelayWatermarkV1(
+				ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+			); err != nil {
+				return mapFinalFenceError(err)
+			}
+			observedTerminalCandidate, observedTerminalCandidateFound, err := readActiveTerminalCandidateV1(ctx, tx, projectID)
+			if err != nil {
+				return err
+			}
+			if observedTerminalCandidateFound != terminalCandidateFound ||
+				(observedTerminalCandidateFound && observedTerminalCandidate != terminalCandidate) {
+				return changedDuringStage()
+			}
+			if err := validateStagedPageReplayV1(
+				ctx, tx, projectID, wantProgress.AppliedCursor, frames, expectedInboxStates,
+			); err != nil {
+				return mapFinalFenceError(err)
+			}
+			return nil
 		}
 		if progress.DownloadedCursor != expectedAfter {
 			if expectedAfter < progress.DownloadedCursor && len(frames) != 0 &&
 				frames[len(frames)-1].ArrivalSequence <= progress.DownloadedCursor {
-				if err := validateStagedPageReplayV1(ctx, tx, projectID, progress.AppliedCursor, frames); err != nil {
+				if err := validateStagedPageReplayV1(ctx, tx, projectID, progress.AppliedCursor, frames, nil); err != nil {
 					return SyncProgress{}, err
 				}
-				if _, err := tx.ExecContext(ctx, `
-UPDATE continuity_sync_projects
-SET relay_head = ?
-WHERE project_id = ?`, relayHead, string(projectID)); err != nil {
-					return SyncProgress{}, syncTransactionProblem(ctx)
+				if err := updateProgress(progress.DownloadedCursor, true); err != nil {
+					return SyncProgress{}, err
 				}
 				progress.RelayHead = relayHead
 				if err := tx.Commit(); err != nil {
@@ -952,14 +1166,7 @@ INSERT INTO continuity_sync_inbox(
 	if len(frames) != 0 {
 		downloaded = frames[len(frames)-1].ArrivalSequence
 	}
-	result, err := tx.ExecContext(ctx, `
-UPDATE continuity_sync_projects
-SET downloaded_cursor = ?, relay_head = ?
-WHERE project_id = ?`, downloaded, relayHead, string(projectID))
-	if err != nil {
-		return SyncProgress{}, syncTransactionProblem(ctx)
-	}
-	if err := requireOneAffectedV1(result, ctx); err != nil {
+	if err := updateProgress(downloaded, false); err != nil {
 		return SyncProgress{}, err
 	}
 	progress.DownloadedCursor = downloaded
@@ -1670,7 +1877,14 @@ WHERE project_id = ? AND arrival_sequence = ?`, string(projectID), frame.arrival
 	return nil
 }
 
-func validateStagedPageReplayV1(ctx context.Context, tx *sql.Tx, projectID continuity.ProjectID, appliedCursor int64, frames []OpaqueSyncFrame) error {
+func validateStagedPageReplayV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID continuity.ProjectID,
+	appliedCursor int64,
+	frames []OpaqueSyncFrame,
+	expectedInboxStates map[int64]string,
+) error {
 	for _, frame := range frames {
 		if frame.ArrivalSequence <= appliedCursor {
 			candidateKind, candidateBytes, err := opaqueSyncFrameStorageV1(frame)
@@ -1763,17 +1977,31 @@ WHERE tombstone.project_id = ? AND tombstone.arrival_sequence = ?`,
 			if !matched {
 				return syncProblem(SyncErrorStore, "", "applied arrival has no immutable receipt")
 			}
+			if expectedInboxStates != nil {
+				var inboxExists int
+				if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1
+  FROM continuity_sync_inbox
+  WHERE project_id = ? AND arrival_sequence = ?
+)`, string(projectID), frame.ArrivalSequence).Scan(&inboxExists); err != nil {
+					return syncTransactionProblem(ctx)
+				}
+				if inboxExists != 0 {
+					return syncProblem(SyncErrorConflict, "sync_progress", "applied arrival regained a staged inbox row")
+				}
+			}
 			continue
 		}
 		var digest, retainedBytes []byte
-		var frameKind string
+		var frameKind, state string
 		if err := tx.QueryRowContext(ctx, `
-SELECT envelope_digest, frame_kind, frame_bytes
+SELECT envelope_digest, frame_kind, frame_bytes, state
 FROM continuity_sync_inbox
 WHERE project_id = ? AND arrival_sequence = ?`,
 			string(projectID),
 			frame.ArrivalSequence,
-		).Scan(&digest, &frameKind, &retainedBytes); err != nil {
+		).Scan(&digest, &frameKind, &retainedBytes, &state); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return syncProblem(SyncErrorStore, "", "downloaded arrival has no staged envelope")
 			}
@@ -1788,6 +2016,12 @@ WHERE project_id = ? AND arrival_sequence = ?`,
 			frameKind != candidateKind ||
 			!bytes.Equal(retainedBytes, candidateBytes) {
 			return syncProblem(SyncErrorConflict, "frame_bytes", "stage retry differs from retained bytes")
+		}
+		if expectedInboxStates != nil {
+			expectedState, ok := expectedInboxStates[frame.ArrivalSequence]
+			if !ok || state != expectedState {
+				return syncProblem(SyncErrorConflict, "sync_progress", "staged inbox state changed during authority-bound page staging")
+			}
 		}
 	}
 	return nil
