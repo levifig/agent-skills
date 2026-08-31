@@ -43,6 +43,7 @@ You are the coordinator. Work units are provider-qualified authority refs.
 - **The delegation brief is the work contract** — `loaf issue show <ref>` / `loaf issue render <ref>`: body, definition-of-done criteria, children. Address the contract as `linear:<KEY>`, `branch:<name>`, or `pr:<number>`. There is no other packet.
 - **One agent, one worktree.** Worktree start in v1 is `loaf issue start branch:<name>`. Contract show/check/verify/render/status take the authority ref (`linear:`, `branch:`, or `pr:`). Before dispatch, run `loaf issue list --started`. Never send two agents into the same worktree. Do not start a second workspace on an occupied path.
 - **Definition of done is the completion contract.** `loaf issue verify <ref>` runs V-tier criteria from the repository root and writes nothing. H-tier is reviewed by a human or this orchestrator. Completion is the work landing plus `loaf issue status <ref> done`. Do not flip checkboxes. Provenance is the delivering commits and the PR whose body is `loaf issue render <ref>`.
+- **Preserve the rideable increment.** Before dispatch, confirm the contract concretely names the Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals in natural prose and criteria. If it describes layers or unused machinery instead, return it to shape. Executor-sized carving may split commits and handoffs, never the end-to-end value contract. See [Rideable Increments](../foundations/references/rideable-increments.md).
 - Shape prepares contracts. If `loaf issue check <ref>` does not report the delivery contract shaped (or the ledger decision ready), stop and send the work to shape. Do not mint an internal issue row from this skill.
 - **Window-fit is a runtime heuristic, not a tree edge.** Shape sizes slices for verification and revertibility alone. When an executor slice still exceeds one fresh context window, implement sub-decomposes for execution — via handoffs, scratchpad, and agent spawns — without minting child contracts. That carving never appears in the contract tree.
 
@@ -63,6 +64,7 @@ You are the coordinator. Work units are provider-qualified authority refs.
 - The journal is continuously updated with spawns, progress, and decisions as work happens
 - Each shippable root has exactly one started worktree; `loaf issue list --started` was checked before every spawn. Children of that root share it and run one agent at a time.
 - V-tier criteria pass `loaf issue verify <ref>` (writes nothing); H-tier criteria were reviewed by a human or this orchestrator
+- The named rider can complete the journey through its real entry point; dogfood evidence and the safety/integrity proof match the contract without future-only machinery
 - The PR body is `loaf issue render <ref>` with no manual editing; checkboxes stay unchecked until status is `done`
 - Completion is landing plus `loaf issue status <ref> done` (usually via ship)
 
@@ -161,7 +163,7 @@ Spawn specialized agents with the appropriate profile:
 | Code review/audit | reviewer | relevant domain skills |
 | Research/comparison | researcher | relevant domain skills |
 
-**Rules:** Be specific in prompts. One concern per agent. Include the issue ref, `started_worktree`, body, and definition of done. Parallel when independent (separate worktrees), sequential when a `blocks` edge says so.
+**Rules:** Be specific in prompts. One concern per agent. Include the issue ref, `started_worktree`, body, definition of done, and the contract's rideable-increment answers. Tell implementers to avoid machinery the named journey does not exercise. Parallel when independent (separate worktrees), sequential when a `blocks` edge says so.
 
 ---
 
@@ -229,7 +231,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 ### BEFORE (Planning)
 1. Log the invocation with `loaf journal log`
 2. `loaf issue start <ref>` (status becomes `active` through start)
-3. Slice work into agent-sized units that still belong to this one issue
+3. Slice execution into agent-sized units while preserving the issue's complete operator journey; foundation commits stay tied to the immediate consuming path
 4. Identify spawn order (respect `blocked_by` edges and parent/child rounds)
 5. Get user approval
 
@@ -261,6 +263,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 | Batch Orchestration | [batch-orchestration.md](references/batch-orchestration.md) | Running a parent or a set of issue refs with dependency-ready rounds |
 | Branch and Completion | [branch-and-completion.md](references/branch-and-completion.md) | Team routing, diagrams, exploration, journaling alongside `loaf issue start` / `stop` |
 | Working issues locally | [../orchestration/references/local-tasks.md](../orchestration/references/local-tasks.md) | Frontier, started worktrees, status vocabulary, definition of done |
+| Rideable increments | [../foundations/references/rideable-increments.md](../foundations/references/rideable-increments.md) | Preserving end-to-end value across executor-sized work |
 
 ---
 

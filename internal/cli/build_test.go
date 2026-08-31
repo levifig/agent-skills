@@ -946,6 +946,23 @@ func TestSkillTreeIsTargetInvariant(t *testing.T) {
 	}
 }
 
+func TestRideableIncrementDoctrineShipsByteForByte(t *testing.T) {
+	root := setupIsolatedRepositoryBuildRoot(t)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+
+	rel := filepath.Join("foundations", "references", "rideable-increments.md")
+	source := readBuildFileString(t, filepath.Join(root, "content", "skills", rel))
+	for _, target := range defaultBuildTargets {
+		got := readBuildFileString(t, filepath.Join(nativeBuildSkillTreeDir(root, target), rel))
+		if got != source {
+			t.Errorf("%s %s differs from canonical authored doctrine", target, filepath.ToSlash(rel))
+		}
+	}
+}
+
 func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 	// Contract: labeled harness sections are authored content that ships
 	// byte-identical on every target. Product tokens must appear inside their
