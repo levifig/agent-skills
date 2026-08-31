@@ -74,7 +74,10 @@ type verifiedRecoveryPruneInventoryPage struct {
 	snapshot           relay.PruneInventorySnapshot
 	afterPruneSequence int64
 	prunes             []verifiedRecoveryPrune
-	more               bool
+	checkpoint         recoveryPruneInventoryCheckpoint
+	// inventoryDigest is nonzero only on the terminal page.
+	inventoryDigest recoveryPruneInventoryDigest
+	more            bool
 }
 
 func (verifiedRecoveryPruneInventoryPage) String() string {
@@ -86,16 +89,25 @@ func (verifiedRecoveryPruneInventoryPage) GoString() string {
 }
 
 type recoveryPruneInventoryScanOptions struct {
-	firstRequestSnapshot    *relay.PruneInventorySnapshot
-	firstAfterPruneSequence int64
-	// firstMembershipGeneration is the generation of the last verified prune
-	// and fences monotonicity when a caller resumes from a verified suffix.
-	firstMembershipGeneration uint32
-	onPage                    func(verifiedRecoveryPruneInventoryPage) error
+	// firstCheckpoint must come from one atomically persisted callback page.
+	// Its snapshot, cursor, generation, header, and rolling digest are one
+	// indivisible resume capability.
+	firstCheckpoint *recoveryPruneInventoryCheckpoint
+	onPage          func(verifiedRecoveryPruneInventoryPage) error
 }
 
 type recoveryPruneInventoryScanResult struct {
-	snapshot relay.PruneInventorySnapshot
+	snapshot        relay.PruneInventorySnapshot
+	checkpoint      recoveryPruneInventoryCheckpoint
+	inventoryDigest recoveryPruneInventoryDigest
+}
+
+func (recoveryPruneInventoryScanResult) String() string {
+	return "[REDACTED recovery prune inventory scan result]"
+}
+
+func (recoveryPruneInventoryScanResult) GoString() string {
+	return "coordinator.recoveryPruneInventoryScanResult([REDACTED])"
 }
 
 // scanRecoveryPruneInventory streams one exact prune snapshot through bounded
@@ -131,16 +143,9 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 	if !recoveryDownloadBindingMatchesCredential(binding, prepared) {
 		return recoveryPruneInventoryScanResult{}, newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
 	}
-	if options.firstAfterPruneSequence < 0 ||
-		(options.firstAfterPruneSequence == 0 && options.firstMembershipGeneration != 0) ||
-		(options.firstAfterPruneSequence != 0 && (options.firstRequestSnapshot == nil ||
-			options.firstMembershipGeneration == 0 ||
-			options.firstMembershipGeneration > binding.MembershipGeneration)) {
-		return recoveryPruneInventoryScanResult{}, newProblem(CodeInvalid, PhasePruneInventory, ActionRestartRecovery)
-	}
-	if options.firstRequestSnapshot != nil && !validRecoveryPruneInventorySnapshot(
-		*options.firstRequestSnapshot, binding, options.firstAfterPruneSequence,
-	) {
+	if options.firstCheckpoint != nil && validateRecoveryPruneInventoryCheckpointV1(
+		expectedProjectID, binding, *options.firstCheckpoint,
+	) != nil {
 		return recoveryPruneInventoryScanResult{}, newProblem(CodeInvalid, PhasePruneInventory, ActionRestartRecovery)
 	}
 	if err := coordinator.validateRecoveryPruneCredential(
@@ -170,11 +175,15 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 		AdminPublicKey:  relay.PublicKey(binding.AdminPublicKey),
 	}
 	var (
-		pinnedSnapshot               relay.PruneInventorySnapshot
-		haveSnapshot                 bool
-		after                        = options.firstAfterPruneSequence
-		previousMembershipGeneration = options.firstMembershipGeneration
+		pinnedSnapshot relay.PruneInventorySnapshot
+		haveSnapshot   bool
+		checkpoint     recoveryPruneInventoryCheckpoint
+		after          int64
 	)
+	if options.firstCheckpoint != nil {
+		checkpoint = *options.firstCheckpoint
+		after = checkpoint.throughPruneSequence
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return recoveryPruneInventoryScanResult{}, err
@@ -189,8 +198,8 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 		if haveSnapshot {
 			snapshot := pinnedSnapshot
 			request.Snapshot = &snapshot
-		} else if options.firstRequestSnapshot != nil {
-			snapshot := *options.firstRequestSnapshot
+		} else if options.firstCheckpoint != nil {
+			snapshot := options.firstCheckpoint.snapshot
 			request.Snapshot = &snapshot
 		}
 		page, err := coordinator.remote.PruneInventory(ctx, request)
@@ -209,8 +218,14 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 		if !haveSnapshot {
 			pinnedSnapshot = page.Snapshot
 			haveSnapshot = true
-			if options.firstRequestSnapshot != nil && pinnedSnapshot != *options.firstRequestSnapshot {
+			if options.firstCheckpoint != nil && pinnedSnapshot != options.firstCheckpoint.snapshot {
 				return recoveryPruneInventoryScanResult{}, newProblem(CodeConflict, PhasePruneInventory, ActionRetry)
+			}
+			if options.firstCheckpoint == nil {
+				checkpoint, err = newRecoveryPruneInventoryCheckpointV1(expectedProjectID, binding, pinnedSnapshot)
+				if err != nil {
+					return recoveryPruneInventoryScanResult{}, newProblem(CodeInternal, PhasePruneInventory, ActionRepairLocalStore)
+				}
 			}
 		} else if page.Snapshot != pinnedSnapshot {
 			return recoveryPruneInventoryScanResult{}, malformedRecoveryPruneInventory()
@@ -220,12 +235,17 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 			if page.More || after != pinnedSnapshot.PruneHead {
 				return recoveryPruneInventoryScanResult{}, malformedRecoveryPruneInventory()
 			}
+			inventoryDigest, err := finalizeRecoveryPruneInventoryDigestV1(checkpoint)
+			if err != nil {
+				return recoveryPruneInventoryScanResult{}, newProblem(CodeInternal, PhasePruneInventory, ActionRepairLocalStore)
+			}
 			if options.onPage != nil {
 				if err := ctx.Err(); err != nil {
 					return recoveryPruneInventoryScanResult{}, err
 				}
 				if err := options.onPage(verifiedRecoveryPruneInventoryPage{
 					snapshot: pinnedSnapshot, afterPruneSequence: pageStartAfter,
+					checkpoint: checkpoint, inventoryDigest: inventoryDigest,
 				}); err != nil {
 					return recoveryPruneInventoryScanResult{}, err
 				}
@@ -233,7 +253,9 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 					return recoveryPruneInventoryScanResult{}, err
 				}
 			}
-			return recoveryPruneInventoryScanResult{snapshot: pinnedSnapshot}, nil
+			return recoveryPruneInventoryScanResult{
+				snapshot: pinnedSnapshot, checkpoint: checkpoint, inventoryDigest: inventoryDigest,
+			}, nil
 		}
 		verifiedPrunes := make([]verifiedRecoveryPrune, 0, len(page.Prunes))
 		witnessCache := make(map[uint32][]protocol.EnvironmentCertificate, len(page.Prunes))
@@ -254,10 +276,6 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 			if err != nil {
 				return recoveryPruneInventoryScanResult{}, err
 			}
-			if previousMembershipGeneration != 0 &&
-				verified.membershipGeneration < previousMembershipGeneration {
-				return recoveryPruneInventoryScanResult{}, malformedRecoveryPruneInventory()
-			}
 			if _, duplicate := pagePruneIDs[verified.pruneID]; duplicate {
 				return recoveryPruneInventoryScanResult{}, malformedRecoveryPruneInventory()
 			}
@@ -266,7 +284,10 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 			}
 			pagePruneIDs[verified.pruneID] = struct{}{}
 			pageCertificateIDs[verified.pruneCertificateID] = struct{}{}
-			previousMembershipGeneration = verified.membershipGeneration
+			checkpoint, err = advanceRecoveryPruneInventoryCheckpointV1(checkpoint, verified)
+			if err != nil {
+				return recoveryPruneInventoryScanResult{}, malformedRecoveryPruneInventory()
+			}
 			verifiedPrunes = append(verifiedPrunes, verified)
 			after = record.PruneSequence
 		}
@@ -277,6 +298,13 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 		} else if after != pinnedSnapshot.PruneHead {
 			return recoveryPruneInventoryScanResult{}, malformedRecoveryPruneInventory()
 		}
+		var inventoryDigest recoveryPruneInventoryDigest
+		if !page.More {
+			inventoryDigest, err = finalizeRecoveryPruneInventoryDigestV1(checkpoint)
+			if err != nil {
+				return recoveryPruneInventoryScanResult{}, newProblem(CodeInternal, PhasePruneInventory, ActionRepairLocalStore)
+			}
+		}
 		if options.onPage != nil {
 			if err := ctx.Err(); err != nil {
 				return recoveryPruneInventoryScanResult{}, err
@@ -285,6 +313,8 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 				snapshot:           pinnedSnapshot,
 				afterPruneSequence: pageStartAfter,
 				prunes:             cloneVerifiedRecoveryPrunes(verifiedPrunes),
+				checkpoint:         checkpoint,
+				inventoryDigest:    inventoryDigest,
 				more:               page.More,
 			}
 			if err := options.onPage(callbackPage); err != nil {
@@ -295,7 +325,9 @@ func (coordinator *Coordinator) scanRecoveryPruneInventory(
 			}
 		}
 		if !page.More {
-			return recoveryPruneInventoryScanResult{snapshot: pinnedSnapshot}, nil
+			return recoveryPruneInventoryScanResult{
+				snapshot: pinnedSnapshot, checkpoint: checkpoint, inventoryDigest: inventoryDigest,
+			}, nil
 		}
 	}
 }
