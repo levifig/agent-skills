@@ -96,6 +96,9 @@ func (store *Store) PromoteTerminalCandidate(
 		}
 		return receipt, nil
 	}
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return TerminalCandidateReceipt{}, err
+	}
 
 	candidate, found, err := readActiveTerminalCandidateV1(ctx, tx, projectID)
 	if err != nil {
@@ -103,17 +106,6 @@ func (store *Store) PromoteTerminalCandidate(
 	}
 	if !found || !terminalCandidateMatchesCheckpointV1(candidate, expected) {
 		return TerminalCandidateReceipt{}, syncProblem(SyncErrorConflict, "checkpoint", "does not match the active candidate")
-	}
-	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
-	if err != nil {
-		return TerminalCandidateReceipt{}, err
-	}
-	if !found {
-		return TerminalCandidateReceipt{}, syncProblem(SyncErrorNotFound, "project_id", "has no staged sync state")
-	}
-	if candidate.StartArrivalSequence < 1 || progress.AppliedCursor != candidate.StartArrivalSequence-1 ||
-		progress.DownloadedCursor < candidate.ThroughArrivalSequence || progress.ChannelID != candidate.ChannelID {
-		return TerminalCandidateReceipt{}, syncProblem(SyncErrorConflict, "sync_progress", "does not match the staged candidate prefix")
 	}
 	binding, err := readCanonicalSyncAuthorityBindingV2(ctx, tx, projectID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -128,6 +120,35 @@ func (store *Store) PromoteTerminalCandidate(
 	}
 	if !terminalCandidateHeaderMatchesAuthorityBindingV2(candidate, binding, candidateID) {
 		return TerminalCandidateReceipt{}, syncProblem(SyncErrorConflict, "sync_authority", "changed after terminal staging")
+	}
+	if binding.AuthorityDigestVersion == 2 {
+		if err := requireKnownExactSyncRelayWatermarkV1(
+			ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+		); err != nil {
+			return TerminalCandidateReceipt{}, err
+		}
+	}
+	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
+	if err != nil {
+		return TerminalCandidateReceipt{}, err
+	}
+	if !found {
+		return TerminalCandidateReceipt{}, syncProblem(SyncErrorNotFound, "project_id", "has no staged sync state")
+	}
+	if candidate.StartArrivalSequence < 1 || progress.AppliedCursor != candidate.StartArrivalSequence-1 ||
+		progress.DownloadedCursor < candidate.ThroughArrivalSequence || progress.ChannelID != candidate.ChannelID {
+		return TerminalCandidateReceipt{}, syncProblem(SyncErrorConflict, "sync_progress", "does not match the staged candidate prefix")
+	}
+	if binding.AuthorityDigestVersion == 2 {
+		if candidate.ThroughArrivalSequence != binding.InventoryArrivalHead {
+			return TerminalCandidateReceipt{}, syncProblem(SyncErrorCursor, "inventory_arrival_head", "candidate does not cover the exact authority cutoff")
+		}
+		if progress.DownloadedCursor != binding.InventoryArrivalHead {
+			return TerminalCandidateReceipt{}, syncProblem(SyncErrorCursor, "downloaded_cursor", "does not match the exact authority cutoff")
+		}
+		if progress.RelayHead != binding.InventoryArrivalHead {
+			return TerminalCandidateReceipt{}, syncProblem(SyncErrorCursor, "relay_head", "does not match the exact authority cutoff")
+		}
 	}
 
 	frames, err := readTerminalCandidatePromotionFramesV1(ctx, tx, candidate)
@@ -167,7 +188,7 @@ func (store *Store) PromoteTerminalCandidate(
 		return TerminalCandidateReceipt{}, err
 	}
 	receipt := terminalCandidateReceiptV1(candidate, corpusDigest)
-	if err := finishTerminalCandidatePromotionV1(ctx, tx, receipt, frames); err != nil {
+	if err := finishTerminalCandidatePromotionV1(ctx, tx, receipt, frames, binding, progress); err != nil {
 		return TerminalCandidateReceipt{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -958,7 +979,14 @@ INSERT INTO continuity_sync_receipts(
 	return requireOneAffectedV1(result, ctx)
 }
 
-func finishTerminalCandidatePromotionV1(ctx context.Context, tx *sql.Tx, receipt TerminalCandidateReceipt, frames []preparedTerminalCandidatePromotionFrameV1) error {
+func finishTerminalCandidatePromotionV1(
+	ctx context.Context,
+	tx *sql.Tx,
+	receipt TerminalCandidateReceipt,
+	frames []preparedTerminalCandidatePromotionFrameV1,
+	binding SyncAuthorityBinding,
+	progress SyncProgress,
+) error {
 	result, err := tx.ExecContext(ctx, `
 DELETE FROM continuity_sync_terminal_candidate_frames
 WHERE project_id = ? AND candidate_id = ?`, string(receipt.ProjectID), receipt.CandidateID[:])
@@ -985,13 +1013,26 @@ WHERE project_id = ? AND arrival_sequence = ? AND envelope_digest = ?
 	result, err = tx.ExecContext(ctx, `
 UPDATE continuity_sync_projects
 SET applied_cursor = ?
-WHERE project_id = ? AND applied_cursor = ? AND downloaded_cursor >= ?`,
-		receipt.ResultingAppliedCursor, string(receipt.ProjectID), receipt.StartArrivalSequence-1, receipt.ResultingAppliedCursor)
+WHERE project_id = ?
+  AND channel_id = ? AND relay_generation = ? AND admin_public_key = ?
+  AND membership_generation = ? AND activation_state = ?
+  AND applied_cursor = ? AND downloaded_cursor = ? AND relay_head = ?
+  AND EXISTS (
+    SELECT 1
+    FROM continuity_sync_authorities
+    WHERE project_id = continuity_sync_projects.project_id
+      AND digest_version = ? AND authority_digest = ? AND inventory_arrival_head = ?
+  )`,
+		receipt.ResultingAppliedCursor, string(receipt.ProjectID),
+		binding.ChannelID[:], binding.RelayGeneration[:], binding.AdminPublicKey[:],
+		binding.MembershipGeneration, progress.ActivationState,
+		progress.AppliedCursor, progress.DownloadedCursor, progress.RelayHead,
+		binding.AuthorityDigestVersion, binding.AuthorityDigest[:], binding.InventoryArrivalHead)
 	if err != nil {
 		return syncTransactionProblem(ctx)
 	}
 	if err := requireOneAffectedV1(result, ctx); err != nil {
-		return syncProblem(SyncErrorConflict, "applied_cursor", "changed during terminal promotion")
+		return syncProblem(SyncErrorConflict, "sync_progress", "changed during terminal promotion")
 	}
 	result, err = tx.ExecContext(ctx, `
 UPDATE continuity_sync_terminal_candidates

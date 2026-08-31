@@ -113,6 +113,9 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 		return TerminalCandidate{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return TerminalCandidate{}, err
+	}
 
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
@@ -124,6 +127,22 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	binding, err := requireExactCanonicalSyncAuthorityBindingV2(ctx, tx, projectID, verifiedAuthority)
 	if err != nil {
 		return TerminalCandidate{}, err
+	}
+	if progress.ChannelID != binding.ChannelID {
+		return TerminalCandidate{}, syncProblem(SyncErrorConflict, "channel_id", "does not match the exact authority binding")
+	}
+	if binding.AuthorityDigestVersion == 2 {
+		if err := requireKnownExactSyncRelayWatermarkV1(
+			ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+		); err != nil {
+			return TerminalCandidate{}, err
+		}
+		if progress.RelayHead != binding.InventoryArrivalHead {
+			return TerminalCandidate{}, syncProblem(SyncErrorCursor, "relay_head", "does not match the exact authority cutoff")
+		}
+		if progress.DownloadedCursor > binding.InventoryArrivalHead {
+			return TerminalCandidate{}, syncProblem(SyncErrorCursor, "downloaded_cursor", "exceeds the exact authority cutoff")
+		}
 	}
 
 	current, active, err := readActiveTerminalCandidateV1(ctx, tx, projectID)
@@ -141,6 +160,9 @@ func (store *Store) StageVerifiedTerminalCandidateChunk(
 	if active {
 		if !terminalCandidateHeaderMatchesAuthorityBindingV2(current, binding, candidateID) {
 			return TerminalCandidate{}, syncProblem(SyncErrorConflict, "sync_authority", "active candidate is bound to another authority snapshot")
+		}
+		if binding.AuthorityDigestVersion == 2 && current.ThroughArrivalSequence > binding.InventoryArrivalHead {
+			return TerminalCandidate{}, syncProblem(SyncErrorCursor, "inventory_arrival_head", "active candidate exceeds the exact authority cutoff")
 		}
 		if current.StartArrivalSequence < 1 || current.StartArrivalSequence-1 != progress.AppliedCursor {
 			return TerminalCandidate{}, syncProblem(SyncErrorConflict, "applied_cursor", "changed while a terminal candidate is active")

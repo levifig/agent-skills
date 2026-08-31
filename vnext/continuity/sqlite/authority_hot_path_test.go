@@ -188,7 +188,7 @@ func TestTerminalCandidateUsesTouchedV2AuthorityPointReadsAcrossChunks(t *testin
 	environments := syncAuthorityCandidateManyEnvironmentsV2(4_097)
 	opaque, frames, finalDigest := terminalHotPathFramesV2(t, projectID, environments[0], 33)
 	snapshot := syncAuthorityCandidateBootstrapSnapshotV2(4_098)
-	snapshot.InventoryArrivalHead = 7
+	snapshot.InventoryArrivalHead = int64(len(opaque))
 	environments[0].Retirement = &SyncEnvironmentRetirement{
 		RelayGeneration:          snapshot.RelayGeneration,
 		MembershipGeneration:     4_098,
@@ -200,8 +200,12 @@ func TestTerminalCandidateUsesTouchedV2AuthorityPointReadsAcrossChunks(t *testin
 	authority := syncAuthorityFromSnapshotForBindingTest(snapshot, environments)
 	digest := seedCanonicalSyncAuthorityForBindingTest(t, store, projectID, authority)
 	binding := syncAuthorityBindingForTest(authority, 2, digest)
-	if _, err := store.StageSyncPage(context.Background(), projectID, binding.ChannelID, 0, int64(len(opaque)), opaque); err != nil {
-		t.Fatalf("StageSyncPage(v2 terminal frames) error = %v", err)
+	watermark := syncRelayWatermarkFromAuthorityBindingV1(projectID, binding)
+	if got, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil || got != watermark {
+		t.Fatalf("AdvanceSyncRelayWatermark(v2 terminal frames) = (%#v, %v), want (%#v, nil)", got, err, watermark)
+	}
+	if _, err := store.StageSyncPageUnderAuthority(context.Background(), projectID, binding, 0, binding.InventoryArrivalHead, opaque); err != nil {
+		t.Fatalf("StageSyncPageUnderAuthority(v2 terminal frames) error = %v", err)
 	}
 	execAuthorityBindingCorruptionForTest(t, store, `
 UPDATE continuity_sync_environment_certificates
@@ -245,7 +249,7 @@ func TestTerminalCandidateV2PositiveHeadAdvanceRejectsResumeAndPromotion(t *test
 	environments := syncAuthorityCandidateManyEnvironmentsV2(300)
 	opaque, frames, finalDigest := terminalHotPathFramesV2(t, projectID, environments[0], 17)
 	snapshot := syncAuthorityCandidateBootstrapSnapshotV2(301)
-	snapshot.InventoryArrivalHead = 7
+	snapshot.InventoryArrivalHead = int64(len(opaque))
 	environments[0].Retirement = &SyncEnvironmentRetirement{
 		RelayGeneration:          snapshot.RelayGeneration,
 		MembershipGeneration:     301,
@@ -257,8 +261,12 @@ func TestTerminalCandidateV2PositiveHeadAdvanceRejectsResumeAndPromotion(t *test
 	authority := syncAuthorityFromSnapshotForBindingTest(snapshot, environments)
 	digest := seedCanonicalSyncAuthorityForBindingTest(t, store, projectID, authority)
 	binding := syncAuthorityBindingForTest(authority, 2, digest)
-	if _, err := store.StageSyncPage(context.Background(), projectID, binding.ChannelID, 0, int64(len(opaque)), opaque); err != nil {
-		t.Fatalf("StageSyncPage(v2 drift frames) error = %v", err)
+	watermark := syncRelayWatermarkFromAuthorityBindingV1(projectID, binding)
+	if got, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil || got != watermark {
+		t.Fatalf("AdvanceSyncRelayWatermark(v2 drift frames) = (%#v, %v), want (%#v, nil)", got, err, watermark)
+	}
+	if _, err := store.StageSyncPageUnderAuthority(context.Background(), projectID, binding, 0, binding.InventoryArrivalHead, opaque); err != nil {
+		t.Fatalf("StageSyncPageUnderAuthority(v2 drift frames) error = %v", err)
 	}
 	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, binding, frames[:maximumTerminalCandidateChunkFramesV1], 10_000, 100)
 	if err != nil {
@@ -278,13 +286,13 @@ func TestTerminalCandidateV2PositiveHeadAdvanceRejectsResumeAndPromotion(t *test
 	}
 
 	_, err = store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, advancedBinding, frames[maximumTerminalCandidateChunkFramesV1:], 10_000, 100)
-	assertSyncErrorCode(t, err, SyncErrorConflict)
+	assertTerminalCandidateAuthorityFenceProblem(t, err, SyncErrorCursor, "relay_head")
 	current, found, currentErr := store.CurrentTerminalCandidate(context.Background(), projectID)
 	if currentErr != nil || !found || current != candidate {
 		t.Fatalf("CurrentTerminalCandidate(after v2 resume drift) = (%#v, %v, %v), want %#v", current, found, currentErr, candidate)
 	}
 	_, err = store.PromoteTerminalCandidate(context.Background(), projectID, terminalCandidateCheckpointV1(candidate))
-	assertSyncErrorCode(t, err, SyncErrorConflict)
+	assertTerminalCandidateAuthorityFenceProblem(t, err, SyncErrorConflict, "sync_authority")
 	current, found, currentErr = store.CurrentTerminalCandidate(context.Background(), projectID)
 	if currentErr != nil || !found || current != candidate {
 		t.Fatalf("CurrentTerminalCandidate(after v2 promotion drift) = (%#v, %v, %v), want %#v", current, found, currentErr, candidate)
