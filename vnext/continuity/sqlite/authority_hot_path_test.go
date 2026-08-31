@@ -387,6 +387,11 @@ func stageHotPathRootFrameV2(
 	environment SyncEnvironmentCertificate,
 ) VerifiedSyncFrame {
 	t.Helper()
+	binding := currentSyncAuthorityBindingForTest(t, store, projectID)
+	watermark := syncRelayWatermarkFromAuthorityBindingV1(projectID, binding)
+	if got, err := store.AdvanceSyncRelayWatermark(context.Background(), watermark); err != nil || got != watermark {
+		t.Fatalf("AdvanceSyncRelayWatermark(hot-path root) = (%#v, %v), want (%#v, nil)", got, err, watermark)
+	}
 	fact := syncProjectFact(t, projectID, "fact-hot-path-root", continuity.EnvironmentID(environment.EnvironmentID), 1, 100)
 	encoded, err := continuitywire.Encode(fact)
 	if err != nil {
@@ -394,12 +399,12 @@ func stageHotPathRootFrameV2(
 	}
 	sealed := append([]byte("sealed:"), encoded...)
 	digest := sha256.Sum256(sealed)
-	if _, err := store.StageSyncPage(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID).ChannelID, 0, 1, []OpaqueSyncFrame{{
+	if _, err := store.StageSyncPageUnderAuthority(context.Background(), projectID, binding, 0, binding.InventoryArrivalHead, []OpaqueSyncFrame{{
 		ArrivalSequence: 1,
 		EnvelopeDigest:  digest,
 		SealedEnvelope:  sealed,
 	}}); err != nil {
-		t.Fatalf("StageSyncPage(hot-path root) error = %v", err)
+		t.Fatalf("StageSyncPageUnderAuthority(hot-path root) error = %v", err)
 	}
 	return VerifiedSyncFrame{
 		ArrivalSequence: 1,
