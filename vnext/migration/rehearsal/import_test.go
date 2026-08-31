@@ -329,6 +329,7 @@ func rehearsalArchiveV1(t *testing.T) ([]byte, archive.Archive) {
 		Source: archive.Source{
 			LegacySchemaVersion: 35, BackupSHA256: strings.Repeat("a", 64), BackupBytes: 4096,
 			JournalFactRows: 4, JournalProjectionRows: 4, HandoffRows: 2,
+			HandoffMapping: archive.HandoffMappingUnparsedLegacyV1,
 		},
 		Project:  archive.ProjectMapping{LegacyProjectID: "proj_legacy", ProjectID: "proj_legacy", Label: "Loaf"},
 		Families: archive.FamilyManifest{Project: true, Journal: true, Wrap: true, Handoffs: true},
