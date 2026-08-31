@@ -73,7 +73,7 @@ func expectedPersistenceSourceDigests() map[string]string {
 		"snapshot_references_v1.go":                 "61d8c47d16b90d630a697d9daecbce10a0c91fbc62b9680ccd3126986dfe920f",
 		"snapshot_scratchpad_v1.go":                 "8eaf2d3dfc3e209966eb29fe6a334fdf60b7531d253d3466fcdc1d9b0c03e6d9",
 		"store.go":                                  "d43c65b22cefe1cf8be9c6cb7e85137a3c59c155240a0f74922b3fc26ca59bb2",
-		"sync.go":                                   "8a2640843723f0dc5c0fa727ec187d46b909b4c4f67dcbf4b4b5d89a96cbbba6",
+		"sync.go":                                   "f0d3d5b11f2242df9c41e5e6f529444636d084fc15a9e54f9cdaaca3eb1c7945",
 		"terminal_candidate.go":                     "c1d9d93de0e1543dc9c7aea483e0ba0ae4416503997ea722a7d8a948340a29e4",
 		"terminal_candidate_codec.go":               "558be25be9bddb385e35647f2cdba27791189f2ddd35d9152537f6c0ac754f59",
 		"terminal_candidate_promotion.go":           "96b1b931d08507d95c1ad407f14bc0693c65247994bff26e7f3c6e360e639d23",
@@ -588,7 +588,7 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 			"verifySQLiteFiles":         "32e01c16e83df7de6a0034055df7ff29d169823a2d268fc412b824609ad8891d",
 		},
 		"sync.go": {
-			"Store.ActivateStagedSync":          "5368bffa7359559a419c2307e3ca3a042bbef3f105d7218449bbc898b8e8f9bc",
+			"Store.ActivateStagedSync":          "c21ca526d1737e20e813f0301bec3cd777320d5b178dd292c7b8106c06483362",
 			"Store.ApplySyncBatch":              "5cd6fd9971f43a7a3603575f970d83b37b724433caa8d09c8f95a31923491332",
 			"Store.CurrentSyncProgress":         "8803ee55b04e7356c4dbc7bbc84686d380d337e3cf73d5ac9ab4b72eb01ec9a9",
 			"Store.DiscardStagedSync":           "861dfbd1798f524fe8189f5ba42af14ab354cd821edbddf233d74c657367c87b",

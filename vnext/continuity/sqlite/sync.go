@@ -241,11 +241,6 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 	if err != nil {
 		return SyncProgress{}, err
 	}
-	if err := requireKnownExactSyncRelayWatermarkV1(
-		ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
-	); err != nil {
-		return SyncProgress{}, err
-	}
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
 	if err != nil {
 		return SyncProgress{}, err
@@ -256,11 +251,26 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 	if progress.ChannelID != binding.ChannelID {
 		return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "canonical authority and sync progress channels disagree")
 	}
-	if progress.ActivationState == SyncActivationAttached {
+	if progress.ActivationState == SyncActivationAttached && binding.AuthorityDigestVersion == 1 {
+		if err := requireKnownExactSyncRelayWatermarkV1(
+			ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+		); err != nil {
+			return SyncProgress{}, err
+		}
 		if err := tx.Commit(); err != nil {
 			return SyncProgress{}, syncTransactionProblem(ctx)
 		}
 		return progress, nil
+	}
+	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncProgress{}, err
+	}
+	activeTerminalCandidate, err := activeTerminalCandidateExistsV1(ctx, tx, projectID)
+	if err != nil {
+		return SyncProgress{}, err
+	}
+	if activeTerminalCandidate {
+		return SyncProgress{}, syncProblem(SyncErrorConflict, "terminal_candidate", "must be promoted or discarded before activation")
 	}
 	activeAuthorityCandidate, err := activeSyncAuthorityCandidateExistsV2(ctx, tx, projectID)
 	if err != nil {
@@ -269,11 +279,25 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 	if activeAuthorityCandidate {
 		return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_authority_candidate", "must be promoted or discarded before activation")
 	}
+	if err := requireKnownExactSyncRelayWatermarkV1(
+		ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
+	); err != nil {
+		return SyncProgress{}, err
+	}
 	if progress.DownloadedCursor != progress.AppliedCursor {
 		return SyncProgress{}, syncProblem(SyncErrorActivation, "cursor", "downloaded and applied cursors must agree")
 	}
+	if progress.RelayHead != binding.InventoryArrivalHead {
+		return SyncProgress{}, syncProblem(SyncErrorCursor, "relay_head", "does not match the exact authority cutoff")
+	}
 	if progress.AppliedCursor != binding.InventoryArrivalHead {
 		return SyncProgress{}, syncProblem(SyncErrorConflict, "inventory_arrival_head", "does not match the fully applied staging cutoff")
+	}
+	if progress.ActivationState == SyncActivationAttached {
+		if err := tx.Commit(); err != nil {
+			return SyncProgress{}, syncTransactionProblem(ctx)
+		}
+		return progress, nil
 	}
 	var pending int
 	if err := tx.QueryRowContext(ctx, `
@@ -302,15 +326,29 @@ WHERE project_id = ?`, string(projectID)).Scan(&pending); err != nil {
 UPDATE continuity_sync_projects
 SET activation_state = 'attached'
 WHERE project_id = ?
-  AND activation_state = 'staging'
-  AND channel_id = ?
-  AND downloaded_cursor = ?
-  AND applied_cursor = ?`, string(projectID), binding.ChannelID[:], binding.InventoryArrivalHead, binding.InventoryArrivalHead)
+	  AND channel_id = ? AND relay_generation = ? AND admin_public_key = ?
+	  AND membership_generation = ? AND activation_state = ?
+	  AND applied_cursor = ? AND downloaded_cursor = ? AND relay_head = ?
+	  AND EXISTS (
+	    SELECT 1
+	    FROM continuity_sync_authorities
+	    WHERE project_id = continuity_sync_projects.project_id
+	      AND digest_version = ? AND authority_digest = ? AND inventory_arrival_head = ?
+	  )`,
+		string(projectID),
+		binding.ChannelID[:], binding.RelayGeneration[:], binding.AdminPublicKey[:],
+		binding.MembershipGeneration, progress.ActivationState,
+		progress.AppliedCursor, progress.DownloadedCursor, progress.RelayHead,
+		binding.AuthorityDigestVersion, binding.AuthorityDigest[:], binding.InventoryArrivalHead)
 	if err != nil {
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
-	if err := requireOneAffectedV1(result, ctx); err != nil {
-		return SyncProgress{}, err
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return SyncProgress{}, syncTransactionProblem(ctx)
+	}
+	if affected != 1 {
+		return SyncProgress{}, syncProblem(SyncErrorConflict, "sync_progress", "changed during sync activation")
 	}
 	progress.ActivationState = SyncActivationAttached
 	if err := tx.Commit(); err != nil {

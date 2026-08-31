@@ -695,7 +695,7 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 		}
 	})
 
-	t.Run("relay head is not activation authority", func(t *testing.T) {
+	t.Run("relay head must match activation authority cutoff", func(t *testing.T) {
 		store := openSyncStore(t, "activation-hostile-head")
 		projectID := continuity.ProjectID("project-activation-hostile-head")
 		root := syncProjectFact(t, projectID, "fact-project", "environment-a", 1, 100)
@@ -707,13 +707,9 @@ func TestContinuityStoreAttachActivationIsExplicitAtomicAndAbortable(t *testing.
 			t.Fatalf("ApplySyncBatch() error = %v", err)
 		}
 		binding := promoteSyncAuthorityArrivalHeadForTest(t, store, projectID, 1)
-		progress, err := store.ActivateStagedSync(context.Background(), projectID, binding)
-		if err != nil {
-			t.Fatalf("ActivateStagedSync(hostile relay head) error = %v", err)
-		}
-		if progress.ActivationState != SyncActivationAttached || progress.DownloadedCursor != 1 || progress.AppliedCursor != 1 || progress.RelayHead != math.MaxInt64 {
-			t.Fatalf("hostile-head activation progress = %#v", progress)
-		}
+		_, err := store.ActivateStagedSync(context.Background(), projectID, binding)
+		assertActivationAuthorityFenceProblem(t, err, SyncErrorCursor, "relay_head")
+		assertActivationAuthorityFenceProgress(t, store, projectID, SyncActivationStaging, 1, 1, math.MaxInt64)
 	})
 
 	t.Run("empty verified relay activates existing local root", func(t *testing.T) {
