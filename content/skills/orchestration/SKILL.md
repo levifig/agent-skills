@@ -40,7 +40,7 @@ Use the `linear` skill for MCP selection, reads and mutations, update formatting
 ### Planning (Shape Up)
 - Complexity-based sizing (small / medium / large)
 - Shape before building (boundaries, not tasks)
-- Organize milestones and dependency rounds around complete [rideable increments](../foundations/references/rideable-increments.md), not horizontal layers; keep foundation packets tied to their immediate consuming journey
+- Organize milestones and dependency rounds around complete rideable increments from the foundations Rideable Increments reference, not horizontal layers; keep foundation packets tied to their immediate consuming journey
 - Priority ordering with go/no-go gates between tracks
 - No backlogs -- bet or let go
 
