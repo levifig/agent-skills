@@ -3465,6 +3465,7 @@ func writeMigrateHelp(out io.Writer) {
 	fmt.Fprintln(out, "  schema              Preview or apply pending SQLite schema upgrades")
 	fmt.Fprintln(out, "  lifecycle-statuses  Normalize legacy lifecycle statuses in SQLite")
 	fmt.Fprintln(out, "  journal-first       Transform the global database to the journal-first model")
+	fmt.Fprintln(out, "  vnext-rehearsal     Import a verified backup into a new isolated vNext database")
 	fmt.Fprintln(out, "  worktree-storage    Move linked-worktree .agents content to the main checkout")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
@@ -3488,6 +3489,7 @@ func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) 
 		"schema":             writeMigrateSchemaHelp,
 		"markdown":           writeMigrateMarkdownHelp,
 		"storage-home":       writeMigrateStorageHomeHelp,
+		"vnext-rehearsal":    writeMigrateVNextRehearsalHelp,
 		"worktree-storage":   writeWorktreeMigrationHelp,
 	}) {
 		return nil
@@ -3503,6 +3505,8 @@ func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) 
 		return r.runMarkdownMigration(args[1:], out, runtime, "loaf migrate markdown")
 	case "storage-home":
 		return r.runStorageHomeMigration(args[1:], out, runtime, "loaf migrate storage-home")
+	case "vnext-rehearsal":
+		return r.runMigrateVNextRehearsal(args[1:], out, runtime)
 	case "worktree-storage":
 		return r.runMigrateWorktreeStorage(args[1:], out, runtime.RootPath())
 	default:
