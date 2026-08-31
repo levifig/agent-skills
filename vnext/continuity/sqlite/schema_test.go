@@ -195,7 +195,7 @@ func TestContinuitySQLiteRefusesDriftedV1BeforeMigration(t *testing.T) {
 	}
 }
 
-func TestContinuitySQLiteV9SyncSchemaIsExactAndCredentialFree(t *testing.T) {
+func TestContinuitySQLiteV10SyncSchemaIsExactAndCredentialFree(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -238,6 +238,7 @@ ORDER BY name`)
 		"continuity_sync_outbox",
 		"continuity_sync_projects",
 		"continuity_sync_receipts",
+		"continuity_sync_recovery_prune_candidates",
 		"continuity_sync_relay_watermarks",
 		"continuity_sync_terminal_candidate_frames",
 		"continuity_sync_terminal_candidates",
@@ -307,7 +308,8 @@ func TestContinuitySQLiteSchemaDDLGoldenChecksums(t *testing.T) {
 		{name: "v6", ddl: schemaV6DDL, checksum: "1aa97f7f4f453f8bf0a659a346949e8865900dbc9675b8737c481238bf69843e", bytes: 31313},
 		{name: "v7", ddl: schemaV7DDL, checksum: "cc8885f15ec98c010752282222ece44fcd9e8378a212aa177d762112fca1e930", bytes: 34272},
 		{name: "v8", ddl: schemaV8DDL, checksum: "c65fb57b1fe6e50c71246b4b654aff767dd8ef7236c483070a634b033c6e67e9", bytes: 34469},
-		{name: "v9", ddl: schemaDDL, checksum: "67a38df6e7f269d7cdbdd7ec63c87f8bf1a5160e517ef224dbd3acc4bf1884e4", bytes: 34631},
+		{name: "v9", ddl: schemaV9DDL, checksum: "67a38df6e7f269d7cdbdd7ec63c87f8bf1a5160e517ef224dbd3acc4bf1884e4", bytes: 34631},
+		{name: "v10", ddl: schemaDDL, checksum: "a06f0193b50c876d4a40495dbd6ce23caa2efac3ab6df847196c5a23019486d9", bytes: 37579},
 	}
 	for _, test := range tests {
 		test := test
@@ -459,6 +461,290 @@ WHERE name = 'pruned_arrival_digest'`).Scan(&digestColumns); err != nil {
 	}
 	if digestColumns != 0 {
 		t.Fatalf("refused v8 migration retained %d pruned arrival digest columns", digestColumns)
+	}
+}
+
+func TestContinuitySQLiteMigratesExactV9WithoutChangingSyncState(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV9ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open exact v9 database: %v", err)
+	}
+	if err := validateSchemaVersion(db, 9, checksumSchemaV9(), expectedSchemaV9Objects()); err != nil {
+		db.Close()
+		t.Fatalf("validate exact v9 database: %v", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_projects(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, activation_state, downloaded_cursor,
+  applied_cursor, relay_head
+) VALUES('project-v9-migration', ?, ?, ?, 2, 'attached', 3, 2, 3)`,
+		schemaDigestBytes(0x11), schemaDigestBytes(0x12), schemaDigestBytes(0x13)); err != nil {
+		db.Close()
+		t.Fatalf("seed v9 sync project: %v", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_authorities(
+  project_id, digest_version, authority_digest, inventory_arrival_head
+) VALUES('project-v9-migration', 2, ?, 3)`, schemaDigestBytes(0x14)); err != nil {
+		db.Close()
+		t.Fatalf("seed v9 sync authority: %v", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_relay_watermarks(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, relay_head, membership_floor_known
+) VALUES('project-v9-migration', ?, ?, ?, 2, 3, 1)`,
+		schemaDigestBytes(0x11), schemaDigestBytes(0x12), schemaDigestBytes(0x13)); err != nil {
+		db.Close()
+		t.Fatalf("seed v9 relay watermark: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close seeded v9 database: %v", err)
+	}
+
+	store, err := Open(stateRoot, "environment-v10")
+	if err != nil {
+		t.Fatalf("Open(v9) error = %v", err)
+	}
+	defer store.Close()
+	if err := validateSchema(store.db); err != nil {
+		t.Fatalf("validate migrated v10 schema: %v", err)
+	}
+	var membershipGeneration, downloadedCursor, appliedCursor, relayHead int64
+	if err := store.db.QueryRow(`
+SELECT membership_generation, downloaded_cursor, applied_cursor, relay_head
+FROM continuity_sync_projects
+WHERE project_id = 'project-v9-migration'`).Scan(
+		&membershipGeneration, &downloadedCursor, &appliedCursor, &relayHead,
+	); err != nil {
+		t.Fatalf("read migrated v9 sync project: %v", err)
+	}
+	if membershipGeneration != 2 || downloadedCursor != 3 || appliedCursor != 2 || relayHead != 3 {
+		t.Fatalf("migrated v9 sync project = generation %d cursors %d/%d head %d", membershipGeneration, downloadedCursor, appliedCursor, relayHead)
+	}
+	var digestVersion int
+	var authorityDigest []byte
+	var inventoryArrivalHead int64
+	if err := store.db.QueryRow(`
+SELECT digest_version, authority_digest, inventory_arrival_head
+FROM continuity_sync_authorities
+WHERE project_id = 'project-v9-migration'`).Scan(
+		&digestVersion, &authorityDigest, &inventoryArrivalHead,
+	); err != nil {
+		t.Fatalf("read migrated v9 authority: %v", err)
+	}
+	if digestVersion != 2 || !bytes.Equal(authorityDigest, schemaDigestBytes(0x14)) || inventoryArrivalHead != 3 {
+		t.Fatalf("migrated v9 authority = version %d digest %x head %d", digestVersion, authorityDigest, inventoryArrivalHead)
+	}
+	var watermarkRows, candidateRows int64
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_relay_watermarks WHERE project_id = 'project-v9-migration'`).Scan(&watermarkRows); err != nil {
+		t.Fatalf("count migrated v9 relay watermarks: %v", err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_recovery_prune_candidates`).Scan(&candidateRows); err != nil {
+		t.Fatalf("count migrated recovery prune candidates: %v", err)
+	}
+	if watermarkRows != 1 || candidateRows != 0 {
+		t.Fatalf("migrated v9 rows: watermarks=%d candidates=%d", watermarkRows, candidateRows)
+	}
+
+	before := schemaIdentitySnapshot(t, store.db)
+	if err := migrateSchemaV9ToV10(store.db); err != nil {
+		t.Fatalf("migrateSchemaV9ToV10(exact v10) error = %v", err)
+	}
+	after := schemaIdentitySnapshot(t, store.db)
+	if after != before {
+		t.Fatalf("v9 migration preflight mutated exact v10: before=%#v after=%#v", before, after)
+	}
+	foreignKeys, err := store.db.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatalf("check migrated v10 foreign keys: %v", err)
+	}
+	defer foreignKeys.Close()
+	if foreignKeys.Next() {
+		t.Fatal("migrated v10 schema has a foreign-key violation")
+	}
+}
+
+func TestContinuitySQLiteRefusesDriftedV9BeforeV10Migration(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV9ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open exact v9 database: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE continuity_v9_intruder(value TEXT)`); err != nil {
+		db.Close()
+		t.Fatalf("create v9 drift: %v", err)
+	}
+	before := schemaIdentitySnapshot(t, db)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close drifted v9 database: %v", err)
+	}
+
+	if store, err := Open(stateRoot, "environment-v10"); err == nil {
+		store.Close()
+		t.Fatal("Open(drifted v9) error = nil, want refusal")
+	}
+	db, err = openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("reopen refused v9 database: %v", err)
+	}
+	defer db.Close()
+	after := schemaIdentitySnapshot(t, db)
+	if after != before {
+		t.Fatalf("refused v9 migration mutated schema identity: before=%#v after=%#v", before, after)
+	}
+	var candidateTables int
+	if err := db.QueryRow(`
+SELECT COUNT(*)
+FROM sqlite_schema
+WHERE type = 'table' AND name = 'continuity_sync_recovery_prune_candidates'`).Scan(&candidateTables); err != nil {
+		t.Fatalf("inspect refused v9 recovery prune candidate table: %v", err)
+	}
+	if candidateTables != 0 {
+		t.Fatalf("refused v9 migration retained %d recovery prune candidate tables", candidateTables)
+	}
+}
+
+func TestContinuitySQLiteV10RecoveryPruneCandidateConstraints(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                     string
+		state                    string
+		authorityDigestVersion   int64
+		inventoryArrivalHead     int64
+		pruneHead                int64
+		pageCount                int64
+		pruneCount               int64
+		targetCount              int64
+		throughPruneSequence     int64
+		lastMembershipGeneration int64
+		inventoryDigest          any
+		wantValid                bool
+	}{
+		{name: "empty ready", state: "ready", authorityDigestVersion: 2, pageCount: 1, inventoryDigest: schemaDigestBytes(0x31), wantValid: true},
+		{name: "partial staging", state: "staging", authorityDigestVersion: 2, inventoryArrivalHead: 7, pruneHead: 5, pageCount: 1, pruneCount: 4, targetCount: 5, throughPruneSequence: 4, lastMembershipGeneration: 2, wantValid: true},
+		{name: "complete ready", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 7, pruneHead: 2, pageCount: 1, pruneCount: 2, targetCount: 3, throughPruneSequence: 2, lastMembershipGeneration: 2, inventoryDigest: schemaDigestBytes(0x31), wantValid: true},
+		{name: "maximum targets", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 1, pruneHead: 1, pageCount: 1, pruneCount: 1, targetCount: 1024, throughPruneSequence: 1, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31), wantValid: true},
+		{name: "legacy authority digest", state: "ready", authorityDigestVersion: 1, pageCount: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "prune head above inventory", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 1, pruneHead: 2, pageCount: 1, pruneCount: 2, targetCount: 2, throughPruneSequence: 2, lastMembershipGeneration: 2, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "staging at head", state: "staging", authorityDigestVersion: 2, inventoryArrivalHead: 1, pruneHead: 1, pageCount: 1, pruneCount: 1, targetCount: 1, throughPruneSequence: 1, lastMembershipGeneration: 1},
+		{name: "ready before head", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 2, pruneHead: 2, pageCount: 1, pruneCount: 1, targetCount: 1, throughPruneSequence: 1, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "staging final digest", state: "staging", authorityDigestVersion: 2, inventoryArrivalHead: 5, pruneHead: 5, pageCount: 1, pruneCount: 4, targetCount: 4, throughPruneSequence: 4, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "ready without final digest", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 1, pruneHead: 1, pageCount: 1, pruneCount: 1, targetCount: 1, throughPruneSequence: 1, lastMembershipGeneration: 1},
+		{name: "fewer targets than prunes", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 2, pruneHead: 2, pageCount: 1, pruneCount: 2, targetCount: 1, throughPruneSequence: 2, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "too many targets", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 1, pruneHead: 1, pageCount: 1, pruneCount: 1, targetCount: 1025, throughPruneSequence: 1, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "empty second page", state: "ready", authorityDigestVersion: 2, pageCount: 2, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "nonempty zero generation", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 1, pruneHead: 1, pageCount: 1, pruneCount: 1, targetCount: 1, throughPruneSequence: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "generation above authority", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 1, pruneHead: 1, pageCount: 1, pruneCount: 1, targetCount: 1, throughPruneSequence: 1, lastMembershipGeneration: 4, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "zero pages", state: "ready", authorityDigestVersion: 2, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "prune count differs from cursor", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 2, pruneHead: 2, pageCount: 1, pruneCount: 1, targetCount: 2, throughPruneSequence: 2, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "underfilled pages", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 4, pruneHead: 4, pageCount: 2, pruneCount: 4, targetCount: 4, throughPruneSequence: 4, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31)},
+		{name: "overfilled page", state: "ready", authorityDigestVersion: 2, inventoryArrivalHead: 5, pruneHead: 5, pageCount: 1, pruneCount: 5, targetCount: 5, throughPruneSequence: 5, lastMembershipGeneration: 1, inventoryDigest: schemaDigestBytes(0x31)},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			stateRoot := filepath.Join(testTempDir(t), "state")
+			store, err := Open(stateRoot, "environment-v10")
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+			defer store.Close()
+			if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_projects(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, activation_state, downloaded_cursor,
+  applied_cursor, relay_head
+) VALUES('project-prune-candidate', ?, ?, ?, 3, 'attached', 7, 7, 7)`,
+				schemaDigestBytes(0x11), schemaDigestBytes(0x12), schemaDigestBytes(0x13)); err != nil {
+				t.Fatalf("seed recovery prune candidate project: %v", err)
+			}
+			_, err = store.db.Exec(`
+INSERT INTO continuity_sync_recovery_prune_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  authority_digest_version, authority_digest, prune_head, page_count,
+  prune_count, target_count, through_prune_sequence,
+  last_membership_generation, rolling_inventory_digest, inventory_digest
+) VALUES('project-prune-candidate', ?, ?, ?, ?, ?, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				schemaDigestBytes(0x21), test.state, schemaDigestBytes(0x11),
+				schemaDigestBytes(0x12), schemaDigestBytes(0x13), test.inventoryArrivalHead,
+				test.authorityDigestVersion, schemaDigestBytes(0x14), test.pruneHead,
+				test.pageCount, test.pruneCount, test.targetCount, test.throughPruneSequence,
+				test.lastMembershipGeneration, schemaDigestBytes(0x22), test.inventoryDigest,
+			)
+			if test.wantValid && err != nil {
+				t.Fatalf("insert valid recovery prune candidate: %v", err)
+			}
+			if !test.wantValid && err == nil {
+				t.Fatal("insert invalid recovery prune candidate error = nil, want refusal")
+			}
+		})
+	}
+}
+
+func TestContinuitySQLiteV10RecoveryPruneCandidateOwnershipIsExclusive(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-v10")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+	if _, err := store.db.Exec(`
+INSERT INTO continuity_sync_projects(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, activation_state, downloaded_cursor,
+  applied_cursor, relay_head
+) VALUES('project-prune-owner', ?, ?, ?, 1, 'attached', 0, 0, 0)`,
+		schemaDigestBytes(0x11), schemaDigestBytes(0x12), schemaDigestBytes(0x13)); err != nil {
+		t.Fatalf("seed recovery prune candidate owner: %v", err)
+	}
+	insertCandidate := func(projectID string, candidateID []byte) error {
+		_, insertErr := store.db.Exec(`
+INSERT INTO continuity_sync_recovery_prune_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  authority_digest_version, authority_digest, prune_head, page_count,
+  prune_count, target_count, through_prune_sequence,
+  last_membership_generation, rolling_inventory_digest, inventory_digest
+) VALUES(?, ?, 'ready', ?, ?, ?, 1, 0, 2, ?, 0, 1, 0, 0, 0, 0, ?, ?)`,
+			projectID, candidateID, schemaDigestBytes(0x11), schemaDigestBytes(0x12),
+			schemaDigestBytes(0x13), schemaDigestBytes(0x14), schemaDigestBytes(0x15),
+			schemaDigestBytes(0x16),
+		)
+		return insertErr
+	}
+	if err := insertCandidate("project-prune-owner", schemaDigestBytes(0x21)); err != nil {
+		t.Fatalf("insert owned recovery prune candidate: %v", err)
+	}
+	if err := insertCandidate("project-prune-owner", schemaDigestBytes(0x22)); err == nil {
+		t.Fatal("insert second recovery prune candidate for project error = nil, want refusal")
+	}
+	if err := insertCandidate("project-prune-orphan", schemaDigestBytes(0x23)); err == nil {
+		t.Fatal("insert orphan recovery prune candidate error = nil, want refusal")
+	}
+	if _, err := store.db.Exec(`DELETE FROM continuity_sync_projects WHERE project_id = 'project-prune-owner'`); err == nil {
+		t.Fatal("delete project with recovery prune candidate error = nil, want restriction")
+	}
+	var projectRows, candidateRows int64
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_projects WHERE project_id = 'project-prune-owner'`).Scan(&projectRows); err != nil {
+		t.Fatalf("count retained recovery prune project: %v", err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_recovery_prune_candidates WHERE project_id = 'project-prune-owner'`).Scan(&candidateRows); err != nil {
+		t.Fatalf("count retained recovery prune candidate: %v", err)
+	}
+	if projectRows != 1 || candidateRows != 1 {
+		t.Fatalf("restricted recovery prune ownership rows: projects=%d candidates=%d", projectRows, candidateRows)
 	}
 }
 
@@ -1195,7 +1481,7 @@ func TestContinuitySQLiteFrozenV5ValidatorRejectsV6WithoutMutation(t *testing.T)
 	}
 }
 
-func TestContinuitySQLiteFrozenV7ValidatorRejectsV9WithoutMutation(t *testing.T) {
+func TestContinuitySQLiteFrozenV7ValidatorRejectsV10WithoutMutation(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -1206,15 +1492,15 @@ func TestContinuitySQLiteFrozenV7ValidatorRejectsV9WithoutMutation(t *testing.T)
 
 	before := schemaIdentitySnapshot(t, store.db)
 	if err := validateSchemaVersion(store.db, 7, checksumSchemaV7(), expectedSchemaV7Objects()); err == nil {
-		t.Fatal("frozen v7 validation of v9 error = nil, want refusal")
+		t.Fatal("frozen v7 validation of v10 error = nil, want refusal")
 	}
 	after := schemaIdentitySnapshot(t, store.db)
 	if before != after {
-		t.Fatalf("frozen v7 validation mutated v9: before=%#v after=%#v", before, after)
+		t.Fatalf("frozen v7 validation mutated v10: before=%#v after=%#v", before, after)
 	}
 }
 
-func TestContinuitySQLiteFrozenV8ValidatorRejectsV9WithoutMutation(t *testing.T) {
+func TestContinuitySQLiteFrozenV8ValidatorRejectsV10WithoutMutation(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -1225,11 +1511,30 @@ func TestContinuitySQLiteFrozenV8ValidatorRejectsV9WithoutMutation(t *testing.T)
 
 	before := schemaIdentitySnapshot(t, store.db)
 	if err := validateSchemaVersion(store.db, 8, checksumSchemaV8(), expectedSchemaV8Objects()); err == nil {
-		t.Fatal("frozen v8 validation of v9 error = nil, want refusal")
+		t.Fatal("frozen v8 validation of v10 error = nil, want refusal")
 	}
 	after := schemaIdentitySnapshot(t, store.db)
 	if before != after {
-		t.Fatalf("frozen v8 validation mutated v9: before=%#v after=%#v", before, after)
+		t.Fatalf("frozen v8 validation mutated v10: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestContinuitySQLiteFrozenV9ValidatorRejectsV10WithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	before := schemaIdentitySnapshot(t, store.db)
+	if err := validateSchemaVersion(store.db, 9, checksumSchemaV9(), expectedSchemaV9Objects()); err == nil {
+		t.Fatal("frozen v9 validation of v10 error = nil, want refusal")
+	}
+	after := schemaIdentitySnapshot(t, store.db)
+	if before != after {
+		t.Fatalf("frozen v9 validation mutated v10: before=%#v after=%#v", before, after)
 	}
 }
 
@@ -1249,6 +1554,7 @@ func TestContinuitySQLiteConcurrentOpenMigratesExactSchemas(t *testing.T) {
 		{name: "v6", create: createV6ContinuityDatabase},
 		{name: "v7", create: createV7ContinuityDatabase},
 		{name: "v8", create: createV8ContinuityDatabase},
+		{name: "v9", create: createV9ContinuityDatabase},
 	}
 	for _, test := range tests {
 		test := test
@@ -1569,18 +1875,37 @@ func TestContinuitySQLiteMigrationStepsAcceptExactConcurrentAdvance(t *testing.T
 
 	t.Run("v8 preflight observes exact v9", func(t *testing.T) {
 		t.Parallel()
+		stateRoot := filepath.Join(testTempDir(t), "state")
+		databasePath := createV9ContinuityDatabase(t, stateRoot)
+		db, err := openDatabase(databasePath)
+		if err != nil {
+			t.Fatalf("open exact v9 database: %v", err)
+		}
+		defer db.Close()
+		before := schemaIdentitySnapshot(t, db)
+		if err := migrateSchemaV8ToV9(db); err != nil {
+			t.Fatalf("migrateSchemaV8ToV9(exact v9) error = %v", err)
+		}
+		after := schemaIdentitySnapshot(t, db)
+		if before != after {
+			t.Fatalf("v8 migration preflight mutated exact v9: before=%#v after=%#v", before, after)
+		}
+	})
+
+	t.Run("v9 preflight observes exact v10", func(t *testing.T) {
+		t.Parallel()
 		store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
 		if err != nil {
 			t.Fatalf("Open() error = %v", err)
 		}
 		defer store.Close()
 		before := schemaIdentitySnapshot(t, store.db)
-		if err := migrateSchemaV8ToV9(store.db); err != nil {
-			t.Fatalf("migrateSchemaV8ToV9(exact v9) error = %v", err)
+		if err := migrateSchemaV9ToV10(store.db); err != nil {
+			t.Fatalf("migrateSchemaV9ToV10(exact v10) error = %v", err)
 		}
 		after := schemaIdentitySnapshot(t, store.db)
 		if before != after {
-			t.Fatalf("v8 migration preflight mutated exact v9: before=%#v after=%#v", before, after)
+			t.Fatalf("v9 migration preflight mutated exact v10: before=%#v after=%#v", before, after)
 		}
 	})
 }
@@ -2493,6 +2818,60 @@ func createV8ContinuityDatabase(t *testing.T, stateRoot string) string {
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close v8 database: %v", err)
+	}
+	return databasePath
+}
+
+func createV9ContinuityDatabase(t *testing.T, stateRoot string) string {
+	t.Helper()
+
+	privateDirectory := filepath.Join(stateRoot, "vnext")
+	if err := os.MkdirAll(privateDirectory, 0o700); err != nil {
+		t.Fatalf("create v9 private directory: %v", err)
+	}
+	databasePath := filepath.Join(privateDirectory, databaseFileName)
+	file, err := os.OpenFile(databasePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("create v9 database: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close v9 database file: %v", err)
+	}
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v9 database: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		db.Close()
+		t.Fatalf("begin v9 schema: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schemaV9DDL); err != nil {
+		db.Close()
+		t.Fatalf("create v9 schema: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
+		db.Close()
+		t.Fatalf("set v9 application id: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 9`); err != nil {
+		db.Close()
+		t.Fatalf("set v9 user version: %v", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, 'vnext', 9, ?)`,
+		checksumSchemaV9(),
+	); err != nil {
+		db.Close()
+		t.Fatalf("record v9 schema identity: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		db.Close()
+		t.Fatalf("commit v9 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v9 database: %v", err)
 	}
 	return databasePath
 }
