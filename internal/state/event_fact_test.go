@@ -304,7 +304,7 @@ func TestRebuildMutableCoreProjectionsFromReceivedRefAndVerificationFacts(t *tes
 		t.Fatalf("projectID() error = %v", err)
 	}
 
-	now := time.Date(2026, 8, 26, 18, 0, 0, 0, time.UTC)
+	now := recentRemoteFactBaseTime(t)
 	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000101", FactKindRefRegistered, "env-recv", 1, now.UnixMilli(), CoreEventPayload{
 		SubjectKind:  "ref",
 		SubjectID:    "bmap-recv-1",
@@ -380,10 +380,11 @@ func TestRebuildMutableCoreProjectionsFoldsWorktreeFacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("projectID() error = %v", err)
 	}
-	now := time.Date(2026, 8, 26, 18, 30, 0, 0, time.UTC).Format(time.RFC3339)
-	mustExec(t, store, `INSERT INTO issues (id, project_id, kind, title, body, status, created_at, updated_at) VALUES (?, ?, 'delivery', 'worktree fold', '', 'todo', ?, ?)`, "issue-wt-1", projectID, now, now)
+	now := recentRemoteFactBaseTime(t)
+	formattedNow := now.Format(time.RFC3339)
+	mustExec(t, store, `INSERT INTO issues (id, project_id, kind, title, body, status, created_at, updated_at) VALUES (?, ?, 'delivery', 'worktree fold', '', 'todo', ?, ?)`, "issue-wt-1", projectID, formattedNow, formattedNow)
 
-	boundAt := time.Date(2026, 8, 26, 18, 31, 0, 0, time.UTC)
+	boundAt := now.Add(time.Minute)
 	receiveCoreFact(t, store, projectID, "018f5c2a-0000-7000-8000-000000000201", FactKindWorktreeBound, "env-wt", 1, boundAt.UnixMilli(), CoreEventPayload{
 		SubjectKind: "issue",
 		SubjectID:   "issue-wt-1",
@@ -419,6 +420,11 @@ func TestRebuildMutableCoreProjectionsFoldsWorktreeFacts(t *testing.T) {
 	if branch != "" || worktree != "" {
 		t.Fatalf("started after unbind = (%q, %q), want cleared", branch, worktree)
 	}
+}
+
+func recentRemoteFactBaseTime(t *testing.T) time.Time {
+	t.Helper()
+	return time.Now().UTC().Add(-5 * time.Minute).Truncate(time.Second)
 }
 
 func receiveCoreFact(t *testing.T, store *Store, projectID, id, kind, envID string, seq, wallMS int64, payload CoreEventPayload) {
