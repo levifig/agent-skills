@@ -43,6 +43,7 @@ func expectedPersistenceSourceDigests() map[string]string {
 		"append_kernel.go":                          "a1bbf496f5511322276b8e558f795968f6d27dde6aac508545726d1822f7449c",
 		"append_methods.go":                         "b6ffd99675243104c812d16e96b1bc0f2b7150c4b87da2881ba96751760e14ea",
 		"authority.go":                              "3f57b4061ac3e9f4834ae4ff709e46349ce281dd17de82ee89e11f33b476bf4d",
+		"authority_prune_witness.go":                "7bbd29237a04d8896b94ed176d7fbddda024260824751e69801342db6f324d56",
 		"authority_candidate.go":                    "11f2e7b2d7cc2545656c2c2b08b676765154e69adcc0763350f47a125e1da0d4",
 		"authority_candidate_canonical.go":          "2da559ad1a2865f70af725a01d8461de06b23b0dc75b8c448e0f4febcbbe4368",
 		"authority_candidate_codec.go":              "4a254bb92d9dbe4ad48f70c3c6eedae6ae148912d81fbe674b2c88f4d9360006",
@@ -185,6 +186,11 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 			"validateSyncAuthorityIdentity":               "3709a657d41dc9d433ba7ae544dedf2dd02a3223c342f707a0b964f68f1b13ef",
 			"validateSyncEnvironmentRetirement":           "7897d41843fc7e8aaa9904abdd75ae4578996f816a4ecf5369a535bc595c69c5",
 			"validateSyncProjectID":                       "106d13682801fee95c7dae63debb42bc24491a9a34ab28ec24f6d435c78a6726",
+		},
+		"authority_prune_witness.go": {
+			"Store.CurrentSyncPruneWitnessAuthorityUnderBinding": "303dfbb3fe8f6b87ee0081b03b09f2caab5895c0844f0ca43a0dbaff59c1713c",
+			"readSyncPruneWitnessAuthorityV1":                    "6575cfd7a83e3906dec079f1e6b9cfcd448c843866ccbb94ec6387d37bf7afbc",
+			"readSyncPruneWitnessAuthorityV2":                    "f8896adc3ff72f3b184b0ecc39949c6dd8029541376e398eb0d7dc3435f8b709",
 		},
 		"authority_candidate.go": {
 			"Store.CurrentSyncAuthorityCandidate":           "ee157b3018c4e5beda5832c8f9d8f31ab62642ca0a12625a82ddfe116d94e08e",
