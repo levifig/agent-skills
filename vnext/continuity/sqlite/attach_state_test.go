@@ -281,7 +281,7 @@ func TestActivateStagedSyncRequiresExactAuthorityBindingAndCutoff(t *testing.T) 
 		t.Fatalf("CurrentSyncProgress(before) error = %v", err)
 	}
 	_, err = store.ActivateStagedSync(context.Background(), projectID, staleBinding)
-	assertSyncErrorCode(t, err, SyncErrorConflict)
+	assertActivationAuthorityFenceProblem(t, err, SyncErrorCursor, "relay_head")
 	after, err := store.CurrentSyncProgress(context.Background(), projectID)
 	if err != nil || after != before {
 		t.Fatalf("progress after stale-cutoff activation = (%#v, %v), want unchanged %#v", after, err, before)
