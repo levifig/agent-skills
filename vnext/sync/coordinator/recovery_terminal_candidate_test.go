@@ -2,12 +2,71 @@ package coordinator
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
+	"github.com/levifig/loaf/vnext/continuity"
 	continuitysqlite "github.com/levifig/loaf/vnext/continuity/sqlite"
+	"github.com/levifig/loaf/vnext/internal/continuitywire"
+	"github.com/levifig/loaf/vnext/sync/crypto"
 	"github.com/levifig/loaf/vnext/sync/protocol"
 	"github.com/levifig/loaf/vnext/sync/relay"
 )
+
+func TestRecoveryTerminalSealedFrameOpensExactPinnedEnvelope(t *testing.T) {
+	fixture := newRecoveryDownloadFixture(t, 1)
+	inbox, fact := signedRecoveryTerminalInbox(t, fixture)
+	if _, err := fixture.store.StageSyncPageUnderAuthority(
+		context.Background(), fixture.recovery.ProjectID, fixture.binding, 0, 1,
+		[]continuitysqlite.OpaqueSyncFrame{inbox},
+	); err != nil {
+		t.Fatalf("stage signed recovery terminal envelope: %v", err)
+	}
+
+	frame, err := fixture.coordinator.recoveryTerminalSealedFrame(
+		context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding, inbox,
+	)
+	if err != nil {
+		t.Fatalf("open signed recovery terminal envelope: %v", err)
+	}
+	if frame.ArrivalSequence != inbox.ArrivalSequence || frame.EnvelopeDigest != inbox.EnvelopeDigest ||
+		frame.CertificateID != [32]byte(protocol.CertificateID(fixture.prepared.Certificate)) ||
+		frame.KeyGeneration != fixture.prepared.WriteGeneration || !reflect.DeepEqual(frame.Fact, fact) {
+		t.Fatalf("verified recovery terminal sealed frame does not match its exact envelope")
+	}
+}
+
+func TestRecoveryTerminalSealedFrameRejectsWrongKeyAndAlteredEnvelope(t *testing.T) {
+	fixture := newRecoveryDownloadFixture(t, 1)
+	inbox, _ := signedRecoveryTerminalInbox(t, fixture)
+
+	altered := inbox
+	altered.SealedEnvelope = append([]byte(nil), inbox.SealedEnvelope...)
+	altered.SealedEnvelope[len(altered.SealedEnvelope)-1] ^= 0xff
+	_, err := fixture.coordinator.recoveryTerminalSealedFrame(
+		context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding, altered,
+	)
+	assertProblem(t, err, CodeRemote, PhaseAttachActivation, ActionRestartRecovery)
+
+	wrongRoot := fixture.prepared.ProjectRoot.Bytes()
+	wrongRoot[0] ^= 0xff
+	fixture.prepared.ProjectRoot, err = crypto.ProjectRootFromBytes(wrongRoot[:])
+	if err != nil {
+		t.Fatalf("construct wrong recovery root: %v", err)
+	}
+	_, err = fixture.coordinator.recoveryTerminalSealedFrame(
+		context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding, inbox,
+	)
+	assertProblem(t, err, CodeAuthorization, PhaseAttachActivation, ActionCheckRecoveryAuthority)
+}
+
+func TestMapRecoveryTerminalStoreErrorRetriesAuthorityCandidateRace(t *testing.T) {
+	err := mapRecoveryTerminalStoreError(context.Background(), &continuitysqlite.SyncError{
+		Code:  continuitysqlite.SyncErrorConflict,
+		Field: "sync_authority_candidate",
+	})
+	assertProblem(t, err, CodeConflict, PhaseAttachActivation, ActionRetry)
+}
 
 func TestRecoveryTerminalPrunedFrameUsesExactIndexedCertificateProjection(t *testing.T) {
 	fixture, ready, inbox, certificate := recoveryTerminalProjectionFixture(t)
@@ -102,4 +161,47 @@ func recoveryTerminalProjectionFixture(
 		PrunedArrival:   encoded,
 	}
 	return fixture, ready, inbox, certificate
+}
+
+func signedRecoveryTerminalInbox(
+	t *testing.T,
+	fixture recoveryDownloadFixture,
+) (continuitysqlite.OpaqueSyncFrame, continuitywire.Fact) {
+	t.Helper()
+	fact := continuitywire.Fact{
+		WireVersion:         continuitywire.Version1,
+		FactID:              "fact-recovery-terminal-sealed",
+		ProjectID:           fixture.recovery.ProjectID,
+		SubjectKind:         continuity.RecordProjectIdentity,
+		SubjectID:           continuity.SubjectID(fixture.recovery.ProjectID),
+		FactKind:            continuity.FactProjectRegistered,
+		PayloadVersion:      1,
+		CanonicalPayload:    []byte(`{"observation":{"observed_at_millis":1,"harness_session_id":"recovery-terminal","branch":"issue/loaf-93","worktree":"/workspace/loaf"},"label":"Loaf"}`),
+		EnvironmentID:       fixture.prepared.Certificate.EnvironmentID,
+		EnvironmentSequence: 1,
+		HLCWallMillis:       100,
+		EnvelopeVersion:     1,
+	}
+	key, err := crypto.DeriveGenerationKey(
+		fixture.prepared.ProjectRoot, fixture.recovery.ProjectID, fixture.prepared.WriteGeneration,
+	)
+	if err != nil {
+		t.Fatalf("derive recovery terminal generation key: %v", err)
+	}
+	sealed, err := crypto.SealFact(
+		fact, key, fixture.prepared.Certificate, fixture.prepared.AdminPublicKey,
+		fixture.prepared.EnvironmentSeed, protocol.Digest{}, 1_000,
+	)
+	if err != nil {
+		t.Fatalf("seal recovery terminal fact: %v", err)
+	}
+	wire, err := sealed.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal recovery terminal fact: %v", err)
+	}
+	return continuitysqlite.OpaqueSyncFrame{
+		ArrivalSequence: 1,
+		EnvelopeDigest:  [32]byte(protocol.EnvelopeDigest(sealed)),
+		SealedEnvelope:  wire,
+	}, fact
 }
