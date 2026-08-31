@@ -892,11 +892,13 @@ type remoteFixture struct {
 	classifyRequests    []relay.RegisterEnvironmentRequest
 	registerRequests    []relay.RegisterEnvironmentRequest
 	pageRequests        []relay.PageRequest
+	pruneRequests       []relay.PruneInventoryRequest
 
 	create           func(context.Context, relay.Channel) (relay.ChannelState, error)
 	classify         func(context.Context, relay.RegisterEnvironmentRequest) (relay.EnvironmentRegistrationStatus, error)
 	register         func(context.Context, relay.RegisterEnvironmentRequest) (relay.ChannelState, error)
 	page             func(context.Context, relay.PageRequest) (relay.Page, error)
+	prune            func(context.Context, relay.PruneInventoryRequest) (relay.PruneInventoryPage, error)
 	inventory        func(context.Context, relay.EnvironmentInventoryRequest) (relay.EnvironmentInventoryPage, error)
 	inventoryErr     error
 	environmentPages map[relay.EnvironmentID]relay.EnvironmentInventoryPage
@@ -978,8 +980,25 @@ func (remote *remoteFixture) EnvironmentInventory(ctx context.Context, request r
 	return page, nil
 }
 
-func (remote *remoteFixture) PruneInventory(_ context.Context, _ relay.PruneInventoryRequest) (relay.PruneInventoryPage, error) {
+func (remote *remoteFixture) PruneInventory(ctx context.Context, request relay.PruneInventoryRequest) (relay.PruneInventoryPage, error) {
 	remote.pruneCalls++
+	copyRequest := request
+	if request.Authorization.Owner != nil {
+		copyOwner := *request.Authorization.Owner
+		copyRequest.Authorization.Owner = &copyOwner
+	}
+	if request.Authorization.Environment != nil {
+		copyEnvironment := *request.Authorization.Environment
+		copyRequest.Authorization.Environment = &copyEnvironment
+	}
+	if request.Snapshot != nil {
+		copySnapshot := *request.Snapshot
+		copyRequest.Snapshot = &copySnapshot
+	}
+	remote.pruneRequests = append(remote.pruneRequests, copyRequest)
+	if remote.prune != nil {
+		return remote.prune(ctx, request)
+	}
 	return relay.PruneInventoryPage{}, relay.ErrInvalidArgument
 }
 
