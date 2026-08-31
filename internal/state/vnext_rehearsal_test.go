@@ -33,6 +33,12 @@ func TestRunVNextRehearsalRoundTripsVerifiedLegacyContinuityWithoutCutover(t *te
 	}); err != nil {
 		t.Fatalf("LogJournal(wrap) error = %v", err)
 	}
+	legacyHandoffBody := "# Rehearsal handoff\n\nPreserve this Markdown verbatim.\n"
+	if _, err := CreateArtifactEntity(ctx, root, resolver, ArtifactEntityCreateOptions{
+		Kind: "handoff", Title: "Continue isolated rehearsal", Body: legacyHandoffBody,
+	}); err != nil {
+		t.Fatalf("CreateArtifactEntity(handoff) error = %v", err)
+	}
 	backup, err := Backup(ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Backup() error = %v", err)
@@ -72,7 +78,9 @@ func TestRunVNextRehearsalRoundTripsVerifiedLegacyContinuityWithoutCutover(t *te
 	}
 	if snapshot.Project.Identity.Label != status.ProjectName || len(snapshot.EffectiveJournal.Entries) != 1 ||
 		snapshot.EffectiveJournal.Entries[0].Content.Text != "legacy continuity survives the handoff" ||
-		len(snapshot.LatestWraps.Wraps) != 1 || snapshot.LatestWraps.Wraps[0].Synthesis != "next is the isolated vNext rehearsal" {
+		len(snapshot.LatestWraps.Wraps) != 1 || snapshot.LatestWraps.Wraps[0].Synthesis != "next is the isolated vNext rehearsal" ||
+		len(snapshot.LatestHandoffs.Handoffs) != 1 || snapshot.LatestHandoffs.Handoffs[0].Purpose != "Continue isolated rehearsal" ||
+		snapshot.LatestHandoffs.Handoffs[0].Situation != legacyHandoffBody {
 		t.Fatalf("rehearsal snapshot = %#v", snapshot)
 	}
 	if _, err := destination.CurrentSyncProgress(ctx, continuity.ProjectID(status.ProjectID)); err == nil {

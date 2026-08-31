@@ -90,6 +90,9 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	if handoffRecords != content.Source.HandoffRows {
 		return fmt.Errorf("handoff row count must equal archived handoff records")
 	}
+	if content.Source.HandoffMapping != "" && content.Source.HandoffMapping != HandoffMappingUnparsedLegacyV1 {
+		return fmt.Errorf("handoff mapping must be absent or the unparsed legacy handoff mapping")
+	}
 	if handoffRecords != 0 && !content.Families.Handoffs {
 		return fmt.Errorf("handoff records require the handoff family declaration")
 	}

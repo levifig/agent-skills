@@ -24,6 +24,10 @@ const (
 
 const archiveDigestDomainV1 = "loaf:vnext:migration:archive:v1\x00"
 
+// HandoffMappingUnparsedLegacyV1 declares that legacy handoff Markdown was
+// preserved byte-for-byte as Situation without attempting field extraction.
+const HandoffMappingUnparsedLegacyV1 = "unparsed_legacy_handoff_v1"
+
 // Archive is one immutable checksummed migration archive. Its SHA-256 detects
 // accidental corruption; exporter provenance must be established out of band.
 type Archive struct {
@@ -54,6 +58,7 @@ type Source struct {
 	DroppedSpecLinks      int    `json:"dropped_spec_links"`
 	DroppedTaskLinks      int    `json:"dropped_task_links"`
 	HandoffRows           int    `json:"handoff_rows,omitempty"`
+	HandoffMapping        string `json:"handoff_mapping,omitempty"`
 }
 
 // ProjectMapping preserves the legacy durable identity exactly. Archive v1

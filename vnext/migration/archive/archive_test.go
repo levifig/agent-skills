@@ -94,6 +94,7 @@ func TestSealRetainsAllUnfocusedHandoffRecordsAndProjectsOnlyLatest(t *testing.T
 	content := validContentV1()
 	observation := content.Records[0].Observation
 	content.Source.HandoffRows = 2
+	content.Source.HandoffMapping = HandoffMappingUnparsedLegacyV1
 	content.Families.Handoffs = true
 	content.Records = append(content.Records,
 		Record{
@@ -116,6 +117,24 @@ func TestSealRetainsAllUnfocusedHandoffRecordsAndProjectsOnlyLatest(t *testing.T
 	content.Families.Handoffs = false
 	if _, err := Seal(content); err == nil || !strings.Contains(err.Error(), "handoff family") {
 		t.Fatalf("Seal(undeclared handoffs) error = %v", err)
+	}
+	content.Families.Handoffs = true
+	content.Source.HandoffMapping = ""
+	preMarker, err := Seal(content)
+	if err != nil {
+		t.Fatalf("Seal(pre-marker handoffs) error = %v", err)
+	}
+	if preMarker.ContentSHA256 != "aec9a2fa8c4a93cb05a93c89be8de37e2ec38b97a414fbbe09561406ff54c980" {
+		t.Fatalf("pre-marker handoff digest = %q", preMarker.ContentSHA256)
+	}
+	content.Source.HandoffMapping = "future_mapping"
+	if _, err := Seal(content); err == nil || !strings.Contains(err.Error(), "unparsed legacy handoff mapping") {
+		t.Fatalf("Seal(handoffs, unknown marker) error = %v", err)
+	}
+	handoffFree := validContentV1()
+	handoffFree.Source.HandoffMapping = HandoffMappingUnparsedLegacyV1
+	if _, err := Seal(handoffFree); err != nil {
+		t.Fatalf("Seal(handoff-free marker) error = %v", err)
 	}
 }
 
@@ -276,6 +295,7 @@ func TestHandoffSuggestedSkillsDecoderRejectsStructuralAmplification(t *testing.
 func TestHandoffSuggestedSkillsRequiresAnExplicitArray(t *testing.T) {
 	content := validContentV1()
 	content.Source.HandoffRows = 1
+	content.Source.HandoffMapping = HandoffMappingUnparsedLegacyV1
 	content.Families.Handoffs = true
 	content.Records = append(content.Records, Record{
 		Kind: RecordHandoff, SourceID: "legacy-handoff", FactID: "fact-handoff", SubjectID: "handoff",
