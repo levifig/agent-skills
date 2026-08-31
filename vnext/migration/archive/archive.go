@@ -53,6 +53,7 @@ type Source struct {
 	JournalOriginRows     int    `json:"journal_origin_rows"`
 	DroppedSpecLinks      int    `json:"dropped_spec_links"`
 	DroppedTaskLinks      int    `json:"dropped_task_links"`
+	HandoffRows           int    `json:"handoff_rows,omitempty"`
 }
 
 // ProjectMapping preserves the legacy durable identity exactly. Archive v1
@@ -86,6 +87,7 @@ const (
 	RecordProject RecordKind = "project"
 	RecordJournal RecordKind = "journal"
 	RecordWrap    RecordKind = "wrap"
+	RecordHandoff RecordKind = "handoff"
 )
 
 // Observation is source display provenance. It does not control vNext fold
@@ -107,6 +109,7 @@ type Record struct {
 	Project     *ProjectRecord       `json:"project,omitempty"`
 	Journal     *JournalRecord       `json:"journal,omitempty"`
 	Wrap        *WrapRecord          `json:"wrap,omitempty"`
+	Handoff     *HandoffRecord       `json:"handoff,omitempty"`
 }
 
 // ProjectRecord is one project.registered payload.
@@ -127,12 +130,23 @@ type WrapRecord struct {
 	Synthesis string `json:"synthesis"`
 }
 
+// HandoffRecord is one legacy context-transfer packet. Archive v1 carries no
+// focus because the legacy handoff model has no equivalent durable focus.
+type HandoffRecord struct {
+	Purpose           string   `json:"purpose"`
+	Situation         string   `json:"situation,omitempty"`
+	NextActions       string   `json:"next_actions,omitempty"`
+	QuestionsAndRisks string   `json:"questions_and_risks,omitempty"`
+	SuggestedSkills   []string `json:"suggested_skills"`
+}
+
 // ProjectionManifest checksums the semantic vNext result independently
 // of environment-local clocks assigned during staged import.
 type ProjectionManifest struct {
 	ProjectCount          int    `json:"project_count"`
 	EffectiveJournalCount int    `json:"effective_journal_count"`
 	WrapCount             int    `json:"wrap_count"`
+	HandoffCount          int    `json:"handoff_count,omitempty"`
 	SHA256                string `json:"sha256"`
 }
 

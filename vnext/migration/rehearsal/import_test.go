@@ -38,7 +38,8 @@ func TestImportStagesVerifiesAndExactlyReplaysRehearsalArchive(t *testing.T) {
 	if snapshot.Project.Identity.Label != "Loaf" || len(snapshot.EffectiveJournal.Entries) != 2 ||
 		snapshot.EffectiveJournal.Entries[0].Content.Text != "second" ||
 		snapshot.EffectiveJournal.Entries[1].Content.Text != "first" ||
-		len(snapshot.LatestWraps.Wraps) != 1 || snapshot.LatestWraps.Wraps[0].Synthesis != "latest wrap" {
+		len(snapshot.LatestWraps.Wraps) != 1 || snapshot.LatestWraps.Wraps[0].Synthesis != "latest wrap" ||
+		len(snapshot.LatestHandoffs.Handoffs) != 1 || snapshot.LatestHandoffs.Handoffs[0].Purpose != "latest handoff" {
 		t.Fatalf("staged snapshot = %#v", snapshot)
 	}
 
@@ -327,10 +328,10 @@ func rehearsalArchiveV1(t *testing.T) ([]byte, archive.Archive) {
 	content := archive.Content{
 		Source: archive.Source{
 			LegacySchemaVersion: 35, BackupSHA256: strings.Repeat("a", 64), BackupBytes: 4096,
-			JournalFactRows: 4, JournalProjectionRows: 4,
+			JournalFactRows: 4, JournalProjectionRows: 4, HandoffRows: 2,
 		},
 		Project:  archive.ProjectMapping{LegacyProjectID: "proj_legacy", ProjectID: "proj_legacy", Label: "Loaf"},
-		Families: archive.FamilyManifest{Project: true, Journal: true, Wrap: true},
+		Families: archive.FamilyManifest{Project: true, Journal: true, Wrap: true, Handoffs: true},
 		Records: []archive.Record{
 			{
 				Kind: archive.RecordProject, FactID: "fact-project", SubjectID: "proj_legacy", Observation: observation(1_000),
@@ -351,6 +352,19 @@ func rehearsalArchiveV1(t *testing.T) ([]byte, archive.Archive) {
 			{
 				Kind: archive.RecordWrap, SourceID: "legacy-wrap-2", FactID: "fact-wrap-2", SubjectID: "wrap-2", Observation: observation(5_000),
 				Wrap: &archive.WrapRecord{Scope: "migration", Synthesis: "latest wrap"},
+			},
+			{
+				Kind: archive.RecordHandoff, SourceID: "legacy-handoff-1", FactID: "fact-handoff-1", SubjectID: "handoff-1", Observation: observation(6_000),
+				Handoff: &archive.HandoffRecord{
+					Purpose: "earlier handoff", Situation: "first state", SuggestedSkills: []string{"research"},
+				},
+			},
+			{
+				Kind: archive.RecordHandoff, SourceID: "legacy-handoff-2", FactID: "fact-handoff-2", SubjectID: "handoff-2", Observation: observation(7_000),
+				Handoff: &archive.HandoffRecord{
+					Purpose: "latest handoff", Situation: "current state", NextActions: "continue migration",
+					QuestionsAndRisks: "preserve raw predecessors", SuggestedSkills: []string{},
+				},
 			},
 		},
 	}

@@ -40,7 +40,7 @@ func TestContinuitySQLiteContractPinsExactPersistenceImplementation(t *testing.T
 func expectedPersistenceSourceDigests() map[string]string {
 	return map[string]string{
 		"admission.go":                              "5d14f6a57ac5d309fccebb60c4e8b2d717118eab231fd9399bbff89ae62d68cf",
-		"append_kernel.go":                          "a1bbf496f5511322276b8e558f795968f6d27dde6aac508545726d1822f7449c",
+		"append_kernel.go":                          "c6a579e46bf4c6a38330da245ea13d7e44736d9d716ce75526b43a105285e49c",
 		"append_methods.go":                         "b6ffd99675243104c812d16e96b1bc0f2b7150c4b87da2881ba96751760e14ea",
 		"authority.go":                              "3f57b4061ac3e9f4834ae4ff709e46349ce281dd17de82ee89e11f33b476bf4d",
 		"authority_prune_witness.go":                "7bbd29237a04d8896b94ed176d7fbddda024260824751e69801342db6f324d56",
@@ -66,6 +66,7 @@ func expectedPersistenceSourceDigests() map[string]string {
 		"prune.go":                                  "7ebdfe59974850cba0adc0a9ff5d3de90b3de09ca6d2de1e53300972f63eda12",
 		"read.go":                                   "4ab7003fa9d5d34f9664f6859993881e031a0913cd5f58307d840868d422552b",
 		"recovery_prune_candidate.go":               "85f3d488a06961450095131334996faf89ab31714b919202931841bc8eb3b301",
+		"rehearsal.go":                              "85a2726335fdf7124a7df994c04322bc3fc0b49cb69d69cc5d652d5ff97cb397",
 		"relay_watermark.go":                        "dd72f9d0774bb56f1dfbbe4c7ada2568cfd05e56053d472c8e9e4ce27cfc23c0",
 		"relay_watermark_migration.go":              "c855eaa9558b72eea0a46a158c215acd71b66f6ca6cf24b607f82e855ce447b0",
 		"schema.go":                                 "1c07c23d6bf0d2e99148e126aa6c198de1ae5e49ee2a21e8d164aa083af99dcf",
@@ -109,7 +110,8 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 			"validateSubjectHistoryV1":       "9b2b39d5122479a4495b33fd2a0af0bcc8bf8afc2e36a3a10c5f549532ad13ec",
 		},
 		"append_kernel.go": {
-			"Store.appendFactV1":            "2ed207eba39ee4900ecaf46f06ef85f92a437d380e9a65334416423ba50e3430",
+			"Store.appendFactV1":            "74426e5edae0a9101ef70982d6aba401951bd3b9f31b40bd95ac8164537d60d8",
+			"Store.appendIntentInTxV1":      "40afa68daba73a9dde4eb4de1a666637224c36cedcb7de5c45e8570578c6da3b",
 			"allocateEnvelopeV1":            "9bf3f41c2e97be809f02d95b9f329e3689659f4d01c22f9cd16417ab02672dd1",
 			"corruptFactProblemV1":          "57f39bd5a215cf84386d7d7b6b92bcd1276eed50a27ee01097e3853a69433487",
 			"finishStoredFactScanV1":        "ed8b1b40f9ce0076291e3e1238626e33c975f7d8c34469c12462f55a88e44dbb",
@@ -822,6 +824,19 @@ func expectedPersistenceFunctionDigests() map[string]map[string]string {
 			"wireSubjectRefV1.domainValue":                 "bc63f16ff246a6b7464506b3d197e95f553c65672dcb98a38c1f81569bbc6739",
 			"wireVerificationEvidenceV1.validate":          "4777e91b940ec2554a1c70e4ea93b197d04a33e978236923200dadf2321dd305",
 			"wireWrapRecordedV1.validate":                  "3c6676c2943d40de5827fe8325f47ae1d80a76a62aa54d14fa4767ae6b9cf3f5",
+		},
+		"rehearsal.go": {
+			"NewHandoffRehearsalFact":          "4866fd292c093337f45cca2df88942c5a6c343ea4a00e3a953bce0f015ca426b",
+			"NewJournalRehearsalFact":          "2cf0b49e36c299078b845134a94b95e4093b2906e31cf44bdaf41a50553b72c3",
+			"NewProjectRehearsalFact":          "79bbb4d2f5b785a92906c8c0f0ce0993a6269da7fac2e4d5903f9f54a2fd1734",
+			"NewWrapRehearsalFact":             "ccee48e3576084e93117587a9e70752af4af9e0ba3d06ef3fae99c0edff72e4b",
+			"Store.ImportRehearsalFacts":       "1e92e27d03a2d8a0e460907c7b7b83d88fd6aa85cecfeb60393468141acd0317",
+			"loadRehearsalFactsV1":             "09abbcb0b496c8cd86f7b29f43c6b4f4d97772aac575952f17474525a2bee388",
+			"newRehearsalFactV1":               "29188361b115d4b28c3922ecd598ffda7946690ece9c9864fad4a51313c0d86b",
+			"rehearsalContaminationProblemV1":  "8ce207aa77e7456df46f52241d0f22a8fea166a47ef7a1ef4bf36ec113bf8161",
+			"requireExactRehearsalInventoryV1": "26ecb128a1eb56b5f610e7c1fc0fbfdcc0f1e274c28cc9bc2318a2582ec4b251",
+			"requireExactRehearsalPrefixV1":    "3f35d960747f8823d2999aa2c0b41fac2b953cf1402cce0f0d586ff91bf27925",
+			"requireRehearsalSyncAbsenceV1":    "d42a7ec9e89610d22dd759883f6793905633e5e96dbd896ba843af5183b870ee",
 		},
 	}
 }

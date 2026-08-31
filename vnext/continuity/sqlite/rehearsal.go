@@ -81,6 +81,31 @@ func NewWrapRehearsalFact(
 	})
 }
 
+// NewHandoffRehearsalFact prepares an unfocused legacy handoff for a rehearsal.
+func NewHandoffRehearsalFact(
+	projectID continuity.ProjectID,
+	factID continuity.FactID,
+	handoffID continuity.SubjectID,
+	payload continuity.HandoffRecordedPayload,
+) (RehearsalFact, error) {
+	if payload.Focus != nil {
+		return RehearsalFact{}, &continuity.Problem{
+			Code: continuity.ProblemInvalid, Field: "focus", Detail: "legacy rehearsal handoffs must be unfocused",
+		}
+	}
+	content, err := encodeHandoffRecordedV1(payload)
+	if err != nil {
+		return RehearsalFact{}, err
+	}
+	return newRehearsalFactV1(appendIntentV1{
+		projectID: projectID,
+		factID:    factID,
+		subject:   continuity.SubjectRef{Kind: continuity.RecordHandoff, ID: handoffID},
+		kind:      continuity.FactHandoffRecorded,
+		content:   content,
+	})
+}
+
 func newRehearsalFactV1(intent appendIntentV1) (RehearsalFact, error) {
 	if err := validateAppendIntentV1(intent); err != nil {
 		return RehearsalFact{}, err

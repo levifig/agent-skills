@@ -2,6 +2,7 @@ package archive
 
 import (
 	"bytes"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -22,6 +23,10 @@ func TestSealMarshalParseIsDeterministicAndIntegrityProtected(t *testing.T) {
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("Seal() is not deterministic:\nfirst  = %#v\nsecond = %#v", first, second)
 	}
+	if first.Content.Expected.SHA256 != "ec609fbe21957ed2b5a455747d79d649e90fdb44c3111d7a2bd67c4f46fdd937" ||
+		first.ContentSHA256 != "4862c37ccbe579f5affd430680c0a9ef73a2573deea9a91630222c9a85eaeed2" {
+		t.Fatalf("handoff-free v1 digests changed: projection=%s content=%s", first.Content.Expected.SHA256, first.ContentSHA256)
+	}
 	encoded, err := Marshal(first)
 	if err != nil {
 		t.Fatalf("Marshal() error = %v", err)
@@ -32,6 +37,9 @@ func TestSealMarshalParseIsDeterministicAndIntegrityProtected(t *testing.T) {
 	}
 	if !bytes.Equal(encoded, replayed) || len(encoded) == 0 || encoded[len(encoded)-1] != '\n' {
 		t.Fatalf("canonical archive bytes differ or lack final newline")
+	}
+	if bytes.Contains(encoded, []byte(`"handoff_rows"`)) || bytes.Contains(encoded, []byte(`"handoff_count"`)) {
+		t.Fatalf("handoff-free v1 archive changed its canonical zero-field shape: %s", encoded)
 	}
 	parsed, err := Parse(encoded)
 	if err != nil {
@@ -79,6 +87,35 @@ func TestSealBuildsExpectedSemanticProjectionWithoutDuplicatingWraps(t *testing.
 	}
 	if sealed.Content.Families.CompleteForCutover {
 		t.Fatal("partial continuity archive declared itself cutover-complete")
+	}
+}
+
+func TestSealRetainsAllUnfocusedHandoffRecordsAndProjectsOnlyLatest(t *testing.T) {
+	content := validContentV1()
+	observation := content.Records[0].Observation
+	content.Source.HandoffRows = 2
+	content.Families.Handoffs = true
+	content.Records = append(content.Records,
+		Record{
+			Kind: RecordHandoff, SourceID: "legacy-handoff-1", FactID: "fact-handoff-1", SubjectID: "handoff-1", Observation: observation,
+			Handoff: &HandoffRecord{Purpose: "earlier", SuggestedSkills: []string{}},
+		},
+		Record{
+			Kind: RecordHandoff, SourceID: "legacy-handoff-2", FactID: "fact-handoff-2", SubjectID: "handoff-2", Observation: observation,
+			Handoff: &HandoffRecord{Purpose: "latest", SuggestedSkills: []string{"handoff"}},
+		},
+	)
+	sealed, err := Seal(content)
+	if err != nil {
+		t.Fatalf("Seal(handoffs) error = %v", err)
+	}
+	if sealed.Content.Expected.HandoffCount != 1 || len(sealed.Content.Records) != len(content.Records) {
+		t.Fatalf("handoff archive = %#v", sealed.Content)
+	}
+
+	content.Families.Handoffs = false
+	if _, err := Seal(content); err == nil || !strings.Contains(err.Error(), "handoff family") {
+		t.Fatalf("Seal(undeclared handoffs) error = %v", err)
 	}
 }
 
@@ -218,6 +255,46 @@ func TestArchiveResourceBounds(t *testing.T) {
 			t.Fatalf("Seal(oversized payload) error = %v", err)
 		}
 	})
+}
+
+func TestHandoffSuggestedSkillsDecoderRejectsStructuralAmplification(t *testing.T) {
+	var encoded strings.Builder
+	encoded.WriteString(`{"purpose":"handoff","suggested_skills":[`)
+	for index := 0; index <= maxHandoffSuggestedSkillsV1; index++ {
+		if index != 0 {
+			encoded.WriteByte(',')
+		}
+		encoded.WriteString(`""`)
+	}
+	encoded.WriteString(`]}`)
+	var handoff HandoffRecord
+	if err := json.Unmarshal([]byte(encoded.String()), &handoff); err == nil || !strings.Contains(err.Error(), "exceed") {
+		t.Fatalf("json.Unmarshal(amplified skills) error = %v", err)
+	}
+}
+
+func TestHandoffSuggestedSkillsRequiresAnExplicitArray(t *testing.T) {
+	content := validContentV1()
+	content.Source.HandoffRows = 1
+	content.Families.Handoffs = true
+	content.Records = append(content.Records, Record{
+		Kind: RecordHandoff, SourceID: "legacy-handoff", FactID: "fact-handoff", SubjectID: "handoff",
+		Observation: content.Records[0].Observation,
+		Handoff:     &HandoffRecord{Purpose: "handoff"},
+	})
+	if _, err := Seal(content); err == nil || !strings.Contains(err.Error(), "must be an array") {
+		t.Fatalf("Seal(nil suggested skills) error = %v", err)
+	}
+
+	for _, encoded := range []string{
+		`{"purpose":"handoff"}`,
+		`{"purpose":"handoff","suggested_skills":null}`,
+	} {
+		var handoff HandoffRecord
+		if err := json.Unmarshal([]byte(encoded), &handoff); err == nil {
+			t.Fatalf("json.Unmarshal(%s) unexpectedly accepted a missing or null skill array", encoded)
+		}
+	}
 }
 
 func validContentV1() Content {

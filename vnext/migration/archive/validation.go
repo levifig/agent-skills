@@ -28,7 +28,7 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	if content.Source.BackupBytes < 1 || content.Source.JournalFactRows < 0 ||
 		content.Source.JournalProjectionRows < 0 || content.Source.CollapsedRevisionRows < 0 ||
 		content.Source.JournalOriginRows < 0 || content.Source.DroppedSpecLinks < 0 ||
-		content.Source.DroppedTaskLinks < 0 {
+		content.Source.DroppedTaskLinks < 0 || content.Source.HandoffRows < 0 {
 		return fmt.Errorf("source counts and backup bytes must be nonnegative with a nonempty backup")
 	}
 	if content.Source.CollapsedRevisionRows != content.Source.JournalFactRows-content.Source.JournalProjectionRows {
@@ -46,8 +46,8 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	if !content.Families.Project || !content.Families.Journal || !content.Families.Wrap {
 		return fmt.Errorf("archive version 1 requires project, journal, and wrap families")
 	}
-	if content.Families.Ideas || content.Families.Sparks || content.Families.Handoffs ||
-		content.Families.Scratchpads || content.Families.Decisions || content.Families.Explorations ||
+	if content.Families.Ideas || content.Families.Sparks || content.Families.Scratchpads ||
+		content.Families.Decisions || content.Families.Explorations ||
 		content.Families.Findings || content.Families.CompleteForCutover {
 		return fmt.Errorf("archive version 1 is rehearsal-only and cannot include later families or cutover completeness")
 	}
@@ -57,7 +57,8 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	factIDs := make(map[continuity.FactID]struct{}, len(content.Records))
 	subjects := make(map[string]struct{}, len(content.Records))
 	projectRecords := 0
-	timelineRecords := 0
+	journalProjectionRecords := 0
+	handoffRecords := 0
 	for index := range content.Records {
 		record := content.Records[index]
 		if err := validateRecordV1(record, content.Project, index); err != nil {
@@ -74,15 +75,23 @@ func validateContentV1(content Content, verifyExpected bool) error {
 		subjects[subjectKey] = struct{}{}
 		if record.Kind == RecordProject {
 			projectRecords++
-		} else {
-			timelineRecords++
+		} else if record.Kind == RecordJournal || record.Kind == RecordWrap {
+			journalProjectionRecords++
+		} else if record.Kind == RecordHandoff {
+			handoffRecords++
 		}
 	}
 	if projectRecords != 1 {
 		return fmt.Errorf("archive must contain exactly one project record")
 	}
-	if timelineRecords != content.Source.JournalProjectionRows {
+	if journalProjectionRecords != content.Source.JournalProjectionRows {
 		return fmt.Errorf("journal projection row count must equal archived journal and wrap records")
+	}
+	if handoffRecords != content.Source.HandoffRows {
+		return fmt.Errorf("handoff row count must equal archived handoff records")
+	}
+	if handoffRecords != 0 && !content.Families.Handoffs {
+		return fmt.Errorf("handoff records require the handoff family declaration")
 	}
 	expected, err := expectedProjectionV1(content.Records)
 	if err != nil {
@@ -106,7 +115,7 @@ func validateRecordV1(record Record, project ProjectMapping, index int) error {
 		return fmt.Errorf("record %d observation: %w", index, err)
 	}
 	payloads := 0
-	for _, present := range []bool{record.Project != nil, record.Journal != nil, record.Wrap != nil} {
+	for _, present := range []bool{record.Project != nil, record.Journal != nil, record.Wrap != nil, record.Handoff != nil} {
 		if present {
 			payloads++
 		}
@@ -156,6 +165,25 @@ func validateRecordV1(record Record, project ProjectMapping, index int) error {
 		}
 		if err := payload.Validate(); err != nil {
 			return fmt.Errorf("record %d wrap payload: %w", index, err)
+		}
+	case RecordHandoff:
+		if strings.TrimSpace(record.SourceID) == "" {
+			return fmt.Errorf("record %d handoff source id must not be empty", index)
+		}
+		if record.Handoff == nil || record.Project != nil || record.Journal != nil || record.Wrap != nil {
+			return fmt.Errorf("record %d handoff tag does not match its payload", index)
+		}
+		if record.Handoff.SuggestedSkills == nil {
+			return fmt.Errorf("record %d handoff suggested skills must be an array", index)
+		}
+		payload := continuity.HandoffRecordedPayload{
+			Observation: observation,
+			Purpose:     record.Handoff.Purpose, Situation: record.Handoff.Situation,
+			NextActions: record.Handoff.NextActions, QuestionsAndRisks: record.Handoff.QuestionsAndRisks,
+			SuggestedSkills: record.Handoff.SuggestedSkills,
+		}
+		if err := payload.Validate(); err != nil {
+			return fmt.Errorf("record %d handoff payload: %w", index, err)
 		}
 	default:
 		return fmt.Errorf("record %d kind %q is not supported by archive version 1", index, record.Kind)
