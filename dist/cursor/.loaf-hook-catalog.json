@@ -1,7 +1,7 @@
 {
   "version": 1,
   "target": "cursor",
-  "package_version": "0.3.1",
+  "package_version": "0.5.0",
   "entries": [
     {
       "event": "preToolUse",
@@ -312,57 +312,6 @@
         [
           "--hook",
           "validate-commit"
-        ]
-      ]
-    },
-    {
-      "event": "preToolUse",
-      "hook_id": "detect-linear-magic",
-      "type": "command",
-      "template": {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Bash",
-        "command": "loaf journal log --detect-linear",
-        "if": "Bash(git commit:*)"
-      },
-      "signatures": [
-        [
-          "loaf",
-          "journal",
-          "log",
-          "--detect-linear"
-        ]
-      ],
-      "stems": [
-        [
-          "journal",
-          "log",
-          "--detect-linear"
-        ]
-      ]
-    },
-    {
-      "event": "postToolUse",
-      "hook_id": "generate-task-board",
-      "type": "command",
-      "template": {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Edit|Write",
-        "command": "loaf task refresh"
-      },
-      "signatures": [
-        [
-          "loaf",
-          "task",
-          "refresh"
-        ]
-      ],
-      "stems": [
-        [
-          "task",
-          "refresh"
         ]
       ]
     },

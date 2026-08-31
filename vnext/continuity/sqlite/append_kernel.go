@@ -278,14 +278,17 @@ func validateStoredFactV1(fact storedFactV1) error {
 	if err := fact.environmentID.Validate(); err != nil {
 		return corruptFactProblemV1()
 	}
+	if fact.payloadVersion != payloadVersionV1 || fact.envelopeVersion != envelopeVersionV1 || fact.environmentSequence < 1 || fact.clock.WallMillis < 0 {
+		return corruptFactProblemV1()
+	}
+	if legacyScratchpadFactV1(fact.subject, fact.kind) {
+		return nil
+	}
 	definition, ok := continuity.DefinitionFor(fact.kind)
 	if !ok || definition.Record != fact.subject.Kind {
 		return corruptFactProblemV1()
 	}
 	if fact.subject.Kind == continuity.RecordProjectIdentity && fact.subject.ID != continuity.SubjectID(fact.projectID) {
-		return corruptFactProblemV1()
-	}
-	if fact.payloadVersion != payloadVersionV1 || fact.envelopeVersion != envelopeVersionV1 || fact.environmentSequence < 1 || fact.clock.WallMillis < 0 {
 		return corruptFactProblemV1()
 	}
 	canonical, err := canonicalizeStoredContentV1(fact.kind, fact.payloadVersion, string(fact.content))

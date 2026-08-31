@@ -59,14 +59,6 @@ func TestContinuityStoreAdmitsEveryTypedFactKind(t *testing.T) {
 	mustAppendV1(t)(store.RetractFinding(ctx, projectID, "fact-finding-retracted", "finding-1", continuity.FindingRetractionPayload{Observation: observation, Predecessor: findingCorrected.FactID}))
 	mustAppendV1(t)(store.RecordHandoff(ctx, projectID, "fact-handoff", "handoff-1", continuity.HandoffRecordedPayload{Observation: observation, Purpose: "Continue LOAF-96."}))
 
-	mustAppendV1(t)(store.OpenScratchpad(ctx, projectID, "fact-scratchpad", "scratchpad-1", continuity.ScratchpadOpenedPayload{Observation: observation, Label: "Append review"}))
-	mustAppendV1(t)(store.IntroduceScratchpadParticipant(ctx, projectID, "fact-participant", "scratchpad-1", continuity.ScratchpadParticipantPayload{Observation: observation, ParticipantID: "participant-1", Name: "reviewer"}))
-	mustAppendV1(t)(store.RecordScratchpadMessage(ctx, projectID, "fact-message", "scratchpad-1", continuity.ScratchpadMessagePayload{Observation: observation, ParticipantID: "participant-1", Text: "Reviewing."}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "append.go", ExpiresAtMillis: 200}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim-renewed", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "append.go", ExpiresAtMillis: 300}))
-	mustAppendV1(t)(store.ReleaseScratchpadClaim(ctx, projectID, "fact-claim-released", "scratchpad-1", continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-1", ReleasedBy: "participant-1"}))
-	mustAppendV1(t)(store.CloseScratchpad(ctx, projectID, "fact-scratchpad-closed", "scratchpad-1", continuity.ScratchpadClosePayload{Observation: observation}))
-
 	attachment := mustAppendV1(t)(store.AttachExternalReference(ctx, projectID, "fact-attached", "reference-1", continuity.ExternalReferenceAttachmentPayload{Observation: observation, Target: continuity.SubjectRef{Kind: continuity.RecordJournalEntry, ID: "journal-1"}}))
 	mustAppendV1(t)(store.DetachExternalReference(ctx, projectID, "fact-detached", "reference-1", continuity.ExternalReferenceDetachmentPayload{Observation: observation, Target: continuity.SubjectRef{Kind: continuity.RecordJournalEntry, ID: "journal-1"}, Predecessor: attachment.FactID}))
 	mustAppendV1(t)(store.RecordVerificationEvidence(ctx, projectID, "fact-evidence", "evidence-1", continuity.VerificationEvidencePayload{Observation: observation, Target: continuity.SubjectRef{Kind: continuity.RecordJournalEntry, ID: "journal-1"}, Check: "go test", Method: "native", Outcome: continuity.VerificationPassed, Detail: "Pass."}))
@@ -231,77 +223,6 @@ func TestContinuityStoreEnforcesCausalAndTerminalState(t *testing.T) {
 	assertProblemCodeV1(t, err, continuity.ProblemPreconditionFailed)
 }
 
-func TestContinuityStoreScratchpadClaimsRemainAdvisoryAndMonotonic(t *testing.T) {
-	t.Parallel()
-
-	store := openAppendStoreV1(t, filepath.Join(testTempDir(t), "state"), "environment-a", 100)
-	ctx := context.Background()
-	projectID := continuity.ProjectID("project-scratchpad")
-	observation := appendObservationV1()
-	mustAppendV1(t)(store.RegisterProject(ctx, projectID, "fact-project", continuity.ProjectRegistrationPayload{Observation: observation, Label: "Loaf"}))
-	mustAppendV1(t)(store.OpenScratchpad(ctx, projectID, "fact-open", "scratchpad-1", continuity.ScratchpadOpenedPayload{Observation: observation, Label: "Review"}))
-	for index := 1; index <= 2; index++ {
-		participantID := continuity.SubjectID(fmt.Sprintf("participant-%d", index))
-		mustAppendV1(t)(store.IntroduceScratchpadParticipant(ctx, projectID, continuity.FactID(fmt.Sprintf("fact-participant-%d", index)), "scratchpad-1", continuity.ScratchpadParticipantPayload{Observation: observation, ParticipantID: participantID, Name: string(participantID)}))
-	}
-	_, err := store.IntroduceScratchpadParticipant(ctx, projectID, "fact-participant-duplicate", "scratchpad-1", continuity.ScratchpadParticipantPayload{Observation: observation, ParticipantID: "participant-1", Name: "duplicate"})
-	assertProblemCodeV1(t, err, continuity.ProblemSubjectAlreadyRegistered)
-	_, err = store.RecordScratchpadMessage(ctx, projectID, "fact-message-missing", "scratchpad-1", continuity.ScratchpadMessagePayload{Observation: observation, ParticipantID: "participant-missing", Text: "Missing."})
-	assertProblemCodeV1(t, err, continuity.ProblemReferenceNotFound)
-	_, err = store.RecordScratchpadClaim(ctx, projectID, "fact-claim-missing", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-missing", ParticipantID: "participant-missing", Resource: "resource", ExpiresAtMillis: 200})
-	assertProblemCodeV1(t, err, continuity.ProblemReferenceNotFound)
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim-1", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "same-resource", ExpiresAtMillis: 200}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-claim-2", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-2", ParticipantID: "participant-2", Resource: "same-resource", ExpiresAtMillis: 250}))
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-renew", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "same-resource", ExpiresAtMillis: 300}))
-
-	_, err = store.RecordScratchpadClaim(ctx, projectID, "fact-rebound-participant", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-2", Resource: "same-resource", ExpiresAtMillis: 400})
-	assertProblemCodeV1(t, err, continuity.ProblemReferenceMismatch)
-	_, err = store.RecordScratchpadClaim(ctx, projectID, "fact-rebound-resource", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "different-resource", ExpiresAtMillis: 400})
-	assertProblemCodeV1(t, err, continuity.ProblemReferenceMismatch)
-	_, err = store.RecordScratchpadClaim(ctx, projectID, "fact-short-renew", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "same-resource", ExpiresAtMillis: 250})
-	assertProblemCodeV1(t, err, continuity.ProblemPreconditionFailed)
-	_, err = store.ReleaseScratchpadClaim(ctx, projectID, "fact-wrong-release", "scratchpad-1", continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-1", ReleasedBy: "participant-2"})
-	assertProblemCodeV1(t, err, continuity.ProblemReferenceMismatch)
-	mustAppendV1(t)(store.RecordScratchpadClaim(ctx, projectID, "fact-expired-claim", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-expired", ParticipantID: "participant-1", Resource: "expired-resource", ExpiresAtMillis: 2}))
-	mustAppendV1(t)(store.ReleaseScratchpadClaim(ctx, projectID, "fact-expired-release", "scratchpad-1", continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-expired", ReleasedBy: "participant-1"}))
-	mustAppendV1(t)(store.ReleaseScratchpadClaim(ctx, projectID, "fact-release", "scratchpad-1", continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-1", ReleasedBy: "participant-1"}))
-	_, err = store.ReleaseScratchpadClaim(ctx, projectID, "fact-release-again", "scratchpad-1", continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-1", ReleasedBy: "participant-1"})
-	assertProblemCodeV1(t, err, continuity.ProblemPreconditionFailed)
-	_, err = store.RecordScratchpadClaim(ctx, projectID, "fact-renew-after-release", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "same-resource", ExpiresAtMillis: 400})
-	assertProblemCodeV1(t, err, continuity.ProblemPreconditionFailed)
-	mustAppendV1(t)(store.CloseScratchpad(ctx, projectID, "fact-close", "scratchpad-1", continuity.ScratchpadClosePayload{Observation: observation, ClosedBy: "arbitrary-operator"}))
-
-	for _, operation := range []struct {
-		name string
-		run  func() error
-	}{
-		{name: "participant", run: func() error {
-			_, err := store.IntroduceScratchpadParticipant(ctx, projectID, "fact-after-close-participant", "scratchpad-1", continuity.ScratchpadParticipantPayload{Observation: observation, ParticipantID: "participant-3", Name: "late"})
-			return err
-		}},
-		{name: "message", run: func() error {
-			_, err := store.RecordScratchpadMessage(ctx, projectID, "fact-after-close-message", "scratchpad-1", continuity.ScratchpadMessagePayload{Observation: observation, ParticipantID: "participant-1", Text: "late"})
-			return err
-		}},
-		{name: "claim", run: func() error {
-			_, err := store.RecordScratchpadClaim(ctx, projectID, "fact-after-close-claim", "scratchpad-1", continuity.ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-late", ParticipantID: "participant-1", Resource: "late", ExpiresAtMillis: 500})
-			return err
-		}},
-		{name: "release", run: func() error {
-			_, err := store.ReleaseScratchpadClaim(ctx, projectID, "fact-after-close-release", "scratchpad-1", continuity.ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-2", ReleasedBy: "participant-2"})
-			return err
-		}},
-		{name: "close", run: func() error {
-			_, err := store.CloseScratchpad(ctx, projectID, "fact-after-close-close", "scratchpad-1", continuity.ScratchpadClosePayload{Observation: observation})
-			return err
-		}},
-	} {
-		t.Run("after close "+operation.name, func(t *testing.T) {
-			assertProblemCodeV1(t, operation.run(), continuity.ProblemPreconditionFailed)
-		})
-	}
-}
-
 func TestContinuityStoreExternalReferenceEdgesAreCausal(t *testing.T) {
 	t.Parallel()
 
@@ -362,8 +283,6 @@ func TestContinuityStoreRejectsCrossProjectAndForbiddenDurableReferences(t *test
 	assertProblemCodeV1(t, err, continuity.ProblemReferenceMismatch)
 
 	_, err = store.AttachExternalReference(ctx, projectB, "fact-reference-chain", "reference-b", continuity.ExternalReferenceAttachmentPayload{Observation: observation, Target: continuity.SubjectRef{Kind: continuity.RecordExternalReference, ID: "reference-b"}})
-	assertProblemCodeV1(t, err, continuity.ProblemInvalid)
-	_, err = store.RecordVerificationEvidence(ctx, projectB, "fact-scratchpad-evidence", "evidence-scratchpad", continuity.VerificationEvidencePayload{Observation: observation, Target: continuity.SubjectRef{Kind: continuity.RecordScratchpad, ID: "scratchpad-b"}, Check: "go test", Method: "native", Outcome: continuity.VerificationPassed, Detail: "Forbidden ephemeral target."})
 	assertProblemCodeV1(t, err, continuity.ProblemInvalid)
 	mustAppendV1(t)(store.AttachExternalReference(ctx, projectB, "fact-attach-project", "reference-b", continuity.ExternalReferenceAttachmentPayload{Observation: observation, Target: continuity.SubjectRef{Kind: continuity.RecordProjectIdentity, ID: continuity.SubjectID(projectB)}}))
 }

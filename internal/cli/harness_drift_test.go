@@ -124,6 +124,22 @@ func TestHarnessContentDriftDoctorCountsEveryInstalledHarness(t *testing.T) {
 	}
 }
 
+func TestHarnessContentDriftDoctorDoesNotCountReceiptAsStaleHarness(t *testing.T) {
+	home := harnessDriftHome(t)
+	cursor := filepath.Join(home, ".cursor")
+	codex := filepath.Join(home, ".codex")
+	harnessDriftInstalledHarness(t, cursor, harnessDriftStaleFixtureVersion)
+	harnessDriftInstalledHarness(t, codex, harnessDriftBinaryFixtureVersion)
+	if err := writeHarnessReconcileReceipt(codex, harnessReconcileReceipt{ContractVersion: 1, Target: "codex", FromVersion: harnessDriftStaleFixtureVersion, ToVersion: harnessDriftBinaryFixtureVersion, Outcome: "updated"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result := checkHarnessContentDrift().Run(doctorContext{projectRoot: home, cliVersion: harnessDriftBinaryFixtureVersion})
+	if !strings.Contains(result.Message, "1 of 2 installed harnesses") {
+		t.Fatalf("message = %q detail=%q, receipt must not inflate stale count", result.Message, result.Detail)
+	}
+}
+
 // TestHarnessDriftBinaryVersionIgnoresTheDevIdentity pins the split between the
 // two versions a dev build carries. `loaf --version` reports the build's own
 // commit identity; drift compares markers against the distribution's release

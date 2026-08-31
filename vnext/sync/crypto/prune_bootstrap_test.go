@@ -321,7 +321,7 @@ func TestPruneBootstrapMaximumEntriesSealAndOpen(t *testing.T) {
 	for index := range plaintext.Entries {
 		plaintext.Entries[index] = protocol.PruneBootstrapEntry{
 			PruneReferenceDigest: sha256.Sum256([]byte(fmt.Sprintf("reference-%04d", index))),
-			FactKind:             continuity.FactScratchpadMessageRecorded,
+			FactKind:             continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                  continuity.HybridTime{WallMillis: int64(index), Logical: int32(index)},
 		}
 	}
@@ -390,17 +390,17 @@ func testBootstrapPlaintext() protocol.PruneBootstrapPlaintext {
 		ClosureReferenceDigest:  controlDigest(0xc1),
 		ManifestCount:           2,
 		ManifestDigest:          controlDigest(0xc2),
-		ScratchpadSubject:       "scratchpad-1",
+		LegacySubject:           "scratchpad-1",
 		EntryCount:              2,
 		Entries: []protocol.PruneBootstrapEntry{
 			{
 				PruneReferenceDigest: controlDigest(0xd0),
-				FactKind:             continuity.FactScratchpadMessageRecorded,
+				FactKind:             continuity.FactKind("scratchpad.message-recorded"),
 				HLC:                  continuity.HybridTime{WallMillis: 100, Logical: 2},
 			},
 			{
 				PruneReferenceDigest: controlDigest(0xd1),
-				FactKind:             continuity.FactScratchpadClaimReleased,
+				FactKind:             continuity.FactKind("scratchpad.claim-released"),
 				HLC:                  continuity.HybridTime{WallMillis: 101, Logical: 0},
 			},
 		},

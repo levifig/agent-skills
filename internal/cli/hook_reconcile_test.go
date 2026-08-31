@@ -199,8 +199,8 @@ func TestHookForeignDriftIsDetectedByValueAndOrder(t *testing.T) {
 	}
 }
 
-// The live Cursor file is already converged for its Loaf entries, so a
-// reconcile of it decides nothing at all.
+// The prior live Cursor file converges by removing the two hooks retired by
+// the tracker-native cutover.
 func TestHookReconcileLeavesTheConvergedCursorFileAlone(t *testing.T) {
 	fixture := newCursorHookFixture(t)
 	live := string(testHookFixture(t, "cursor-hooks-live.json"))
@@ -209,8 +209,8 @@ func TestHookReconcileLeavesTheConvergedCursorFileAlone(t *testing.T) {
 
 	actions := fixture.apply(t)
 
-	if len(actions) != 0 {
-		t.Fatalf("actions = %s, want a converged file to decide nothing", describeHookActions(actions))
+	if len(actions) != 2 || !strings.Contains(describeHookActions(actions), "remove hook:postToolUse") || !strings.Contains(describeHookActions(actions), "remove hook:preToolUse") {
+		t.Fatalf("actions = %s, want removal of the two retired hooks", describeHookActions(actions))
 	}
 }
 
@@ -852,8 +852,8 @@ func TestHookReconcileRecordsTrustedExecutablePathsPerTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ownsEntry error = %v", err)
 	}
-	if !ownership.owned || ownership.hookID != "generate-task-board" {
-		t.Fatalf("ownsEntry = %#v, want the previously recorded path still recognized", ownership)
+	if !ownership.owned || ownership.hookID != "" || ownership.reason != hookOwnershipLegacy {
+		t.Fatalf("ownsEntry = %#v, want the previously recorded retired path still recognized", ownership)
 	}
 }
 

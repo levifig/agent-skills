@@ -24,7 +24,7 @@ func TestSealMarshalParseIsDeterministicAndIntegrityProtected(t *testing.T) {
 		t.Fatalf("Seal() is not deterministic:\nfirst  = %#v\nsecond = %#v", first, second)
 	}
 	if first.Content.Expected.SHA256 != "ec609fbe21957ed2b5a455747d79d649e90fdb44c3111d7a2bd67c4f46fdd937" ||
-		first.ContentSHA256 != "4862c37ccbe579f5affd430680c0a9ef73a2573deea9a91630222c9a85eaeed2" {
+		first.ContentSHA256 != "bae8dc3f5bdce97347b92026a8c6f458a3dff9e3d6fdb1f9cf195e5082b0f7c2" {
 		t.Fatalf("handoff-free v1 digests changed: projection=%s content=%s", first.Content.Expected.SHA256, first.ContentSHA256)
 	}
 	encoded, err := Marshal(first)
@@ -127,7 +127,7 @@ func TestSealRetainsAllUnfocusedHandoffRecordsAndProjectsOnlyLatest(t *testing.T
 	if err != nil {
 		t.Fatalf("Seal(pre-marker handoffs) error = %v", err)
 	}
-	if preMarker.ContentSHA256 != "aec9a2fa8c4a93cb05a93c89be8de37e2ec38b97a414fbbe09561406ff54c980" {
+	if preMarker.ContentSHA256 != "d012c8aaccb6d66aaaa67dbea779c57ed7a6a293f505ab30a61d29a3da1a83f2" {
 		t.Fatalf("pre-marker handoff digest = %q", preMarker.ContentSHA256)
 	}
 	content.Source.HandoffMapping = "future_mapping"

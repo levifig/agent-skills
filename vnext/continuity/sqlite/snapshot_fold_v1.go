@@ -90,13 +90,6 @@ func foldProjectSnapshotV1(ctx context.Context, projectID continuity.ProjectID, 
 	if err := corpus.contextErrV1(); err != nil {
 		return continuity.Snapshot{}, err
 	}
-	scratchpads, err := foldScratchpadsV1(corpus, atMillis)
-	if err != nil {
-		return continuity.Snapshot{}, err
-	}
-	if err := corpus.contextErrV1(); err != nil {
-		return continuity.Snapshot{}, err
-	}
 	references, err := foldExternalReferencesV1(corpus)
 	if err != nil {
 		return continuity.Snapshot{}, err
@@ -123,7 +116,6 @@ func foldProjectSnapshotV1(ctx context.Context, projectID continuity.ProjectID, 
 		LatestCheckpoints:    continuity.LatestCheckpointsProjection{Checkpoints: checkpoints},
 		CurrentFindings:      continuity.CurrentFindingsProjection{Findings: findings},
 		LatestHandoffs:       continuity.LatestHandoffsProjection{Handoffs: handoffs},
-		Scratchpads:          continuity.ScratchpadsProjection{Scratchpads: scratchpads},
 		ExternalReferences:   continuity.ExternalReferencesProjection{References: references},
 		VerificationEvidence: continuity.VerificationEvidenceProjection{Evidence: evidence},
 	}, nil
@@ -349,24 +341,6 @@ func observationForStoredFactV1(fact storedFactV1) (continuity.Observation, erro
 		return payload.Observation.domain(), err
 	case continuity.FactHandoffRecorded:
 		payload, err := decodeStoredWireV1[wireHandoffRecordedV1](string(fact.content))
-		return payload.Observation.domain(), err
-	case continuity.FactScratchpadOpened:
-		payload, err := decodeStoredWireV1[wireScratchpadOpenedV1](string(fact.content))
-		return payload.Observation.domain(), err
-	case continuity.FactScratchpadParticipantIntroduced:
-		payload, err := decodeStoredWireV1[wireScratchpadParticipantV1](string(fact.content))
-		return payload.Observation.domain(), err
-	case continuity.FactScratchpadMessageRecorded:
-		payload, err := decodeStoredWireV1[wireScratchpadMessageV1](string(fact.content))
-		return payload.Observation.domain(), err
-	case continuity.FactScratchpadClaimRecorded:
-		payload, err := decodeStoredWireV1[wireScratchpadClaimV1](string(fact.content))
-		return payload.Observation.domain(), err
-	case continuity.FactScratchpadClaimReleased:
-		payload, err := decodeStoredWireV1[wireScratchpadClaimReleaseV1](string(fact.content))
-		return payload.Observation.domain(), err
-	case continuity.FactScratchpadClosed:
-		payload, err := decodeStoredWireV1[wireScratchpadCloseV1](string(fact.content))
 		return payload.Observation.domain(), err
 	case continuity.FactExternalReferenceRegistered:
 		payload, err := decodeStoredWireV1[wireExternalReferenceRegistrationV1](string(fact.content))

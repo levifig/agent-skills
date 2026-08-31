@@ -2,36 +2,37 @@
 
 # Post-Merge Housekeeping
 
-Complete these steps after a successful squash merge. Leave the started worktree before removing it — do not run `loaf issue stop` from inside that worktree.
+Complete these steps only after authoritative PR readback confirms the squash merge succeeded. Hook command matching alone does not prove success.
 
-1. **Switch to the PR base and pull:**
+1. **Confirm the merge and capture identity.** Read the PR's state, merge commit, base branch, head branch, number, URL, and linked native tracker reference. If the PR is not observed as merged, stop without changing tracker or Git state.
+
+2. **Switch to the PR base and pull:**
    ```
    git checkout <baseRefName>
    git pull --ff-only origin <baseRefName>
    ```
 
-2. **Mark the bound issue done** — this is what "done" means; `loaf issue stop` does not change status:
-   ```
-   loaf issue status <ref> done
-   ```
+3. **Transition the canonical native tracker record.** Through the selected `project-management/v1` provider skill and harness-native connection, read the provider's valid statuses, perform the authorized completion transition, then read the same native record back. Report unsupported, failed, or indeterminate provider outcomes without creating a local fallback record.
 
-3. **Stop the started worktree** if one exists (`loaf issue list --started`). `loaf issue stop` removes the worktree, clears `started_branch` / `started_worktree`, and keeps the branch:
+4. **Clean up the Git worktree directly.** From outside the feature worktree, inspect registered worktrees and confirm the candidate is clean and no agent is using it:
    ```
-   loaf issue stop <ref>
+   git worktree list
+   git -C <worktree-path> status --short
+   git worktree remove <worktree-path>
    ```
-   If the issue was never started, the command errors with `issue <ref> is not started` — treat that as already clean and continue. Do not pass `--force` without user confirmation.
+   If no linked worktree exists, continue. Never use `--force` without explicit user confirmation, and never remove the worktree while running inside it.
 
-4. **Delete the local feature branch** when safe:
+5. **Delete the local feature branch** when safe:
    ```
    git branch -d <headRefName>
    ```
 
-5. **Log the landing:**
+6. **Log the landing:**
    ```
-   loaf journal log "decision(ship): PR #N landed via squash merge; <ref> done"
+   loaf journal log "decision(ship): PR #N landed via squash merge; <native-ref> completed"
    loaf journal log "commit(<hash>): <squash subject>"
    ```
 
-6. **Suggest reflection** if the work produced key decisions or learnings.
+7. **Suggest reflection** if the work produced key decisions or learnings.
 
-7. **Suggest release only when appropriate** — if this PR completes a coherent batch, publish later with `loaf release suggest` / `loaf release cut`. The PR is landed, not released, until that cut.
+8. **Suggest release only when appropriate** — if this PR completes a coherent rideable batch, publish later with `loaf release suggest` / `loaf release cut`. The PR is landed, not released, until that cut.

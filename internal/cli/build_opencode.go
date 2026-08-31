@@ -66,7 +66,14 @@ func buildNativeOpenCodeTarget(root string) error {
 	if err := generateNativeOpenCodePlugin(filepath.Join(root, "config", "hooks.yaml"), dist, version); err != nil {
 		return err
 	}
-	return copyNativeBuildDir(filepath.Join(srcDir, "hooks"), filepath.Join(dist, "plugins", "hooks"), nil, false)
+	if err := copyNativeBuildDir(filepath.Join(srcDir, "hooks"), filepath.Join(dist, "plugins", "hooks"), nil, false); err != nil {
+		return err
+	}
+	retired := filepath.Join(dist, "plugins", "hooks", "pre-tool", "orchestration-detect-linear-magic.py")
+	if err := os.Remove(retired); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove retired hook %s: %w", retired, err)
+	}
+	return nil
 }
 
 func generateNativeOpenCodeCommands(root string, version string) error {
@@ -276,7 +283,6 @@ func nativeOpenCodePluginBody() string {
         if (matchesTool(toolName, matcher)) {
           for (const hook of hookList) {
             if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
-            if (hook.id === 'detect-linear-magic' && !(await isOpenCodeRootSession(client, input.sessionID))) continue;
             const result = await runHook('pre-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
 
             // Exit code 2 = block the action

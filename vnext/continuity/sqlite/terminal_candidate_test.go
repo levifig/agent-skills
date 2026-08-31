@@ -358,7 +358,7 @@ func TestTerminalCandidateHasNoLifetimeFrameCapAndResumesAcrossReopen(t *testing
 		label := strconv.Itoa(sequence)
 		digest := sha256.Sum256([]byte("terminal-candidate-long-envelope:" + label))
 		arrival := int64(sequence)
-		reference := VerifiedPruneReference{
+		reference := legacyVerifiedPruneReferenceV1{
 			FactID:                 continuity.FactID("fact-terminal-candidate-long-" + label),
 			EnvironmentID:          "environment-a",
 			EnvironmentSequence:    arrival,
@@ -373,7 +373,7 @@ func TestTerminalCandidateHasNoLifetimeFrameCapAndResumesAcrossReopen(t *testing
 		pruned := VerifiedTerminalPrunedFrame{
 			Reference:          reference,
 			PruneCertificateID: pruneCertificateID,
-			FactKind:           continuity.FactScratchpadMessageRecorded,
+			FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                continuity.HybridTime{WallMillis: arrival},
 		}
 		opaque = append(opaque, inbox)
@@ -495,7 +495,7 @@ func TestTerminalCandidateRequiresTheFirstFrameToTriggerTerminalHistory(t *testi
 	secondDigest := sha256.Sum256([]byte("first-trigger:pruned"))
 	secondOpaque := OpaqueSyncFrame{ArrivalSequence: 2, EnvelopeDigest: secondDigest, PrunedArrival: []byte("pruned-second")}
 	secondPruned := VerifiedTerminalPrunedFrame{
-		Reference: VerifiedPruneReference{
+		Reference: legacyVerifiedPruneReferenceV1{
 			FactID:              "fact-second-pruned",
 			EnvironmentID:       "environment-a",
 			EnvironmentSequence: 1,
@@ -506,7 +506,7 @@ func TestTerminalCandidateRequiresTheFirstFrameToTriggerTerminalHistory(t *testi
 			Nonce:               testNonce("first-trigger:2"),
 		},
 		PruneCertificateID: sha256.Sum256([]byte("first-trigger:prune-certificate")),
-		FactKind:           continuity.FactScratchpadMessageRecorded,
+		FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 		HLC:                continuity.HybridTime{WallMillis: 101},
 	}
 	firstOpaque := OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: firstDigest, SealedEnvelope: sealed}
@@ -1020,7 +1020,7 @@ func terminalCandidateMixedFixtureV1(t *testing.T, suffix string, count int) (st
 	previousDigest := firstDigest
 	for sequence := 2; sequence <= count; sequence++ {
 		digest := sha256.Sum256([]byte("terminal-candidate-envelope:" + strconv.Itoa(sequence)))
-		reference := VerifiedPruneReference{
+		reference := legacyVerifiedPruneReferenceV1{
 			FactID:                 continuity.FactID("fact-terminal-candidate-pruned-" + strconv.Itoa(sequence)),
 			EnvironmentID:          "environment-a",
 			EnvironmentSequence:    int64(sequence),
@@ -1036,7 +1036,7 @@ func terminalCandidateMixedFixtureV1(t *testing.T, suffix string, count int) (st
 		pruned := VerifiedTerminalPrunedFrame{
 			Reference:          reference,
 			PruneCertificateID: sha256.Sum256([]byte("prune-certificate")),
-			FactKind:           continuity.FactScratchpadMessageRecorded,
+			FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                continuity.HybridTime{WallMillis: int64(99 + sequence)},
 		}
 		frames = append(frames, VerifiedTerminalCandidateFrame{Inbox: opaque[len(opaque)-1], Pruned: &pruned})

@@ -5,7 +5,7 @@ description: Defines the provider-neutral project-management/v1 contract for can
 
 # Project Management
 
-Use the closed [`project-management/v1`](contract.json) operation vocabulary. The main agent is the primary executor and a provider skill maps those semantics to the selected harness-native connection; the tracker remains canonical before, during, and after every operation. The optional project-manager profile follows this same source and route without extending it.
+Use the closed [`project-management/v1`](contract.json) operation vocabulary. The main agent executes it through a provider skill that maps those semantics to the selected harness-native connection; the tracker remains canonical before, during, and after every operation.
 
 ## Contents
 
@@ -25,6 +25,7 @@ Use the closed [`project-management/v1`](contract.json) operation vocabulary. Th
 - Keep definition, hierarchy, dependency, status, and comment operations distinct. A comment is evidence or collaboration, never a substitute field.
 - Return every result with operation, destination, native reference, outcome, fidelity, observed state, and verification evidence.
 - Read [Record Contract](references/record-contract.md) when mapping a ceremony to native tracker fields.
+- Read [Provider Modules](references/provider-modules.md) before adding or reviewing a tracker backend.
 
 ## Verification
 
@@ -52,3 +53,4 @@ Use the [work contract](../../templates/work-contract.md) as an ephemeral packet
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Record contract | [record-contract.md](references/record-contract.md) | Mapping Flow semantics, outcomes, or degradation to a native provider |
+| Provider modules | [provider-modules.md](references/provider-modules.md) | Adding Linear, GitHub, GitLab, Gitea, or a community tracker mapping without changing core Flow |

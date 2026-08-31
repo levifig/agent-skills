@@ -110,30 +110,6 @@ func (payload wireHandoffRecordedV1) validate() error {
 	}).Validate()
 }
 
-func (payload wireScratchpadOpenedV1) validate() error {
-	return (continuity.ScratchpadOpenedPayload{Observation: payload.Observation.domain(), Focus: payload.Focus.domainOptional(), Label: payload.Label}).Validate()
-}
-
-func (payload wireScratchpadParticipantV1) validate() error {
-	return (continuity.ScratchpadParticipantPayload{Observation: payload.Observation.domain(), ParticipantID: continuity.SubjectID(payload.ParticipantID), Name: payload.Name, Focus: payload.Focus.domainOptional()}).Validate()
-}
-
-func (payload wireScratchpadMessageV1) validate() error {
-	return (continuity.ScratchpadMessagePayload{Observation: payload.Observation.domain(), ParticipantID: continuity.SubjectID(payload.ParticipantID), Text: payload.Text}).Validate()
-}
-
-func (payload wireScratchpadClaimV1) validate() error {
-	return (continuity.ScratchpadClaimPayload{Observation: payload.Observation.domain(), ClaimID: continuity.SubjectID(payload.ClaimID), ParticipantID: continuity.SubjectID(payload.ParticipantID), Resource: payload.Resource, ExpiresAtMillis: payload.ExpiresAtMillis}).Validate()
-}
-
-func (payload wireScratchpadClaimReleaseV1) validate() error {
-	return (continuity.ScratchpadClaimReleasePayload{Observation: payload.Observation.domain(), ClaimID: continuity.SubjectID(payload.ClaimID), ReleasedBy: continuity.SubjectID(payload.ReleasedBy), Reason: payload.Reason}).Validate()
-}
-
-func (payload wireScratchpadCloseV1) validate() error {
-	return (continuity.ScratchpadClosePayload{Observation: payload.Observation.domain(), ClosedBy: continuity.SubjectID(payload.ClosedBy), Reason: payload.Reason}).Validate()
-}
-
 func (payload wireExternalReferenceRegistrationV1) validate() error {
 	return (continuity.ExternalReferenceRegistrationPayload{Observation: payload.Observation.domain(), Locator: payload.Locator}).Validate()
 }

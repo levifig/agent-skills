@@ -40,6 +40,10 @@
 ### Success Criteria
 [What "solved" looks like]
 
+## Current Priorities
+
+[Sequence complete operator journeys, not component layers. For each shaped milestone make Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals concrete in the existing strategy prose. Foundation work names its immediate consuming journey.]
+
 ## Market Landscape
 
 ### Competitive Positioning

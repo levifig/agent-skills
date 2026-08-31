@@ -66,7 +66,7 @@ func TestRunnerMigrateVNextRehearsalJSONCreatesVerifiedDisposableDestination(t *
 		t.Fatalf("archive source normalization evidence = %#v", result.Archive.Source)
 	}
 	if !result.Archive.Families.Project || !result.Archive.Families.Journal || !result.Archive.Families.Wrap || !result.Archive.Families.Handoffs ||
-		result.Archive.Families.Sparks || result.Archive.Families.Scratchpads || result.Archive.Families.CompleteForCutover {
+		result.Archive.Families.Sparks || result.Archive.Families.CompleteForCutover {
 		t.Fatalf("archive families = %#v", result.Archive.Families)
 	}
 	if result.Archive.Expected != result.Archive.Actual || !result.ProjectionVerified || !result.Disposable || result.ActivationPerformed || result.CutoverReady || !result.Succeeded {

@@ -17,7 +17,7 @@ import (
 // it only from the exact PrunedArrival bytes carried by Inbox.
 type VerifiedTerminalPrunedFrame struct {
 	PruneID            [32]byte
-	Reference          VerifiedPruneReference
+	Reference          legacyVerifiedPruneReferenceV1
 	PruneCertificateID [32]byte
 	FactKind           continuity.FactKind
 	HLC                continuity.HybridTime

@@ -6,7 +6,7 @@ description: >-
   VISION.md, STRATEGY.md, and ARCHITECTURE.md based on implementation
   experience. Not for pre-implementation strategy (use strategy) or ADRs (use
   architecture).
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Reflect
@@ -30,6 +30,7 @@ Update VISION, STRATEGY, and ARCHITECTURE based on proven implementation.
 ## Critical Rules
 
 - **Evidence-based** -- proposals need supporting evidence from shipped work
+- **Dogfood before generalization** -- compare the rideable increment's real use and learning sought with what actually happened before proposing more breadth or abstraction
 - **Post-implementation only** -- reflect after shipping, not before or during planning
 - **Get explicit approval** -- never update strategic docs (VISION.md, STRATEGY.md, ARCHITECTURE.md) without user confirmation
 - **Consolidate** -- batch related learnings into coherent updates, avoid micro-updates
@@ -40,6 +41,7 @@ Update VISION, STRATEGY, and ARCHITECTURE based on proven implementation.
 ## Verification
 
 - Proposals cite specific specs, journal entries, reports, or commits as evidence
+- Reflection states whether the named rider completed the journey, what dogfood taught, which complexity proved necessary, and which deferrals should remain deferred
 - No strategic document was modified without explicit user approval
 - Completed specs referenced in updates are archived after reflection
 
@@ -86,14 +88,15 @@ After completing work, reflect extracts learnings and proposes updates to strate
 ### Step 2: Gather Evidence
 
 Sources:
-1. **Completed issues** (`loaf issue list` / `loaf issue show <ref>` with status `done`) -- look for lessons in the issue body
+1. **Completed tracker work** — use the selected `project-management/v1` provider skill and harness-native connection to read completed canonical records and their bodies
 2. **Project journal** (`loaf journal recent --json`, `loaf journal search <topic>`) -- insights, surprises, pivots
 3. **Recent commits** (`git log --oneline -30`)
 4. **Implementation reality** -- what was harder/easier than expected? What assumptions were wrong?
+5. **Rideable-increment evidence** -- did the real rider complete the journey, did the safety/integrity proof hold, what was learned, and did any unused machinery slip in?
 
 ### Step 3: Interview for Insights
 
-Ask: What surprised you? What would you do differently? Did any assumptions prove wrong? What did we learn about users or technical constraints? Strategic implications?
+Ask: What surprised you? Could the named rider use the result end to end? What did dogfood prove or disprove? What would you do differently? Which complexity earned its place, and which deferrals should remain? Strategic implications?
 
 ### Step 4: Identify Implications
 

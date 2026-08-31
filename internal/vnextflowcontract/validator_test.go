@@ -49,12 +49,10 @@ type flowManifest struct {
 	Skills          []skillDeclaration `json:"skills"`
 	Ceremonies      []ceremonyContract `json:"ceremonies"`
 	Templates       []templateContract `json:"templates"`
-	Agents          []agentDeclaration `json:"agents"`
 }
 
 type executionContract struct {
-	Primary         primaryExecutionContract `json:"primary"`
-	OptionalProfile optionalProfileContract  `json:"optional_profile"`
+	Primary primaryExecutionContract `json:"primary"`
 }
 
 type primaryExecutionContract struct {
@@ -125,9 +123,9 @@ func validateFlowContract(content fs.FS) []finding {
 
 	findings = append(findings, validateManifestIdentity(manifest)...)
 	findings = append(findings, validateSkillDeclarations(content, manifest.Skills)...)
+	findings = append(findings, validateProviderModules(content)...)
 	findings = append(findings, validateCeremonyDeclarations(manifest)...)
 	findings = append(findings, validateTemplateContracts(content, manifest.Templates)...)
-	findings = append(findings, validateAgentDeclarations(content, manifest.Agents)...)
 	findings = append(findings, validateMarkdownLinks(content)...)
 	findings = append(findings, validateForbiddenSurfaces(content)...)
 	sortFindings(findings)
@@ -179,9 +177,6 @@ func validateManifestIdentity(manifest flowManifest) []finding {
 	if manifest.Ceremonies == nil {
 		findings = append(findings, finding{"flow.inventory", flowManifestPath, "ceremonies must be an explicit array"})
 	}
-	if manifest.Agents == nil {
-		findings = append(findings, finding{"flow.inventory", flowManifestPath, "agents must be an explicit array"})
-	}
 	return findings
 }
 
@@ -192,11 +187,6 @@ func canonicalExecutionContract() executionContract {
 			BehaviorContract: projectManagementContractPath,
 			BehaviorSkill:    "skills/project-management/SKILL.md",
 			ProviderRoute:    "selected-provider-skill",
-		},
-		OptionalProfile: optionalProfileContract{
-			ID:           "project-manager/v1",
-			ContractPath: projectManagerContractPath,
-			Fallback:     "primary",
 		},
 	}
 }
@@ -268,6 +258,9 @@ func validateSkillDeclarations(content fs.FS, declarations []skillDeclaration) [
 	}
 	for name := range actual {
 		if _, exists := declared[name]; !exists {
+			if providerManifestExists(content, name) {
+				continue
+			}
 			findings = append(findings, finding{"skill.inventory", path.Join("skills", name), "skill is not declared in flow-contract.json"})
 		}
 	}
@@ -282,9 +275,11 @@ func validateSkillDirectory(content fs.FS, declaration skillDeclaration) []findi
 	}
 	allowedFiles := map[string]map[string]struct{}{
 		"project-management": {"SKILL.md": {}, "contract.json": {}},
-		"linear":             {"SKILL.md": {}, "capabilities.json": {}},
 	}
 	allowed := allowedFiles[declaration.Name]
+	if declaration.Kind == "provider" {
+		allowed = map[string]struct{}{"SKILL.md": {}, "capabilities.json": {}}
+	}
 	if allowed == nil {
 		allowed = map[string]struct{}{"SKILL.md": {}}
 	}

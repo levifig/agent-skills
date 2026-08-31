@@ -6,7 +6,7 @@ description: >-
   Produces state assessments, research findings with ranked options, or vision
   change proposals. Not for problem discovery that should author a brief (use
   pitch), multi-agent coordination (use orchestration), or implementation.
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Research
@@ -94,7 +94,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 **Trigger:** Empty input, "project state", "catch me up"
 
 1. Read project documents: VISION.md, STRATEGY.md, ARCHITECTURE.md
-2. Check ideas with `loaf idea list --json` and issues with `loaf issue list --json` (or `loaf issue export` for the full graph)
+2. Check private ideas with `loaf idea list --json`, then read current work and hierarchy from the canonical tracker through the selected `project-management/v1` provider skill
 3. Review recent journal activity with `loaf journal recent --json` and `loaf journal context`
 4. Check recent commits: `git log --oneline -20`
 5. Synthesize following [state-assessment template](templates/state-assessment.md)

@@ -12,7 +12,7 @@
 - Credential and Recovery Boundary
 - Relay Metadata and Authorization
 - Failure Behavior
-- Scratchpad Deletion Boundary
+- Legacy Deletion Compatibility
 - Verification and Review
 - Residual Risks
 
@@ -22,7 +22,9 @@ Status: design baseline awaiting implementation review.
 
 This threat model covers the vNext private continuity sync protocol selected in [ADR-031](../decisions/ADR-031-vnext-private-sync.md). It is a source-backed architecture analysis, not a claim that unimplemented or unreviewed code is secure. Criterion approval requires a fresh review of the implemented construction, vectors, storage, relay authorization, recovery, revocation, convergence, and pruning behavior.
 
-The synchronized corpus is exactly the closed fact catalog in `vnext/continuity/facts.go`: project identity, journal entries, wraps, sparks, ideas, decisions, explorations, checkpoints, findings, handoffs, scratchpad coordination, opaque external references, and verification evidence. Derived context is a read-time projection and never synchronizes. Tracker state, provider adapters, service credentials, assignments, workflow, hierarchy, and shared-team memory are out of scope.
+The synchronized corpus is exactly the closed fact catalog in `vnext/continuity/facts.go`: project identity, journal entries, wraps, sparks, ideas, decisions, explorations, checkpoints, findings, handoffs, opaque external references, and verification evidence. Derived context is a read-time projection and never synchronizes. Tracker state, provider adapters, service credentials, assignments, workflow, hierarchy, shared-team memory, and Scratchpad are out of scope.
+
+> **Revision 2026-08-31:** Scratchpad is deferred from current vNext. Deletion-certificate and bootstrap material below applies only to strict verification of pre-cutover relay history. Current clients cannot append, project, export, synchronize, or prune Scratchpad facts.
 
 ## System and Data Flow
 
@@ -155,9 +157,9 @@ Ephemeral certificate and relay-token expiry are honest admission policy, not cr
 
 The relay cannot be forced to provide availability. A local replica and independent backup remain the durability boundary.
 
-## Scratchpad Deletion Boundary
+## Legacy Deletion Compatibility
 
-The first safe-point implementation retains `scratchpad.opened` and every `scratchpad.closed` fact and prunes only participant, message, claim, and claim-release facts. This preserves current causal and terminal projection semantics.
+The retired safe-point implementation retained `scratchpad.opened` and every `scratchpad.closed` fact and pruned only participant, message, claim, and claim-release facts. Current vNext keeps strict decoding for those exact historical identities only; it has no deletion producer or Scratchpad projection.
 
 One prune run binds membership generation `G`, active set `A(G)`, fixed relay barrier `B`, a sorted manifest of exact fact/source/arrival/digest tuples, manifest digest/count, producer frontiers, and the closed scratchpad. Every active environment must apply through `B`, have no gap/skew/conflict, empty its outbox after learning close, and report the same manifest. Joining environments invalidate the run; retired identities are terminally fenced.
 

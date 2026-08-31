@@ -841,7 +841,7 @@ func promoteConcurrentRecoveryDownloadPage(t *testing.T, fixture recoveryDownloa
 			Nonce:                  [24]byte(prunedArrival.Reference.Nonce),
 		},
 		PruneCertificateID: [32]byte(prunedArrival.PruneID),
-		FactKind:           continuity.FactScratchpadMessageRecorded,
+		FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 		HLC:                continuity.HybridTime{WallMillis: 101},
 	}
 	candidate, err := fixture.store.StageVerifiedTerminalCandidateChunk(

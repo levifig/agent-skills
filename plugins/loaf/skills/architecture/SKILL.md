@@ -14,7 +14,7 @@ description: >-
   revision note; supersession is reserved for topic splits and recategorization.
 user-invocable: true
 argument-hint: '[topic or decision]'
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Architecture

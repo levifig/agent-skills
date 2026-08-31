@@ -21,7 +21,7 @@ related:
 - Security Boundary
 - Persistence and Convergence
 - Attach, Recovery, and Revocation
-- Scratchpad Safe Points
+- Legacy Deletion Compatibility
 - Consequences
 - Alternatives Considered
 - Revisions
@@ -30,7 +30,9 @@ related:
 
 vNext continuity is one operator's closed, typed, append-only fact corpus. It must converge across trusted machines and ephemeral agent environments without turning Loaf into a tracker client, a team-memory service, or a credential broker. The shipped crypto, sync, relay, and attach packages are evidence only; vNext cannot import them or preserve their wire contract.
 
-The relay is not trusted with plaintext, ordering, completeness, or durability. Possession of project content-key material is neither membership authority nor proof that a particular attached environment authored a fact; administrator-signed environment certificates and environment signatures provide that attribution. Relay cursors are convenient pagination state but cannot be authority. Scratchpad facts are physically removable only when an offline or rolled-back environment cannot resurrect them.
+The relay is not trusted with plaintext, ordering, completeness, or durability. Possession of project content-key material is neither membership authority nor proof that a particular attached environment authored a fact; administrator-signed environment certificates and environment signatures provide that attribution. Relay cursors are convenient pagination state but cannot be authority.
+
+> **Revision 2026-08-31:** Scratchpad is not part of the current vNext continuity or sync catalog. The prune certificate, bootstrap capsule, and tombstone details retained in this ADR describe strict compatibility verification for pre-cutover relay history only. Current vNext has no Scratchpad writer, projection, sync export, or prune operation.
 
 The construction is source-backed by the [Go XChaCha20-Poly1305 implementation](https://pkg.go.dev/golang.org/x/crypto/chacha20poly1305), [RFC 8439](https://www.rfc-editor.org/info/rfc8439/), [Go HKDF](https://pkg.go.dev/crypto/hkdf), [RFC 5869](https://www.rfc-editor.org/info/rfc5869/), and the standard-library [Ed25519 implementation](https://pkg.go.dev/crypto/ed25519). Bearer relay credentials require TLS, consistent with [RFC 6750](https://www.rfc-editor.org/info/rfc6750/).
 
@@ -102,7 +104,9 @@ Environment identities are mint-once. Trusted environments remain active until e
 
 The project root also derives a computationally independent prune-bootstrap key through a dedicated HKDF domain. Recovery and trusted credentials derive it on demand; ephemeral credentials carry the explicit typed key and purpose version. The version identifies the derivation/transcript suite, not an ordinary expiry or content-generation rotation; replacing the project root and channel replaces it. Typed crypto APIs, a second per-prune derivation, and purpose-bound encodings prevent content-generation and bootstrap keys from being accepted interchangeably. This avoids accumulating an unbounded historical generation-key ring merely to recover deletion anchors. The key can reveal only the capsule's deleted-history metadata to a credential holder, not deleted payloads or future content generations.
 
-## Scratchpad Safe Points
+## Legacy Deletion Compatibility
+
+This section records the pre-cutover deletion protocol that existing relay history may still contain. It is not a current vNext feature. Exact legacy bytes may be decoded and verified so retained history fails safely; no current path creates new entries, exports old local Scratchpad rows, or physically prunes continuity facts.
 
 v1 physically prunes only participant, message, claim, and claim-release facts from a closed scratchpad. It retains the least opening fact and every close fact so the existing deterministic fold remains valid.
 
@@ -170,6 +174,7 @@ A fixed lifetime count is simple and bounds one allocation, but eventually turns
 
 ## Revisions
 
+- 2026-08-31 - Deferred Scratchpad from current vNext; retained the deletion wire only as strict pre-cutover compatibility evidence.
 - 2026-08-29 — Initial record.
 - 2026-08-29 — Replaced a rejected lifetime terminal-history cap with bounded, crash-resumable verified candidate staging and atomic promotion.
 - 2026-08-29 — Added the all-active-witness encrypted prune-bootstrap capsule and domain-separated bootstrap key required for fresh recovery after physical deletion.

@@ -47,7 +47,7 @@ func validateContentV1(content Content, verifyExpected bool) error {
 	if !content.Families.Project || !content.Families.Journal || !content.Families.Wrap {
 		return fmt.Errorf("archive version 1 requires project, journal, and wrap families")
 	}
-	if content.Families.Ideas || content.Families.Sparks || content.Families.Scratchpads ||
+	if content.Families.Ideas || content.Families.Sparks ||
 		content.Families.Decisions || content.Families.Explorations ||
 		content.Families.Findings || content.Families.CompleteForCutover {
 		return fmt.Errorf("archive version 1 is rehearsal-only and cannot include later families or cutover completeness")

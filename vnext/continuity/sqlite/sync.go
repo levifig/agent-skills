@@ -159,6 +159,9 @@ func (store *Store) ExportFact(ctx context.Context, factID continuity.FactID) (c
 	if !found {
 		return continuitywire.Fact{}, syncProblem(SyncErrorNotFound, "fact_id", "does not identify a retained fact")
 	}
+	if legacyScratchpadFactV1(fact.subject, fact.kind) {
+		return continuitywire.Fact{}, syncProblem(SyncErrorNotFound, "fact_id", "does not identify a current sync fact")
+	}
 	wire := storedFactWireV1(fact)
 	if err := continuitywire.Validate(wire); err != nil {
 		return continuitywire.Fact{}, corruptFactProblemV1()
@@ -571,6 +574,12 @@ WHERE fact.project_id = ?
 	}
 	if err != nil {
 		return UnsealedLocalFact{}, false, err
+	}
+	if legacyScratchpadFactV1(fact.subject, fact.kind) {
+		if err := tx.Commit(); err != nil {
+			return UnsealedLocalFact{}, false, syncTransactionProblem(ctx)
+		}
+		return UnsealedLocalFact{}, false, nil
 	}
 	result := UnsealedLocalFact{Fact: storedFactWireV1(fact)}
 	copy(result.PreviousEnvelopeDigest[:], previousDigest)

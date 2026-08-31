@@ -8,7 +8,7 @@ description: >-
   housekeeping) or capturing ideas (use idea). Produces a Session Wrap-Up
   summary and an optional wrap journal entry.
 user-invocable: true
-version: 0.3.1
+version: 0.5.0
 ---
 
 # Wrap
@@ -119,7 +119,7 @@ When it does, write a single wrap entry:
 loaf journal log "wrap(scope): shipped X; abandoned Y because Z; next is W"
 ```
 
-Entries are project-scoped and tagged with this conversation's harness id automatically — there is nothing to open, close, or archive. When the conversation holds no synthesis beyond what the raw entries already say, skip the wrap entirely; the journal is complete without it. The next conversation's start digest surfaces the latest wrap alongside recent branch entries and open tasks.
+Entries are project-scoped and tagged with this conversation's harness id automatically — there is nothing to open, close, or archive. When the conversation holds no synthesis beyond what the raw entries already say, skip the wrap entirely; the journal is complete without it. The next conversation's contract-v2 digest surfaces a wrap only when it supplies the `project-synthesis` or fallback `scoped-checkpoint` layer; other journal and Git-derived layers are computed independently, and native tracker work is read through the selected provider and harness connection.
 
 ## Composability
 

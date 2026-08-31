@@ -217,7 +217,6 @@ func initScaffoldFiles(root string) []initScaffoldFile {
 			body, _ := json.MarshalIndent(map[string]any{
 				"version":     "1.0.0",
 				"initialized": time.Now().UTC().Format(time.RFC3339),
-				"issue":       defaultIssueConfig(root),
 			}, "", "  ")
 			return string(body) + "\n"
 		}},

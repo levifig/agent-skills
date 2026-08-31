@@ -39,12 +39,6 @@ const (
 	FactFindingCorrected                FactKind = "finding.corrected"
 	FactFindingRetracted                FactKind = "finding.retracted"
 	FactHandoffRecorded                 FactKind = "handoff.recorded"
-	FactScratchpadOpened                FactKind = "scratchpad.opened"
-	FactScratchpadParticipantIntroduced FactKind = "scratchpad.participant-introduced"
-	FactScratchpadMessageRecorded       FactKind = "scratchpad.message-recorded"
-	FactScratchpadClaimRecorded         FactKind = "scratchpad.claim-recorded"
-	FactScratchpadClaimReleased         FactKind = "scratchpad.claim-released"
-	FactScratchpadClosed                FactKind = "scratchpad.closed"
 	FactExternalReferenceRegistered     FactKind = "external-reference.registered"
 	FactExternalReferenceAttached       FactKind = "external-reference.attached"
 	FactExternalReferenceDetached       FactKind = "external-reference.detached"
@@ -82,12 +76,6 @@ func FactCatalog() []FactDefinition {
 		{Kind: FactFindingCorrected, Record: RecordFinding},
 		{Kind: FactFindingRetracted, Record: RecordFinding},
 		{Kind: FactHandoffRecorded, Record: RecordHandoff},
-		{Kind: FactScratchpadOpened, Record: RecordScratchpad},
-		{Kind: FactScratchpadParticipantIntroduced, Record: RecordScratchpad},
-		{Kind: FactScratchpadMessageRecorded, Record: RecordScratchpad},
-		{Kind: FactScratchpadClaimRecorded, Record: RecordScratchpad},
-		{Kind: FactScratchpadClaimReleased, Record: RecordScratchpad},
-		{Kind: FactScratchpadClosed, Record: RecordScratchpad},
 		{Kind: FactExternalReferenceRegistered, Record: RecordExternalReference},
 		{Kind: FactExternalReferenceAttached, Record: RecordExternalReference},
 		{Kind: FactExternalReferenceDetached, Record: RecordExternalReference},

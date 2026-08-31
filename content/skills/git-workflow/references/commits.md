@@ -110,13 +110,11 @@ Closes BACK-123
 ## Branch Naming
 
 ```
-issue/<alias-or-id>
 <type>/<description>
 ```
 
 ### Types
 
-- `issue/` - Started from `loaf issue start` on the shippable root (`issue/loaf-42`)
 - `feat/` - New features (e.g., `feat/thermal-rating-cli`)
 - `fix/` - Bug fixes
 - `hotfix/` - Critical production fixes
@@ -127,7 +125,7 @@ issue/<alias-or-id>
 
 - Lowercase with hyphens (kebab-case)
 - Short but descriptive (max 50 chars)
-- Prefer the started worktree branch from `loaf issue start` when implementing an issue
+- Follow the repository's established branch convention; include the native tracker key only when that convention requires it
 
 ## Pull Request Format
 
@@ -141,10 +139,10 @@ feat: add thermal rating calculation
 
 ### Description
 
-The PR body is `loaf issue render <ref>` output — paste-ready, no manual editing. Definition-of-done criteria in the render are the review checklist. Do not include squash merge commit text in the PR body.
+Build the PR body from the canonical native tracker work contract and current verification evidence. Read the record through the selected `project-management/v1` provider skill, preserve its definition-of-done exactly, and use the ship template. Do not create a second local work record or include squash merge commit text in the PR body.
 
 ```
-gh pr create --title "type: summary" --body "$(loaf issue render <ref>)"
+gh pr create --title "type: summary" --body-file <prepared-pr-body>
 ```
 
 ### Merge Strategy

@@ -7,6 +7,7 @@ Delegation is a bounded execution technique. It does not mint work, change the l
 Every delegated task includes:
 
 - the exact native tracker reference and destination;
+- the Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals from the live contract when the task can affect them;
 - the completion criterion or review lens it serves;
 - relevant repository and skill instructions;
 - allowed reads, writes, external mutations, and explicit prohibitions;
@@ -14,6 +15,8 @@ Every delegated task includes:
 - required tests and evidence;
 - whether commits are authorized;
 - the expected result format.
+
+Executor-sized partitioning changes who performs bounded mechanics, not what counts as value. A delegated task may produce one atomic commit or evidence packet, but the orchestrator accepts the aggregate only when the real rider's journey still works end to end. Do not mint local work units or treat component completion as product progress.
 
 ## Writer Rule
 

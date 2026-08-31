@@ -21,9 +21,8 @@ type RecordVersion struct {
 	Head      FactStamp
 }
 
-// SnapshotRequest selects deterministic time-relative projection behavior.
-// AtMillis evaluates scratchpad claim expiry only. It never filters facts by
-// hybrid time, and zero means the Unix epoch rather than the current clock.
+// SnapshotRequest carries an explicit deterministic read instant for future
+// time-relative projections. It never filters facts by hybrid time.
 type SnapshotRequest struct {
 	AtMillis int64
 }
@@ -44,8 +43,7 @@ func (request SnapshotRequest) Validate() error {
 // ProjectJournal ranks Scope, then Branch, then the project remainder. Scope
 // applies only to effective journal entries, active sparks, decisions, and
 // effective findings. Branch applies only to the winning journal content
-// observation. AtMillis has the snapshot meaning even though scratchpad content
-// is excluded from context.
+// observation. AtMillis has the snapshot meaning.
 type ContextRequest struct {
 	Focus    *SubjectRef
 	Scope    string
@@ -109,14 +107,6 @@ type FindingState string
 const (
 	FindingCurrent   FindingState = "current"
 	FindingRetracted FindingState = "retracted"
-)
-
-// ScratchpadState is the closed visibility state of a scratchpad.
-type ScratchpadState string
-
-const (
-	ScratchpadOpen   ScratchpadState = "open"
-	ScratchpadClosed ScratchpadState = "closed"
 )
 
 // ProjectIdentity is the current label and provenance of a project identity.
@@ -225,49 +215,6 @@ type Handoff struct {
 	HeadObservation   Observation
 }
 
-// ScratchpadParticipant is one canonical participant introduction.
-type ScratchpadParticipant struct {
-	Stamp         FactStamp
-	ParticipantID SubjectID
-	Name          string
-	Focus         *SubjectRef
-	Observation   Observation
-}
-
-// ScratchpadMessage is one ordered visible message.
-type ScratchpadMessage struct {
-	Stamp         FactStamp
-	ParticipantID SubjectID
-	Text          string
-	Observation   Observation
-}
-
-// ScratchpadClaim is one visible advisory claim after renewal folding.
-type ScratchpadClaim struct {
-	ClaimID         SubjectID
-	ParticipantID   SubjectID
-	Resource        string
-	ExpiresAtMillis int64
-	Root            FactStamp
-	Head            FactStamp
-	HeadObservation Observation
-}
-
-// Scratchpad is the current visible coordination state of one scratchpad.
-type Scratchpad struct {
-	Record            RecordVersion
-	Focus             *SubjectRef
-	Label             string
-	State             ScratchpadState
-	ClosedBy          SubjectID
-	CloseReason       string
-	OpenedObservation Observation
-	HeadObservation   Observation
-	Participants      []ScratchpadParticipant
-	Messages          []ScratchpadMessage
-	Claims            []ScratchpadClaim
-}
-
 // ExternalReferenceAttachment is one active exact-target edge.
 type ExternalReferenceAttachment struct {
 	Target      SubjectRef
@@ -349,13 +296,6 @@ type LatestHandoffsProjection struct {
 	Handoffs []Handoff
 }
 
-// ScratchpadsProjection orders scratchpads by opening root, newest first.
-// Participants sort by ID, messages by stamp oldest first, and visible claims
-// by resource then claim ID.
-type ScratchpadsProjection struct {
-	Scratchpads []Scratchpad
-}
-
 // ExternalReferencesProjection orders registrations newest first. Each value
 // contains all active edges ordered by target kind then target ID.
 type ExternalReferencesProjection struct {
@@ -381,7 +321,6 @@ type Snapshot struct {
 	LatestCheckpoints    LatestCheckpointsProjection
 	CurrentFindings      CurrentFindingsProjection
 	LatestHandoffs       LatestHandoffsProjection
-	Scratchpads          ScratchpadsProjection
 	ExternalReferences   ExternalReferencesProjection
 	VerificationEvidence VerificationEvidenceProjection
 }

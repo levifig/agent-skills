@@ -30,7 +30,6 @@ func TestProjectionRequestsValidateDeterministicSelectors(t *testing.T) {
 		{name: "snapshot instant", err: (SnapshotRequest{AtMillis: -1}).Validate(), field: "at_millis", detail: "must be zero or positive"},
 		{name: "context instant", err: (ContextRequest{AtMillis: -1}).Validate(), field: "at_millis", detail: "must be zero or positive"},
 		{name: "focus identity", err: (ContextRequest{Focus: &SubjectRef{Kind: RecordIdea}, AtMillis: 0}).Validate(), field: "focus.id", detail: "must contain 1 to 128 characters"},
-		{name: "scratchpad focus", err: (ContextRequest{Focus: &SubjectRef{Kind: RecordScratchpad, ID: "scratch_1"}, AtMillis: 0}).Validate(), field: "focus.kind", detail: "is not available to derived context"},
 		{name: "evidence focus", err: (ContextRequest{Focus: &SubjectRef{Kind: RecordVerificationEvidence, ID: "evidence_1"}, AtMillis: 0}).Validate(), field: "focus.kind", detail: "is not available to derived context"},
 		{name: "computed focus", err: (ContextRequest{Focus: &SubjectRef{Kind: RecordDerivedContext, ID: "context_1"}, AtMillis: 0}).Validate(), field: "focus.kind", detail: "is not available to derived context"},
 		{name: "scope whitespace", err: (ContextRequest{Scope: " scope", AtMillis: 0}).Validate(), field: "scope", detail: "must not have outer whitespace"},
@@ -61,10 +60,6 @@ func TestProjectionClosedStatesAndSnapshotShape(t *testing.T) {
 	if got, want := []FindingState{FindingCurrent, FindingRetracted}, []FindingState{"current", "retracted"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("finding states = %v, want %v", got, want)
 	}
-	if got, want := []ScratchpadState{ScratchpadOpen, ScratchpadClosed}, []ScratchpadState{"open", "closed"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("scratchpad states = %v, want %v", got, want)
-	}
-
 	snapshot := Snapshot{
 		EffectiveJournal:     EffectiveJournalProjection{Entries: []JournalEntry{}},
 		LatestWraps:          LatestWrapsProjection{Wraps: []Wrap{}},
@@ -75,14 +70,13 @@ func TestProjectionClosedStatesAndSnapshotShape(t *testing.T) {
 		LatestCheckpoints:    LatestCheckpointsProjection{Checkpoints: []Checkpoint{}},
 		CurrentFindings:      CurrentFindingsProjection{Findings: []Finding{}},
 		LatestHandoffs:       LatestHandoffsProjection{Handoffs: []Handoff{}},
-		Scratchpads:          ScratchpadsProjection{Scratchpads: []Scratchpad{}},
 		ExternalReferences:   ExternalReferencesProjection{References: []ExternalReference{}},
 		VerificationEvidence: VerificationEvidenceProjection{Evidence: []VerificationEvidence{}},
 	}
 	if snapshot.EffectiveJournal.Entries == nil || snapshot.LatestWraps.Wraps == nil || snapshot.ActiveSparks.Sparks == nil ||
 		snapshot.CurrentIdeas.Ideas == nil || snapshot.CurrentDecisions.Decisions == nil || snapshot.Explorations.Explorations == nil ||
 		snapshot.LatestCheckpoints.Checkpoints == nil || snapshot.CurrentFindings.Findings == nil || snapshot.LatestHandoffs.Handoffs == nil ||
-		snapshot.Scratchpads.Scratchpads == nil || snapshot.ExternalReferences.References == nil || snapshot.VerificationEvidence.Evidence == nil {
+		snapshot.ExternalReferences.References == nil || snapshot.VerificationEvidence.Evidence == nil {
 		t.Fatal("snapshot collection fields must support explicit non-nil empty slices")
 	}
 

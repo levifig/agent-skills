@@ -74,24 +74,6 @@ func TestConcreteContinuityPayloadsCoverEveryFactKind(t *testing.T) {
 			return (FindingRetractionPayload{Observation: observation, Predecessor: "fact-finding", Reason: "Recorded as a trust limit instead."}).Validate()
 		}},
 		{FactHandoffRecorded, func() error { return validHandoffPayload(observation).Validate() }},
-		{FactScratchpadOpened, func() error {
-			return (ScratchpadOpenedPayload{Observation: observation, Focus: validFocus(), Label: "LOAF-96 review"}).Validate()
-		}},
-		{FactScratchpadParticipantIntroduced, func() error {
-			return (ScratchpadParticipantPayload{Observation: observation, ParticipantID: "participant-1", Name: "storage-review", Focus: validFocus()}).Validate()
-		}},
-		{FactScratchpadMessageRecorded, func() error {
-			return (ScratchpadMessagePayload{Observation: observation, ParticipantID: "participant-1", Text: "Reviewing append ordering."}).Validate()
-		}},
-		{FactScratchpadClaimRecorded, func() error {
-			return (ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "vnext/continuity/sqlite", ExpiresAtMillis: observation.ObservedAtMillis + 1}).Validate()
-		}},
-		{FactScratchpadClaimReleased, func() error {
-			return (ScratchpadClaimReleasePayload{Observation: observation, ClaimID: "claim-1", ReleasedBy: "participant-1", Reason: "Review complete."}).Validate()
-		}},
-		{FactScratchpadClosed, func() error {
-			return (ScratchpadClosePayload{Observation: observation, ClosedBy: "participant-1", Reason: "Review complete."}).Validate()
-		}},
 		{FactExternalReferenceRegistered, func() error {
 			return (ExternalReferenceRegistrationPayload{Observation: observation, Locator: "opaque:LOAF-96"}).Validate()
 		}},
@@ -160,12 +142,6 @@ func TestContinuityPayloadValidationRejectsNonCanonicalAndUnboundedValues(t *tes
 		{name: "derived focus", validate: func() error {
 			return (WrapRecordedPayload{Observation: observation, Focus: &SubjectRef{Kind: RecordDerivedContext, ID: "context-1"}, Synthesis: "checkpoint"}).Validate()
 		}, field: "focus.kind"},
-		{name: "scratchpad durable target", validate: func() error {
-			return (VerificationEvidencePayload{Observation: observation, Target: SubjectRef{Kind: RecordScratchpad, ID: "scratchpad-1"}, Check: "go test", Method: "native", Outcome: VerificationPassed, Detail: "pass"}).Validate()
-		}, field: "target.kind"},
-		{name: "expired claim", validate: func() error {
-			return (ScratchpadClaimPayload{Observation: observation, ClaimID: "claim-1", ParticipantID: "participant-1", Resource: "file", ExpiresAtMillis: observation.ObservedAtMillis}).Validate()
-		}, field: "expires_at_millis"},
 		{name: "unknown verification outcome", validate: func() error {
 			return (VerificationEvidencePayload{Observation: observation, Target: *validFocus(), Check: "go test", Method: "native", Outcome: "unknown", Detail: "result"}).Validate()
 		}, field: "outcome"},
@@ -233,7 +209,6 @@ func TestContinuityPayloadValidationAcceptsLosslessLegacyMinimums(t *testing.T) 
 		{name: "handoff purpose only", validate: func() error {
 			return (HandoffRecordedPayload{Observation: observation, Purpose: "Continue from the archived handoff."}).Validate()
 		}},
-		{name: "scratchpad close without reason", validate: func() error { return (ScratchpadClosePayload{Observation: observation}).Validate() }},
 	}
 
 	for _, test := range tests {

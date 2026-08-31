@@ -39,7 +39,7 @@ archived: true          # Always true -- BRIEF is a historical snapshot, not a w
 
 ## Sequencing and Relationships
 
-[How the initial arc hangs together — which problems become early backlog issues, what depends on what, sequencing stated as prose. No machine relation fields; narrative order only.]
+[How the initial arc hangs together as progressively larger useful operator journeys — which problems become early tracker records, what depends on what, sequencing stated as prose. Do not use component layers as milestones. No invented relation fields; native relationships only when supported.]
 
 ## Sources and Research Links
 

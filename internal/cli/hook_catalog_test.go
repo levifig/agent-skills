@@ -131,23 +131,37 @@ func TestHookCatalogCohortPinsWhatZeroTwoTwentyShipped(t *testing.T) {
 			}
 			recognition := testHookRecognition(t, testCase.target, catalog)
 			shipped := []string{}
+			retired := 0
 			for event, entries := range testHookEventEntries(t, testHookFixture(t, testCase.fixture)) {
 				outcome, err := pairHookEventEntries(recognition, event, entries)
 				if err != nil {
 					t.Fatalf("pairHookEventEntries(%s) error = %v", event, err)
 				}
-				if len(outcome.foreign) != 0 || len(outcome.retired) != 0 || len(outcome.duplicates) != 0 {
-					t.Fatalf("%s %s: shipped 0.2.20 output must pair entirely, got %#v", testCase.target, event, outcome)
+				if len(outcome.foreign) != 0 || len(outcome.duplicates) != 0 {
+					t.Fatalf("%s %s: shipped 0.2.20 output must remain owned, got %#v", testCase.target, event, outcome)
 				}
+				retired += len(outcome.retired)
 				for _, pairing := range outcome.paired {
 					shipped = append(shipped, pairing.hookID)
 				}
 			}
 			sort.Strings(shipped)
-			want := append([]string{}, cohort...)
+			current := map[string]bool{}
+			for _, entry := range catalog.Entries {
+				current[entry.HookID] = true
+			}
+			var want []string
+			for _, hookID := range cohort {
+				if current[hookID] {
+					want = append(want, hookID)
+				}
+			}
 			sort.Strings(want)
 			if !reflect.DeepEqual(shipped, want) {
-				t.Fatalf("%s 0.2.20 shipped %v, cohort records %v", testCase.target, shipped, want)
+				t.Fatalf("%s current paired %v, want current cohort members %v", testCase.target, shipped, want)
+			}
+			if retired != len(cohort)-len(want) {
+				t.Fatalf("%s retired entries = %d, want %d", testCase.target, retired, len(cohort)-len(want))
 			}
 		})
 	}

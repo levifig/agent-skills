@@ -31,12 +31,6 @@ func TestContinuityFactCatalogWireValuesArePinned(t *testing.T) {
 		"finding.corrected|finding",
 		"finding.retracted|finding",
 		"handoff.recorded|handoff",
-		"scratchpad.opened|scratchpad",
-		"scratchpad.participant-introduced|scratchpad",
-		"scratchpad.message-recorded|scratchpad",
-		"scratchpad.claim-recorded|scratchpad",
-		"scratchpad.claim-released|scratchpad",
-		"scratchpad.closed|scratchpad",
 		"external-reference.registered|external-reference",
 		"external-reference.attached|external-reference",
 		"external-reference.detached|external-reference",
@@ -63,8 +57,8 @@ func TestContinuityFactCatalogReturnsFreshValues(t *testing.T) {
 	if second[0].Kind != FactProjectRegistered {
 		t.Fatalf("caller mutation changed catalog: first kind = %q", second[0].Kind)
 	}
-	if len(second) != 32 {
-		t.Fatalf("caller append changed catalog length: got %d, want 32", len(second))
+	if len(second) != 26 {
+		t.Fatalf("caller append changed catalog length: got %d, want 26", len(second))
 	}
 }
 

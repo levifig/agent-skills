@@ -513,74 +513,6 @@ func TestAttachPreparedRecoveryRejectsHostileEnvelopeWithoutCanonicalMutation(t 
 	}
 }
 
-func TestAttachPreparedRecoveryAuthenticatesMixedSealedAndPrunedHistory(t *testing.T) {
-	downloadFixture := newRecoveryDownloadFixture(t, 3)
-	fixture := recoveryAttachFixture{
-		store: downloadFixture.store, coordinator: downloadFixture.coordinator, remote: downloadFixture.remote,
-		recovery: downloadFixture.recovery, prepared: downloadFixture.prepared,
-	}
-	root, rootFact := signedRecoveryAttachArrival(t, fixture.recovery, fixture.prepared)
-	pruneID := protocol.Digest(testArray32(0xd1))
-	target := signedRecoveryAttachPrunedTarget(
-		t, fixture.recovery, fixture.prepared, protocol.Digest(root.EnvelopeDigest),
-	)
-	closure := signedRecoveryAttachJournalArrivalAt(
-		t, fixture.recovery, fixture.prepared, 3, protocol.Digest(target.EnvelopeDigest),
-	)
-	record := signedRecoveryAttachPruneRecord(t, fixture, pruneID, target, closure)
-	target.Ciphertext = nil
-	target.PruneID = (*relay.Digest)(&pruneID)
-	prunedAt := time.UnixMilli(2_000).UTC()
-	target.PrunedAt = &prunedAt
-	arrivals := []relay.Arrival{root, target, closure}
-	fixture.remote.page = func(_ context.Context, request relay.PageRequest) (relay.Page, error) {
-		if request.After != 0 || request.Limit != 3 {
-			return relay.Page{}, relay.ErrInvalidArgument
-		}
-		return relay.Page{
-			RelayGeneration:      relay.RelayGeneration(fixture.prepared.RelayGeneration),
-			MembershipGeneration: fixture.prepared.Certificate.MembershipGeneration,
-			Head:                 3,
-			Arrivals:             append([]relay.Arrival(nil), arrivals...),
-		}, nil
-	}
-	fixture.remote.prune = func(_ context.Context, request relay.PruneInventoryRequest) (relay.PruneInventoryPage, error) {
-		if request.After != 0 || request.Limit != relay.MaxPruneInventoryPage {
-			return relay.PruneInventoryPage{}, relay.ErrInvalidArgument
-		}
-		return relay.PruneInventoryPage{
-			Channel: relay.ChannelAuthority{
-				ChannelID:       relay.ChannelID(fixture.prepared.ChannelID),
-				RelayGeneration: relay.RelayGeneration(fixture.prepared.RelayGeneration),
-				AdminPublicKey:  relay.PublicKey(fixture.prepared.AdminPublicKey),
-			},
-			Snapshot: relay.PruneInventorySnapshot{
-				MembershipGeneration: fixture.prepared.Certificate.MembershipGeneration,
-				ArrivalHead:          3,
-				PruneHead:            1,
-			},
-			Prunes: []relay.PruneInventoryRecord{record},
-		}, nil
-	}
-
-	progress, err := fixture.coordinator.AttachPreparedRecovery(
-		context.Background(), fixture.recovery.ProjectID, fixture.recovery, fixture.prepared,
-		RecoveryAttachOptions{TrustedNowMillis: 1_000, MaximumFutureSkewMillis: 100},
-	)
-	if err != nil {
-		t.Fatalf("attach mixed sealed/pruned recovery history: %v", err)
-	}
-	if progress.ActivationState != continuitysqlite.SyncActivationAttached || progress.AppliedCursor != 3 {
-		t.Fatalf("mixed sealed/pruned recovery progress = %#v", progress)
-	}
-	if _, err := fixture.store.ExportFact(context.Background(), rootFact.FactID); err != nil {
-		t.Fatalf("mixed recovery root is not canonical: %v", err)
-	}
-	if _, err := fixture.store.ExportFact(context.Background(), continuity.FactID(target.FactID)); err == nil {
-		t.Fatal("pruned recovery target was resurrected as a canonical fact")
-	}
-}
-
 func TestAttachPreparedRecoveryResumesAuthorityConvergenceStates(t *testing.T) {
 	for _, test := range []struct {
 		name           string
@@ -761,9 +693,9 @@ func signedRecoveryAttachPrunedTarget(
 		WireVersion:         continuitywire.Version1,
 		FactID:              "fact-recovery-attach-pruned-target",
 		ProjectID:           recovery.ProjectID,
-		SubjectKind:         continuity.RecordScratchpad,
+		SubjectKind:         continuity.RecordKind("scratchpad"),
 		SubjectID:           "scratchpad-recovery-attach",
-		FactKind:            continuity.FactScratchpadMessageRecorded,
+		FactKind:            continuity.FactKind("scratchpad.message-recorded"),
 		PayloadVersion:      1,
 		CanonicalPayload:    []byte(`{"observation":{"observed_at_millis":2,"harness_session_id":"recovery-attach","branch":"issue/loaf-93","worktree":"/workspace/loaf"},"participant_id":"participant-recovery-attach","text":"pruned"}`),
 		EnvironmentID:       prepared.Certificate.EnvironmentID,
@@ -810,11 +742,11 @@ func signedRecoveryAttachPruneRecord(
 		ClosureReferenceDigest:  protocol.PruneReferenceDigest(closureReference),
 		ManifestCount:           1,
 		ManifestDigest:          protocol.PruneManifestDigest(manifest),
-		ScratchpadSubject:       "scratchpad-recovery-attach",
+		LegacySubject:           "scratchpad-recovery-attach",
 		EntryCount:              1,
 		Entries: []protocol.PruneBootstrapEntry{{
 			PruneReferenceDigest: protocol.PruneReferenceDigest(targetReference),
-			FactKind:             continuity.FactScratchpadMessageRecorded,
+			FactKind:             continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                  continuity.HybridTime{WallMillis: 101, Logical: 1},
 		}},
 	}

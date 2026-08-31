@@ -15,20 +15,18 @@ const (
 	RecordCheckpoint           RecordKind = "checkpoint"
 	RecordFinding              RecordKind = "finding"
 	RecordHandoff              RecordKind = "handoff"
-	RecordScratchpad           RecordKind = "scratchpad"
 	RecordExternalReference    RecordKind = "external-reference"
 	RecordVerificationEvidence RecordKind = "verification-evidence"
 	RecordDerivedContext       RecordKind = "derived-context"
 )
 
-// Permanence distinguishes the ledger, notebook, scratchpad, and computed
+// Permanence distinguishes the ledger, notebook, and computed
 // continuity families.
 type Permanence string
 
 const (
 	PermanenceLedger     Permanence = "ledger"
 	PermanenceNotebook   Permanence = "notebook"
-	PermanenceScratchpad Permanence = "scratchpad"
 	PermanenceDerived    Permanence = "derived"
 )
 
@@ -45,7 +43,6 @@ const (
 	MutationAppendWithResolutionSupersession       Mutation = "append-with-resolution-supersession"
 	MutationAppendWithCorrectionRetraction         Mutation = "append-with-correction-retraction"
 	MutationAppendWithAttachmentChanges            Mutation = "append-with-attachment-changes"
-	MutationAdvisoryFacts                          Mutation = "advisory-facts"
 	MutationReadTimeFold                           Mutation = "read-time-fold"
 )
 
@@ -54,7 +51,6 @@ type Retention string
 
 const (
 	RetentionForever            Retention = "forever"
-	RetentionUntilSyncSafePoint Retention = "until-sync-safe-point"
 	RetentionRecomputed         Retention = "recomputed"
 )
 
@@ -63,7 +59,6 @@ type ReferenceBehavior string
 
 const (
 	ReferencesMayAttachOpaque    ReferenceBehavior = "may-attach-opaque"
-	ReferencesEphemeralOpaqueIDs ReferenceBehavior = "ephemeral-opaque-ids"
 	ReferencesOpaqueLeaf         ReferenceBehavior = "opaque-leaf"
 	ReferencesEvidenceLeaf       ReferenceBehavior = "evidence-leaf"
 	ReferencesIncludeAttached    ReferenceBehavior = "include-attached"
@@ -83,7 +78,6 @@ const (
 	ProjectionLatestCheckpoint     Projection = "latest-checkpoint"
 	ProjectionCurrentFinding       Projection = "current-finding"
 	ProjectionLatestHandoff        Projection = "latest-handoff"
-	ProjectionCoordinationState    Projection = "coordination-state"
 	ProjectionReferenceAttachments Projection = "reference-attachments"
 	ProjectionEvidenceLedger       Projection = "evidence-ledger"
 	ProjectionContextDigest        Projection = "context-digest"
@@ -130,7 +124,6 @@ func Catalog() []RecordSemantics {
 		{Kind: RecordCheckpoint, Permanence: PermanenceNotebook, Mutation: MutationAppendOnly, Retention: RetentionForever, References: ReferencesMayAttachOpaque, Projection: ProjectionLatestCheckpoint, Context: ContextLatestCheckpoint},
 		{Kind: RecordFinding, Permanence: PermanenceLedger, Mutation: MutationAppendWithCorrectionRetraction, Retention: RetentionForever, References: ReferencesMayAttachOpaque, Projection: ProjectionCurrentFinding, Context: ContextFocusFinding},
 		{Kind: RecordHandoff, Permanence: PermanenceLedger, Mutation: MutationAppendOnly, Retention: RetentionForever, References: ReferencesMayAttachOpaque, Projection: ProjectionLatestHandoff, Context: ContextLatestFocusHandoff},
-		{Kind: RecordScratchpad, Permanence: PermanenceScratchpad, Mutation: MutationAdvisoryFacts, Retention: RetentionUntilSyncSafePoint, References: ReferencesEphemeralOpaqueIDs, Projection: ProjectionCoordinationState, Context: ContextExcluded},
 		{Kind: RecordExternalReference, Permanence: PermanenceLedger, Mutation: MutationAppendWithAttachmentChanges, Retention: RetentionForever, References: ReferencesOpaqueLeaf, Projection: ProjectionReferenceAttachments, Context: ContextAttachedOnly},
 		{Kind: RecordVerificationEvidence, Permanence: PermanenceLedger, Mutation: MutationAppendOnly, Retention: RetentionForever, References: ReferencesEvidenceLeaf, Projection: ProjectionEvidenceLedger, Context: ContextAttachedOnly},
 		{Kind: RecordDerivedContext, Permanence: PermanenceDerived, Mutation: MutationReadTimeFold, Retention: RetentionRecomputed, References: ReferencesIncludeAttached, Projection: ProjectionContextDigest, Context: ContextOutput},

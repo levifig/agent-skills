@@ -16,10 +16,11 @@ Release is retroactive: select already-landed work from Git and live native trac
 
 ## Critical Rules
 
-- As the first action, emit a private `skill(release)` continuity event when the vNext continuity capability is present. Never put invocation bookkeeping in the tracker.
+- As the first action, run `loaf journal log "skill(release): <concise intent>"` against the current private local journal. If the write fails, report the failure and continue only when the work can safely proceed; never put invocation bookkeeping in the tracker.
 - Read current tags, versions, published releases, repository rules, and candidate native records before proposing a cohort.
 - Include only work whose repository landing and ship verdict are observable. Tracker status alone does not prove landing.
 - Derive human release notes from the actual landed change and live work definition; do not copy internal execution logs.
+- Describe progress by the larger rideable journey now possible, not by horizontal layers completed. If a release contains foundation work only, label it honestly and name the immediate journey intended to consume it; this is release-note truth, not a new refusal gate.
 - Ask for or verify explicit authorization immediately before version changes, tags, pushes, or release publication when governing instructions require it.
 - Use repository-native Git and hosting capabilities. Do not create a Loaf-owned release record or provider bridge.
 - After publication, read the authoritative tag and release state before claiming success.
@@ -33,6 +34,7 @@ Release is retroactive: select already-landed work from Git and live native trac
 - Required build, package, signing, or publication checks were actually run and read.
 - The authoritative hosting surface confirms the published release and artifacts.
 - Tracker updates name the observed release identity and were confirmed by readback.
+- Release notes state what a real rider can now do, what dogfood proved, and which breadth remains explicitly deferred.
 
 ## Quick Reference
 

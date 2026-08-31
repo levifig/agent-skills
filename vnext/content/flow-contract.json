@@ -13,11 +13,6 @@
       "behavior_contract": "skills/project-management/contract.json",
       "behavior_skill": "skills/project-management/SKILL.md",
       "provider_route": "selected-provider-skill"
-    },
-    "optional_profile": {
-      "id": "project-manager/v1",
-      "contract_path": "agents/project-manager.contract.json",
-      "fallback": "primary"
     }
   },
   "local_work_record": false,
@@ -33,11 +28,6 @@
       "name": "project-management",
       "path": "skills/project-management/SKILL.md",
       "kind": "reference"
-    },
-    {
-      "name": "linear",
-      "path": "skills/linear/SKILL.md",
-      "kind": "provider"
     },
     {
       "name": "pitch",
@@ -232,13 +222,6 @@
         "blockers",
         "next_step"
       ]
-    }
-  ],
-  "agents": [
-    {
-      "name": "project-manager",
-      "path": "agents/project-manager.md",
-      "contract_path": "agents/project-manager.contract.json"
     }
   ]
 }

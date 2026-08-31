@@ -18,7 +18,10 @@ import (
 
 const loafConfigSchemaVersion = "1.0.0"
 
-var configHookCommandRE = regexp.MustCompile(`loaf"?\s+check\s+--hook\s+([a-z0-9-]+)`)
+var (
+	configHookCommandRE   = regexp.MustCompile(`loaf"?\s+check\s+--hook\s+([a-z0-9-]+)`)
+	configIntegrationSlug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+)
 
 type configCheckOptions struct {
 	fix        bool
@@ -236,7 +239,7 @@ func checkProjectLoafConfig(projectRoot string, fix bool, now time.Time) configF
 		}
 		status.Status = "created"
 		status.Errors = nil
-		status.Updated = append(status.Updated, "version", "initialized", "knowledge", "integrations.linear.enabled", "integrations.serena.enabled", "issue")
+		status.Updated = append(status.Updated, "version", "initialized", "knowledge", "integrations")
 		status.Warnings = append(status.Warnings, "integrations.github.account is not configured; github-account hook will pass through")
 		return status
 	}
@@ -277,27 +280,23 @@ func checkProjectLoafConfig(projectRoot string, fix bool, now time.Time) configF
 	return status
 }
 
+// defaultIssueConfig remains only for the explicit legacy project initializer.
+// Tracker-native config health never adds this compatibility block.
 func defaultIssueConfig(projectRoot string) map[string]any {
 	prefix := state.DeriveIssuePrefix("", projectRoot)
 	if prefix == "" {
 		prefix = state.DefaultIssuePrefix
 	}
-	return map[string]any{
-		"authority": state.IssueAuthorityLocal,
-		"prefix":    prefix,
-	}
+	return map[string]any{"authority": state.IssueAuthorityLocal, "prefix": prefix}
 }
 
 func defaultLoafConfig(now time.Time, projectRoot string) map[string]any {
+	_ = projectRoot
 	return map[string]any{
-		"version":     loafConfigSchemaVersion,
-		"initialized": now.Format(time.RFC3339),
-		"knowledge":   defaultNativeKBConfigJSON(),
-		"integrations": map[string]any{
-			"linear": map[string]any{"enabled": false},
-			"serena": map[string]any{"enabled": false},
-		},
-		"issue": defaultIssueConfig(projectRoot),
+		"version":      loafConfigSchemaVersion,
+		"initialized":  now.Format(time.RFC3339),
+		"knowledge":    defaultNativeKBConfigJSON(),
+		"integrations": map[string]any{},
 	}
 }
 
@@ -342,15 +341,15 @@ func ensureLoafConfigDefaults(config map[string]any, now time.Time) ([]string, [
 		}
 	}
 	if integrations != nil {
-		updated = append(updated, ensureIntegrationEnabledDefault(integrations, "linear", false, &errors)...)
-		updated = append(updated, ensureIntegrationEnabledDefault(integrations, "serena", false, &errors)...)
-		validateIntegrationMCPServerName(integrations, "linear", &errors)
+		validateIntegrationRoutingHints(integrations, &errors)
 		warnings = append(warnings, validateGitHubIntegration(integrations, &errors)...)
 	}
 
-	issueWarnings, issueErrors := state.IssueProjectConfigFindings(config)
-	warnings = append(warnings, issueWarnings...)
-	errors = append(errors, issueErrors...)
+	if _, exists := config["issue"]; exists {
+		issueWarnings, issueErrors := state.IssueProjectConfigFindings(config)
+		warnings = append(warnings, issueWarnings...)
+		errors = append(errors, issueErrors...)
+	}
 
 	return updated, warnings, errors
 }
@@ -397,18 +396,28 @@ func ensureIntegrationEnabledDefault(integrations map[string]any, name string, e
 	return nil
 }
 
-func validateIntegrationMCPServerName(integrations map[string]any, name string, errors *[]string) {
-	section, ok := integrations[name].(map[string]any)
-	if !ok {
-		return
-	}
-	value, exists := section["mcp_server_name"]
-	if !exists {
-		return
-	}
-	serverName, ok := value.(string)
-	if !ok || strings.TrimSpace(serverName) == "" {
-		*errors = append(*errors, fmt.Sprintf("integrations.%s.mcp_server_name must be a nonempty string", name))
+func validateIntegrationRoutingHints(integrations map[string]any, errors *[]string) {
+	for name, rawSection := range integrations {
+		if !configIntegrationSlug.MatchString(name) {
+			*errors = append(*errors, fmt.Sprintf("integrations provider slug %q is invalid", name))
+			continue
+		}
+		section, ok := rawSection.(map[string]any)
+		if !ok {
+			*errors = append(*errors, fmt.Sprintf("integrations.%s must be an object", name))
+			continue
+		}
+		if value, exists := section["enabled"]; exists {
+			if _, ok := value.(bool); !ok {
+				*errors = append(*errors, fmt.Sprintf("integrations.%s.enabled must be a boolean", name))
+			}
+		}
+		if value, exists := section["mcp_server_name"]; exists {
+			text, ok := value.(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				*errors = append(*errors, fmt.Sprintf("integrations.%s.mcp_server_name must be a nonempty string", name))
+			}
+		}
 	}
 }
 

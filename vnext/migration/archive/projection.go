@@ -80,7 +80,7 @@ func ProjectionManifestForSnapshot(snapshot continuity.Snapshot) (ProjectionMani
 	if len(snapshot.ActiveSparks.Sparks) != 0 || len(snapshot.CurrentIdeas.Ideas) != 0 ||
 		len(snapshot.CurrentDecisions.Decisions) != 0 || len(snapshot.Explorations.Explorations) != 0 ||
 		len(snapshot.LatestCheckpoints.Checkpoints) != 0 || len(snapshot.CurrentFindings.Findings) != 0 ||
-		len(snapshot.Scratchpads.Scratchpads) != 0 || len(snapshot.ExternalReferences.References) != 0 ||
+		len(snapshot.ExternalReferences.References) != 0 ||
 		len(snapshot.VerificationEvidence.Evidence) != 0 {
 		return ProjectionManifest{}, fmt.Errorf("rehearsal snapshot contains continuity families outside archive version 1")
 	}

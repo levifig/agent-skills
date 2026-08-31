@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"testing"
 	"testing/fstest"
 )
@@ -20,7 +21,6 @@ func TestTrackerSkillInventoryIsClosed(t *testing.T) {
 	wantSkills := []skillDeclaration{
 		{Name: "loaf-reference", Path: "skills/loaf-reference/SKILL.md", Kind: "reference"},
 		{Name: "project-management", Path: "skills/project-management/SKILL.md", Kind: "reference"},
-		{Name: "linear", Path: "skills/linear/SKILL.md", Kind: "provider"},
 		{Name: "pitch", Path: "skills/pitch/SKILL.md", Kind: "workflow"},
 		{Name: "triage", Path: "skills/triage/SKILL.md", Kind: "workflow"},
 		{Name: "shape", Path: "skills/shape/SKILL.md", Kind: "workflow"},
@@ -42,14 +42,6 @@ func TestTrackerSkillInventoryIsClosed(t *testing.T) {
 		t.Fatalf("ceremonies = %v, want %v", actualCeremonies, wantCeremonies)
 	}
 
-	wantAgents := []agentDeclaration{{
-		Name:         "project-manager",
-		Path:         "agents/project-manager.md",
-		ContractPath: "agents/project-manager.contract.json",
-	}}
-	if !equalAgentDeclarations(manifest.Agents, wantAgents) {
-		t.Fatalf("agents = %+v, want %+v", manifest.Agents, wantAgents)
-	}
 }
 
 type contentInventoryEntry struct {
@@ -59,6 +51,7 @@ type contentInventoryEntry struct {
 
 func validateClosedContentInventory(content fs.FS) []finding {
 	wantEntries := canonicalContentInventory()
+	wantEntries = append(wantEntries, discoveredProviderInventory(content)...)
 	wantByPath := make(map[string]contentInventoryEntry, len(wantEntries))
 	for _, entry := range wantEntries {
 		wantByPath[entry.Path] = entry
@@ -101,6 +94,41 @@ func validateClosedContentInventory(content fs.FS) []finding {
 	return findings
 }
 
+func discoveredProviderInventory(content fs.FS) []contentInventoryEntry {
+	entries, err := fs.ReadDir(content, "skills")
+	if err != nil {
+		return nil
+	}
+	var inventory []contentInventoryEntry
+	for _, entry := range entries {
+		if !entry.IsDir() || !providerManifestExists(content, entry.Name()) {
+			continue
+		}
+		providerRoot := "skills/" + entry.Name()
+		inventory = append(inventory,
+			contentInventoryEntry{Path: providerRoot, Directory: true},
+			contentInventoryEntry{Path: providerRoot + "/SKILL.md"},
+			contentInventoryEntry{Path: providerRoot + "/capabilities.json"},
+		)
+		references, err := fs.ReadDir(content, providerRoot+"/references")
+		if err != nil {
+			continue
+		}
+		inventory = append(inventory, contentInventoryEntry{Path: providerRoot + "/references", Directory: true})
+		for _, reference := range references {
+			if !reference.IsDir() && path.Ext(reference.Name()) == ".md" {
+				inventory = append(inventory, contentInventoryEntry{Path: providerRoot + "/references/" + reference.Name()})
+			}
+		}
+	}
+	return inventory
+}
+
+func providerManifestExists(content fs.FS, name string) bool {
+	info, err := fs.Stat(content, "skills/"+name+"/capabilities.json")
+	return err == nil && info.Mode().IsRegular()
+}
+
 func canonicalContentInventory() []contentInventoryEntry {
 	return []contentInventoryEntry{
 		{Path: ".", Directory: true},
@@ -111,9 +139,6 @@ func canonicalContentInventory() []contentInventoryEntry {
 		{Path: "skills", Directory: true},
 		{Path: "skills/implement", Directory: true},
 		{Path: "skills/implement/SKILL.md"},
-		{Path: "skills/linear", Directory: true},
-		{Path: "skills/linear/SKILL.md"},
-		{Path: "skills/linear/capabilities.json"},
 		{Path: "skills/loaf-reference", Directory: true},
 		{Path: "skills/loaf-reference/SKILL.md"},
 		{Path: "skills/loaf-reference/references", Directory: true},
@@ -131,6 +156,7 @@ func canonicalContentInventory() []contentInventoryEntry {
 		{Path: "skills/project-management/SKILL.md"},
 		{Path: "skills/project-management/contract.json"},
 		{Path: "skills/project-management/references", Directory: true},
+		{Path: "skills/project-management/references/provider-modules.md"},
 		{Path: "skills/project-management/references/record-contract.md"},
 		{Path: "skills/release", Directory: true},
 		{Path: "skills/release/SKILL.md"},

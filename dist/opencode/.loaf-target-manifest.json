@@ -1,7 +1,7 @@
 {
   "version": 1,
   "target": "opencode",
-  "package_version": "0.3.1",
+  "package_version": "0.5.0",
   "capability_contract_version": 3,
   "adapters": [
     "opencode-plugin-v1"
@@ -12,7 +12,7 @@
       "kind": "hook-file",
       "source_path": "plugins/hooks/instructions/post-merge.md",
       "destination": "plugins/hooks/instructions/post-merge.md",
-      "sha256": "4f712c30a821a1b5d971f9fd8bf17dfc8888634b6bb8f307339f9e5a47c05551",
+      "sha256": "d28d7e2a7336f526cad0e23d904ad92f4c8d612a4035665b84d5e9db6c3eedae",
       "mode": 420
     },
     {
@@ -28,7 +28,7 @@
       "kind": "hook-file",
       "source_path": "plugins/hooks/instructions/pre-pr-checklist.md",
       "destination": "plugins/hooks/instructions/pre-pr-checklist.md",
-      "sha256": "64a647e40d2d7f52224a60b978012265f80414c8eb2c893e61a97faa74375dd3",
+      "sha256": "93fe042712c2bae8e4c85e0813033a29cce5d53625e87d3101d19b97c1411190",
       "mode": 420
     },
     {
@@ -72,14 +72,6 @@
       "mode": 493
     },
     {
-      "id": "hook-file:plugins/hooks/pre-tool/orchestration-detect-linear-magic.py",
-      "kind": "hook-file",
-      "source_path": "plugins/hooks/pre-tool/orchestration-detect-linear-magic.py",
-      "destination": "plugins/hooks/pre-tool/orchestration-detect-linear-magic.py",
-      "sha256": "a0e449549b07e95629485e35013ede78db82a4b7d08b683fe0e914ca8c74c19c",
-      "mode": 493
-    },
-    {
       "id": "hook-file:plugins/hooks/pre-tool/orchestration-validate-commit.py",
       "kind": "hook-file",
       "source_path": "plugins/hooks/pre-tool/orchestration-validate-commit.py",
@@ -107,14 +99,14 @@
       "id": "managed-instructions",
       "kind": "instruction",
       "destination": "project-instructions",
-      "sha256": "21e91a6226ead7de1ef1d3d61c4e2060dc9763e8485192f6efc0060a09bbe66e"
+      "sha256": "dd1528fbcd47b62e9cf4e5943d2deb78e5118e60a0111608eed79b07cca4d873"
     },
     {
       "id": "plugin:plugins/hooks.ts",
       "kind": "plugin",
       "source_path": "plugins/hooks.ts",
       "destination": "plugins/hooks.ts",
-      "sha256": "add02063cbe0ab1cbaa25cad813b5beb1288bbfeef58f111632741a4375e5593",
+      "sha256": "1d7dd39bcfe6741990086e879ac4b8d0faa52752d4fd7b4995e5a50d3be7a16f",
       "mode": 420
     }
   ]

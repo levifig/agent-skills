@@ -125,7 +125,7 @@ func TestRecoveryPruneInventoryDigestCommitsVerifiedProjectionAndRejectsNoncanon
 		{name: "certificate id", mutate: func(value *verifiedRecoveryPrune) { value.pruneCertificateID[0] ^= 0xff }},
 		{name: "membership generation", mutate: func(value *verifiedRecoveryPrune) { value.membershipGeneration++ }},
 		{name: "barrier", mutate: func(value *verifiedRecoveryPrune) { value.barrierArrivalSequence++ }},
-		{name: "scratchpad subject", mutate: func(value *verifiedRecoveryPrune) { value.scratchpadSubject = "scratchpad-mutated" }},
+		{name: "scratchpad subject", mutate: func(value *verifiedRecoveryPrune) { value.legacySubject = "scratchpad-mutated" }},
 	}
 	for _, test := range recordMutations {
 		t.Run(test.name, func(t *testing.T) {
@@ -188,7 +188,9 @@ func TestRecoveryPruneInventoryDigestCommitsVerifiedProjectionAndRejectsNoncanon
 		name   string
 		mutate func(*verifiedRecoveryPruneTarget)
 	}{
-		{name: "fact kind", mutate: func(value *verifiedRecoveryPruneTarget) { value.factKind = continuity.FactScratchpadClaimRecorded }},
+		{name: "fact kind", mutate: func(value *verifiedRecoveryPruneTarget) {
+			value.factKind = continuity.FactKind("scratchpad.claim-recorded")
+		}},
 		{name: "wall clock", mutate: func(value *verifiedRecoveryPruneTarget) { value.hlc.WallMillis++ }},
 		{name: "logical clock", mutate: func(value *verifiedRecoveryPruneTarget) { value.hlc.Logical++ }},
 	} {

@@ -140,7 +140,7 @@ type PruneBootstrapPlaintext struct {
 	ClosureReferenceDigest  Digest
 	ManifestCount           uint32
 	ManifestDigest          Digest
-	ScratchpadSubject       continuity.SubjectID
+	LegacySubject           continuity.SubjectID
 	EntryCount              uint32
 	Entries                 []PruneBootstrapEntry
 }
@@ -158,7 +158,7 @@ func (plaintext PruneBootstrapPlaintext) Validate() error {
 	if plaintext.CipherSuite != CipherSuiteXChaCha20Poly1305 {
 		return ErrUnsupportedCipherSuite
 	}
-	if plaintext.ProjectID.Validate() != nil || plaintext.ScratchpadSubject.Validate() != nil ||
+	if plaintext.ProjectID.Validate() != nil || plaintext.LegacySubject.Validate() != nil ||
 		isZero(plaintext.ChannelID[:]) || isZero(plaintext.RelayGeneration[:]) ||
 		isZero(plaintext.PruneID[:]) || plaintext.MembershipGeneration < 1 ||
 		plaintext.BarrierArrivalSequence < 1 || isZero(plaintext.ClosureReferenceDigest[:]) ||
@@ -193,10 +193,10 @@ func (entry PruneBootstrapEntry) Validate() error {
 		return ErrInvalidPruneBootstrapEntry
 	}
 	switch entry.FactKind {
-	case continuity.FactScratchpadParticipantIntroduced,
-		continuity.FactScratchpadMessageRecorded,
-		continuity.FactScratchpadClaimRecorded,
-		continuity.FactScratchpadClaimReleased:
+	case continuity.FactKind("scratchpad.participant-introduced"),
+		continuity.FactKind("scratchpad.message-recorded"),
+		continuity.FactKind("scratchpad.claim-recorded"),
+		continuity.FactKind("scratchpad.claim-released"):
 		return nil
 	default:
 		return ErrInvalidPruneBootstrapEntry
@@ -323,7 +323,7 @@ func (plaintext PruneBootstrapPlaintext) MarshalBinary() ([]byte, error) {
 		plaintext.ClosureReferenceDigest[:],
 		uint32Bytes(plaintext.ManifestCount),
 		plaintext.ManifestDigest[:],
-		[]byte(plaintext.ScratchpadSubject),
+		[]byte(plaintext.LegacySubject),
 		uint32Bytes(plaintext.EntryCount),
 		entryList,
 	}
@@ -694,7 +694,7 @@ func parsePruneBootstrapPlaintextFields(fields [][]byte) (PruneBootstrapPlaintex
 		MembershipGeneration:    membershipGeneration,
 		BarrierArrivalSequence:  barrier,
 		ManifestCount:           manifestCount,
-		ScratchpadSubject:       continuity.SubjectID(string(fields[13])),
+		LegacySubject:           continuity.SubjectID(string(fields[13])),
 		EntryCount:              entryCount,
 		Entries:                 entries,
 	}

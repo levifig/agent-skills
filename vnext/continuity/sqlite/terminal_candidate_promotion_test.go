@@ -496,103 +496,6 @@ func TestPromoteTerminalCandidateConcurrentExactRetry(t *testing.T) {
 	}
 }
 
-func TestPromoteTerminalCandidateRejectsPrunedLiveFactWithoutMutation(t *testing.T) {
-	t.Parallel()
-
-	store := openSyncStore(t, "terminal-candidate-promotion-pruned-live")
-	projectID := continuity.ProjectID("project-terminal-candidate-promotion-pruned-live")
-	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
-	root := syncProjectFact(t, projectID, "fact-terminal-candidate-live-root", "environment-local", 1, 103)
-	frames := terminalCandidatePrunedThenSealedFramesV1(t, projectID, root)
-	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, []OpaqueSyncFrame{frames[0].Inbox, frames[1].Inbox}); err != nil {
-		t.Fatalf("StageSyncPage() error = %v", err)
-	}
-	_, err := store.CurrentSyncAuthority(context.Background(), projectID)
-	if err != nil {
-		t.Fatalf("CurrentSyncAuthority() error = %v", err)
-	}
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
-	if err != nil {
-		t.Fatalf("stage candidate: %v", err)
-	}
-	insertSnapshotStoredFactV1(t, store, storedFactFromWireForPromotionTestV1(root))
-	open := syncScratchpadFactV1(t, projectID, "fact-terminal-candidate-live-open", "scratchpad-live", continuity.FactScratchpadOpened, "environment-scratchpad-live", 1, 100)
-	participant := syncScratchpadFactV1(t, projectID, "fact-terminal-candidate-live-participant", "scratchpad-live", continuity.FactScratchpadParticipantIntroduced, "environment-scratchpad-live", 2, 101)
-	message := syncScratchpadFactV1(t, projectID, frames[0].Pruned.Reference.FactID, "scratchpad-live", continuity.FactScratchpadMessageRecorded, frames[0].Pruned.Reference.EnvironmentID, frames[0].Pruned.Reference.EnvironmentSequence, frames[0].Pruned.HLC.WallMillis)
-	insertSnapshotStoredFactV1(t, store, storedFactFromWireForPromotionTestV1(open))
-	insertSnapshotStoredFactV1(t, store, storedFactFromWireForPromotionTestV1(participant))
-	insertSnapshotStoredFactV1(t, store, storedFactFromWireForPromotionTestV1(message))
-	before := captureTerminalMutationStateV1(t, store, projectID)
-	_, err = store.PromoteTerminalCandidate(context.Background(), projectID, terminalCandidateCheckpointV1(candidate))
-	assertSyncErrorCode(t, err, SyncErrorConflict)
-	assertTerminalMutationStateV1(t, store, projectID, before)
-	current, found, currentErr := store.CurrentTerminalCandidate(context.Background(), projectID)
-	if currentErr != nil || !found || current != candidate {
-		t.Fatalf("candidate after pruned/live rejection = (%#v, %v, %v), want %#v", current, found, currentErr, candidate)
-	}
-}
-
-func TestPromoteTerminalCandidateSealedTombstoneDuplicateDoesNotResurrect(t *testing.T) {
-	t.Parallel()
-
-	store := openSyncStore(t, "terminal-candidate-promotion-sealed-tombstone")
-	projectID := continuity.ProjectID("project-terminal-candidate-promotion-sealed-tombstone")
-	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
-	message := syncScratchpadFactV1(t, projectID, "fact-terminal-candidate-tombstoned-message", "scratchpad-tombstoned", continuity.FactScratchpadMessageRecorded, "environment-local", 1, 101)
-	frames := terminalCandidatePrunedThenSealedFramesV1(t, projectID, message)
-	if _, err := store.StageSyncPage(context.Background(), projectID, testSyncChannelID("channel-a"), 0, 2, []OpaqueSyncFrame{frames[0].Inbox, frames[1].Inbox}); err != nil {
-		t.Fatalf("StageSyncPage() error = %v", err)
-	}
-	_, err := store.CurrentSyncAuthority(context.Background(), projectID)
-	if err != nil {
-		t.Fatalf("CurrentSyncAuthority() error = %v", err)
-	}
-	candidate, err := store.StageVerifiedTerminalCandidateChunk(context.Background(), projectID, currentSyncAuthorityBindingForTest(t, store, projectID), frames, 1_000, 100)
-	if err != nil {
-		t.Fatalf("stage candidate: %v", err)
-	}
-	root := syncProjectFact(t, projectID, "fact-terminal-candidate-retained-root", "environment-root", 1, 99)
-	insertSnapshotStoredFactV1(t, store, storedFactFromWireForPromotionTestV1(root))
-	sealed := frames[1].Sealed
-	pruneID := sha256.Sum256([]byte("terminal-candidate-existing-prune"))
-	if _, err := store.db.Exec(`
-INSERT INTO continuity_sync_environment_heads(
-  project_id, environment_id, highest_sequence, hlc_wall_millis, hlc_logical,
-  sealed_sequence, previous_envelope_digest, envelope_digest, certificate_id,
-  key_generation, nonce
-) VALUES(?, ?, 1, ?, ?, 1, ?, ?, ?, ?, ?)`,
-		string(projectID), string(sealed.Fact.EnvironmentID), sealed.Fact.HLCWallMillis, sealed.Fact.HLCLogical,
-		sealed.PreviousEnvelopeDigest[:], sealed.EnvelopeDigest[:], sealed.CertificateID[:], sealed.KeyGeneration, sealed.Nonce[:]); err != nil {
-		t.Fatalf("insert tombstoned source head: %v", err)
-	}
-	if _, err := store.db.Exec(`
-INSERT INTO continuity_sync_tombstones(
-  fact_id, project_id, environment_id, environment_sequence, arrival_sequence,
-  previous_envelope_digest, envelope_digest, certificate_id, key_generation,
-  nonce, prune_certificate_id
-) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		string(sealed.Fact.FactID), string(projectID), string(sealed.Fact.EnvironmentID), sealed.Fact.EnvironmentSequence, sealed.ArrivalSequence,
-		sealed.PreviousEnvelopeDigest[:], sealed.EnvelopeDigest[:], sealed.CertificateID[:], sealed.KeyGeneration, sealed.Nonce[:], pruneID[:]); err != nil {
-		t.Fatalf("insert exact tombstone: %v", err)
-	}
-	if _, err := store.PromoteTerminalCandidate(context.Background(), projectID, terminalCandidateCheckpointV1(candidate)); err != nil {
-		t.Fatalf("PromoteTerminalCandidate() error = %v", err)
-	}
-	var live, receipt, tombstone int64
-	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_facts WHERE fact_id = ?`, string(sealed.Fact.FactID)).Scan(&live); err != nil {
-		t.Fatalf("count resurrected fact: %v", err)
-	}
-	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_receipts WHERE project_id = ? AND fact_id = ?`, string(projectID), string(sealed.Fact.FactID)).Scan(&receipt); err != nil {
-		t.Fatalf("count sealed receipt: %v", err)
-	}
-	if err := store.db.QueryRow(`SELECT COUNT(*) FROM continuity_sync_tombstones WHERE project_id = ? AND fact_id = ? AND prune_certificate_id = ?`, string(projectID), string(sealed.Fact.FactID), pruneID[:]).Scan(&tombstone); err != nil {
-		t.Fatalf("count preserved tombstone: %v", err)
-	}
-	if live != 0 || receipt != 1 || tombstone != 1 {
-		t.Fatalf("sealed/tombstone duplicate state: live=%d receipt=%d tombstone=%d", live, receipt, tombstone)
-	}
-}
-
 func TestPromoteTerminalCandidateRejectsSealedFactTombstonedForAnotherProject(t *testing.T) {
 	t.Parallel()
 
@@ -713,7 +616,7 @@ func TestPromoteTerminalCandidateHasNoLifetimeFrameCap(t *testing.T) {
 			continue
 		}
 		digest := sha256.Sum256([]byte("terminal-candidate-promotion-long-envelope:" + label))
-		reference := VerifiedPruneReference{
+		reference := legacyVerifiedPruneReferenceV1{
 			FactID:                 continuity.FactID("fact-terminal-candidate-promotion-long-" + label),
 			EnvironmentID:          "environment-a",
 			EnvironmentSequence:    arrival,
@@ -728,7 +631,7 @@ func TestPromoteTerminalCandidateHasNoLifetimeFrameCap(t *testing.T) {
 		pruned := VerifiedTerminalPrunedFrame{
 			Reference:          reference,
 			PruneCertificateID: pruneCertificateID,
-			FactKind:           continuity.FactScratchpadMessageRecorded,
+			FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                continuity.HybridTime{WallMillis: int64(99 + sequence)},
 		}
 		opaque = append(opaque, inbox)
@@ -835,7 +738,7 @@ func terminalCandidatePrunedWithLocalRootV1(t *testing.T, suffix string, retireU
 	}))
 	installTestSyncAuthority(t, store, projectID, testSyncChannelID("channel-a"))
 	digest := sha256.Sum256([]byte("terminal-candidate-active-pruned:" + suffix))
-	reference := VerifiedPruneReference{
+	reference := legacyVerifiedPruneReferenceV1{
 		FactID:              continuity.FactID("fact-pruned-" + suffix),
 		EnvironmentID:       "environment-a",
 		EnvironmentSequence: 1,
@@ -851,7 +754,7 @@ func terminalCandidatePrunedWithLocalRootV1(t *testing.T, suffix string, retireU
 		Pruned: &VerifiedTerminalPrunedFrame{
 			Reference:          reference,
 			PruneCertificateID: sha256.Sum256([]byte("prune-certificate:" + suffix)),
-			FactKind:           continuity.FactScratchpadMessageRecorded,
+			FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 			HLC:                continuity.HybridTime{WallMillis: 200},
 		},
 	}
@@ -873,7 +776,7 @@ func terminalCandidatePrunedThenSealedFramesV1(t *testing.T, projectID continuit
 	prunedDigest := sha256.Sum256([]byte("terminal-candidate-first-pruned:" + string(projectID)))
 	prunedInbox := OpaqueSyncFrame{ArrivalSequence: 1, EnvelopeDigest: prunedDigest, PrunedArrival: []byte("pruned:" + string(projectID))}
 	pruned := VerifiedTerminalPrunedFrame{
-		Reference: VerifiedPruneReference{
+		Reference: legacyVerifiedPruneReferenceV1{
 			FactID:              continuity.FactID("fact-pruned-" + string(projectID)),
 			EnvironmentID:       "environment-a",
 			EnvironmentSequence: 1,
@@ -884,7 +787,7 @@ func terminalCandidatePrunedThenSealedFramesV1(t *testing.T, projectID continuit
 			Nonce:               testNonce("terminal-candidate-first-pruned:" + string(projectID)),
 		},
 		PruneCertificateID: sha256.Sum256([]byte("prune-certificate:" + string(projectID))),
-		FactKind:           continuity.FactScratchpadMessageRecorded,
+		FactKind:           continuity.FactKind("scratchpad.message-recorded"),
 		HLC:                continuity.HybridTime{WallMillis: 100},
 	}
 	encoded, err := continuitywire.Encode(fact)

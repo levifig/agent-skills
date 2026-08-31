@@ -204,60 +204,6 @@ func (store *Store) RecordHandoff(ctx context.Context, projectID continuity.Proj
 	return store.appendFactV1(ctx, projectID, factID, continuity.SubjectRef{Kind: continuity.RecordHandoff, ID: handoffID}, continuity.FactHandoffRecorded, content)
 }
 
-// OpenScratchpad records a new ephemeral coordination scratchpad.
-func (store *Store) OpenScratchpad(ctx context.Context, projectID continuity.ProjectID, factID continuity.FactID, scratchpadID continuity.SubjectID, payload continuity.ScratchpadOpenedPayload) (continuity.AppendReceipt, error) {
-	content, err := encodeScratchpadOpenedV1(payload)
-	if err != nil {
-		return continuity.AppendReceipt{}, err
-	}
-	return store.appendFactV1(ctx, projectID, factID, continuity.SubjectRef{Kind: continuity.RecordScratchpad, ID: scratchpadID}, continuity.FactScratchpadOpened, content)
-}
-
-// IntroduceScratchpadParticipant records a mint-once participant identity.
-func (store *Store) IntroduceScratchpadParticipant(ctx context.Context, projectID continuity.ProjectID, factID continuity.FactID, scratchpadID continuity.SubjectID, payload continuity.ScratchpadParticipantPayload) (continuity.AppendReceipt, error) {
-	content, err := encodeScratchpadParticipantV1(payload)
-	if err != nil {
-		return continuity.AppendReceipt{}, err
-	}
-	return store.appendFactV1(ctx, projectID, factID, continuity.SubjectRef{Kind: continuity.RecordScratchpad, ID: scratchpadID}, continuity.FactScratchpadParticipantIntroduced, content)
-}
-
-// RecordScratchpadMessage records a participant message in an open scratchpad.
-func (store *Store) RecordScratchpadMessage(ctx context.Context, projectID continuity.ProjectID, factID continuity.FactID, scratchpadID continuity.SubjectID, payload continuity.ScratchpadMessagePayload) (continuity.AppendReceipt, error) {
-	content, err := encodeScratchpadMessageV1(payload)
-	if err != nil {
-		return continuity.AppendReceipt{}, err
-	}
-	return store.appendFactV1(ctx, projectID, factID, continuity.SubjectRef{Kind: continuity.RecordScratchpad, ID: scratchpadID}, continuity.FactScratchpadMessageRecorded, content)
-}
-
-// RecordScratchpadClaim records or monotonically renews an advisory claim.
-func (store *Store) RecordScratchpadClaim(ctx context.Context, projectID continuity.ProjectID, factID continuity.FactID, scratchpadID continuity.SubjectID, payload continuity.ScratchpadClaimPayload) (continuity.AppendReceipt, error) {
-	content, err := encodeScratchpadClaimV1(payload)
-	if err != nil {
-		return continuity.AppendReceipt{}, err
-	}
-	return store.appendFactV1(ctx, projectID, factID, continuity.SubjectRef{Kind: continuity.RecordScratchpad, ID: scratchpadID}, continuity.FactScratchpadClaimRecorded, content)
-}
-
-// ReleaseScratchpadClaim records a terminal advisory-claim release.
-func (store *Store) ReleaseScratchpadClaim(ctx context.Context, projectID continuity.ProjectID, factID continuity.FactID, scratchpadID continuity.SubjectID, payload continuity.ScratchpadClaimReleasePayload) (continuity.AppendReceipt, error) {
-	content, err := encodeScratchpadClaimReleaseV1(payload)
-	if err != nil {
-		return continuity.AppendReceipt{}, err
-	}
-	return store.appendFactV1(ctx, projectID, factID, continuity.SubjectRef{Kind: continuity.RecordScratchpad, ID: scratchpadID}, continuity.FactScratchpadClaimReleased, content)
-}
-
-// CloseScratchpad records a terminal scratchpad close.
-func (store *Store) CloseScratchpad(ctx context.Context, projectID continuity.ProjectID, factID continuity.FactID, scratchpadID continuity.SubjectID, payload continuity.ScratchpadClosePayload) (continuity.AppendReceipt, error) {
-	content, err := encodeScratchpadCloseV1(payload)
-	if err != nil {
-		return continuity.AppendReceipt{}, err
-	}
-	return store.appendFactV1(ctx, projectID, factID, continuity.SubjectRef{Kind: continuity.RecordScratchpad, ID: scratchpadID}, continuity.FactScratchpadClosed, content)
-}
-
 // RegisterExternalReference records an opaque external locator.
 func (store *Store) RegisterExternalReference(ctx context.Context, projectID continuity.ProjectID, factID continuity.FactID, referenceID continuity.SubjectID, payload continuity.ExternalReferenceRegistrationPayload) (continuity.AppendReceipt, error) {
 	content, err := encodeExternalReferenceRegistrationV1(payload)

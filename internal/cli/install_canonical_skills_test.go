@@ -110,11 +110,11 @@ func TestSingleCanonicalWrite(t *testing.T) {
 		if foundationsAction != planActionPreserve {
 			t.Fatalf("foundations action = %q, want preserve while orchestration conflicts", foundationsAction)
 		}
-		// Skill conflicts leave the shared set incomplete but do not block
-		// target adapter work — plan must match apply.
+		// Skill conflicts leave the shared set incomplete, so the complete
+		// target cohort is blocked and every marker remains retryable.
 		for _, target := range plan.Targets {
-			if target.Blocked {
-				t.Fatalf("target %q Blocked = true, want false for conflict-only skill errors (adapters still run)", target.Target)
+			if !target.Blocked {
+				t.Fatalf("target %q Blocked = false, want true for shared-skill conflict", target.Target)
 			}
 		}
 
@@ -132,13 +132,10 @@ func TestSingleCanonicalWrite(t *testing.T) {
 		}
 		for _, target := range targets {
 			config := defaultInstallConfigDirsForHome(home)[target]
-			assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")
+			assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "old\n")
 			recordPath := installRecordPath(home, target)
 			if _, statErr := os.Stat(recordPath); statErr != nil {
-				t.Fatalf("install record for %s missing after conflicted upgrade: %v", target, statErr)
-			}
-			if !strings.Contains(out, installDisplayName(target)) {
-				t.Fatalf("upgrade stdout missing refreshed target %q:\n%s", target, out)
+				t.Fatalf("pre-existing install record for %s disappeared after conflicted upgrade: %v", target, statErr)
 			}
 		}
 		opencodeCommands := filepath.Join(defaultInstallConfigDirsForHome(home)["opencode"], "commands", "foundations.md")

@@ -332,20 +332,27 @@ func checkHarnessContentDrift() doctorCheck {
 				return doctorResult{Status: doctorSkip, Message: "No harness carries installed Loaf content"}
 			}
 			var details []string
+			var receipts []string
 			for _, reading := range readings {
 				if line := reading.doctorDetailLine(ctx.cliVersion); line != "" {
 					details = append(details, line)
+				}
+				if line := reading.reconcileReceiptDetailLine(); line != "" {
+					receipts = append(receipts, line)
 				}
 			}
 			if len(details) == 0 {
 				return doctorResult{
 					Status:  doctorPass,
 					Message: fmt.Sprintf("All %d installed harnesses carry loaf %s", len(readings), ctx.cliVersion),
+					Detail:  strings.Join(receipts, "\n"),
 				}
 			}
+			driftCount := len(details)
+			details = append(details, receipts...)
 			return doctorResult{
 				Status:  doctorWarn,
-				Message: fmt.Sprintf("%d of %d installed harnesses do not carry loaf %s", len(details), len(readings), ctx.cliVersion),
+				Message: fmt.Sprintf("%d of %d installed harnesses do not carry loaf %s", driftCount, len(readings), ctx.cliVersion),
 				Detail:  strings.Join(details, "\n"),
 			}
 		},

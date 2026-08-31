@@ -84,7 +84,6 @@ type FamilyManifest struct {
 	Ideas              bool `json:"ideas"`
 	Sparks             bool `json:"sparks"`
 	Handoffs           bool `json:"handoffs"`
-	Scratchpads        bool `json:"scratchpads"`
 	Decisions          bool `json:"decisions"`
 	Explorations       bool `json:"explorations"`
 	Findings           bool `json:"findings"`
