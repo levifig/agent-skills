@@ -110,6 +110,15 @@ func prepareRecordV1(
 			Scope:       record.Wrap.Scope,
 			Synthesis:   record.Wrap.Synthesis,
 		})
+	case archive.RecordHandoff:
+		suggestedSkills := make([]string, len(record.Handoff.SuggestedSkills))
+		copy(suggestedSkills, record.Handoff.SuggestedSkills)
+		return continuitysqlite.NewHandoffRehearsalFact(projectID, record.FactID, record.SubjectID, continuity.HandoffRecordedPayload{
+			Observation: observation,
+			Purpose:     record.Handoff.Purpose, Situation: record.Handoff.Situation,
+			NextActions: record.Handoff.NextActions, QuestionsAndRisks: record.Handoff.QuestionsAndRisks,
+			SuggestedSkills: suggestedSkills,
+		})
 	default:
 		return continuitysqlite.RehearsalFact{}, fmt.Errorf("record kind %q is unsupported by rehearsal importer version 1", record.Kind)
 	}

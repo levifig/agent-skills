@@ -14,6 +14,7 @@ type semanticProjectionV1 struct {
 	Project []semanticRecordV1 `json:"project"`
 	Journal []semanticRecordV1 `json:"journal"`
 	Wrap    []semanticRecordV1 `json:"wrap"`
+	Handoff []semanticRecordV1 `json:"handoff,omitempty"`
 }
 
 type semanticRecordV1 struct {
@@ -23,6 +24,7 @@ type semanticRecordV1 struct {
 	Project     *ProjectRecord `json:"project,omitempty"`
 	Journal     *JournalRecord `json:"journal,omitempty"`
 	Wrap        *WrapRecord    `json:"wrap,omitempty"`
+	Handoff     *HandoffRecord `json:"handoff,omitempty"`
 }
 
 // ProjectionManifestForRecords derives the semantic vNext projection for one
@@ -34,13 +36,13 @@ func ProjectionManifestForRecords(records []Record) (ProjectionManifest, error) 
 
 func expectedProjectionV1(records []Record) (ProjectionManifest, error) {
 	projection := semanticProjectionV1{
-		Project: []semanticRecordV1{}, Journal: []semanticRecordV1{}, Wrap: []semanticRecordV1{},
+		Project: []semanticRecordV1{}, Journal: []semanticRecordV1{}, Wrap: []semanticRecordV1{}, Handoff: []semanticRecordV1{},
 	}
 	if len(records) != 0 {
 		record := records[0]
 		semantic := semanticRecordV1{
 			FactID: string(record.FactID), SubjectID: string(record.SubjectID), Observation: record.Observation,
-			Project: record.Project, Journal: record.Journal, Wrap: record.Wrap,
+			Project: record.Project, Journal: record.Journal, Wrap: record.Wrap, Handoff: record.Handoff,
 		}
 		if record.Kind != RecordProject {
 			return ProjectionManifest{}, fmt.Errorf("cannot project archive without a leading project record")
@@ -51,7 +53,7 @@ func expectedProjectionV1(records []Record) (ProjectionManifest, error) {
 		record := records[index]
 		semantic := semanticRecordV1{
 			FactID: string(record.FactID), SubjectID: string(record.SubjectID), Observation: record.Observation,
-			Project: record.Project, Journal: record.Journal, Wrap: record.Wrap,
+			Project: record.Project, Journal: record.Journal, Wrap: record.Wrap, Handoff: record.Handoff,
 		}
 		switch record.Kind {
 		case RecordJournal:
@@ -59,6 +61,10 @@ func expectedProjectionV1(records []Record) (ProjectionManifest, error) {
 		case RecordWrap:
 			if len(projection.Wrap) == 0 {
 				projection.Wrap = append(projection.Wrap, semantic)
+			}
+		case RecordHandoff:
+			if len(projection.Handoff) == 0 {
+				projection.Handoff = append(projection.Handoff, semantic)
 			}
 		default:
 			return ProjectionManifest{}, fmt.Errorf("cannot project unsupported archive record kind %q", record.Kind)
@@ -74,8 +80,8 @@ func ProjectionManifestForSnapshot(snapshot continuity.Snapshot) (ProjectionMani
 	if len(snapshot.ActiveSparks.Sparks) != 0 || len(snapshot.CurrentIdeas.Ideas) != 0 ||
 		len(snapshot.CurrentDecisions.Decisions) != 0 || len(snapshot.Explorations.Explorations) != 0 ||
 		len(snapshot.LatestCheckpoints.Checkpoints) != 0 || len(snapshot.CurrentFindings.Findings) != 0 ||
-		len(snapshot.LatestHandoffs.Handoffs) != 0 || len(snapshot.Scratchpads.Scratchpads) != 0 ||
-		len(snapshot.ExternalReferences.References) != 0 || len(snapshot.VerificationEvidence.Evidence) != 0 {
+		len(snapshot.Scratchpads.Scratchpads) != 0 || len(snapshot.ExternalReferences.References) != 0 ||
+		len(snapshot.VerificationEvidence.Evidence) != 0 {
 		return ProjectionManifest{}, fmt.Errorf("rehearsal snapshot contains continuity families outside archive version 1")
 	}
 	identity := snapshot.Project.Identity
@@ -87,6 +93,7 @@ func ProjectionManifestForSnapshot(snapshot continuity.Snapshot) (ProjectionMani
 		}},
 		Journal: make([]semanticRecordV1, 0, len(snapshot.EffectiveJournal.Entries)),
 		Wrap:    make([]semanticRecordV1, 0, len(snapshot.LatestWraps.Wraps)),
+		Handoff: make([]semanticRecordV1, 0, len(snapshot.LatestHandoffs.Handoffs)),
 	}
 	for _, entry := range snapshot.EffectiveJournal.Entries {
 		projection.Journal = append(projection.Journal, semanticRecordV1{
@@ -107,6 +114,22 @@ func ProjectionManifestForSnapshot(snapshot continuity.Snapshot) (ProjectionMani
 			Wrap:        &WrapRecord{Scope: wrap.Scope, Synthesis: wrap.Synthesis},
 		})
 	}
+	for _, handoff := range snapshot.LatestHandoffs.Handoffs {
+		if handoff.Focus != nil {
+			return ProjectionManifest{}, fmt.Errorf("archive version 1 rehearsal snapshot contains a focused handoff")
+		}
+		suggestedSkills := make([]string, len(handoff.SuggestedSkills))
+		copy(suggestedSkills, handoff.SuggestedSkills)
+		projection.Handoff = append(projection.Handoff, semanticRecordV1{
+			FactID: string(handoff.Record.Root.FactID), SubjectID: string(handoff.Record.Subject.ID),
+			Observation: observationFromContinuityV1(handoff.HeadObservation),
+			Handoff: &HandoffRecord{
+				Purpose: handoff.Purpose, Situation: handoff.Situation, NextActions: handoff.NextActions,
+				QuestionsAndRisks: handoff.QuestionsAndRisks,
+				SuggestedSkills:   suggestedSkills,
+			},
+		})
+	}
 	return projectionManifestV1(projection)
 }
 
@@ -120,6 +143,7 @@ func projectionManifestV1(projection semanticProjectionV1) (ProjectionManifest, 
 		ProjectCount:          len(projection.Project),
 		EffectiveJournalCount: len(projection.Journal),
 		WrapCount:             len(projection.Wrap),
+		HandoffCount:          len(projection.Handoff),
 		SHA256:                hex.EncodeToString(digest[:]),
 	}, nil
 }

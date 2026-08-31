@@ -15,6 +15,16 @@ type contentWireV1 struct {
 	Expected ProjectionManifest `json:"expected_projection"`
 }
 
+const maxHandoffSuggestedSkillsV1 = 64
+
+type handoffRecordWireV1 struct {
+	Purpose           string          `json:"purpose"`
+	Situation         string          `json:"situation,omitempty"`
+	NextActions       string          `json:"next_actions,omitempty"`
+	QuestionsAndRisks string          `json:"questions_and_risks,omitempty"`
+	SuggestedSkills   json.RawMessage `json:"suggested_skills"`
+}
+
 // UnmarshalJSON bounds the structurally amplifying records array before the
 // standard decoder can materialize an unbounded []Record value.
 func (content *Content) UnmarshalJSON(encoded []byte) error {
@@ -36,6 +46,63 @@ func (content *Content) UnmarshalJSON(encoded []byte) error {
 		Records: records, Expected: wire.Expected,
 	}
 	return nil
+}
+
+// UnmarshalJSON bounds the structurally amplifying skills array before the
+// standard decoder can materialize an unbounded []string value.
+func (handoff *HandoffRecord) UnmarshalJSON(encoded []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	var wire handoffRecordWireV1
+	if err := decoder.Decode(&wire); err != nil {
+		return err
+	}
+	if err := requireJSONEOFV1(decoder); err != nil {
+		return err
+	}
+	skills, err := decodeHandoffSkillsV1(wire.SuggestedSkills)
+	if err != nil {
+		return err
+	}
+	*handoff = HandoffRecord{
+		Purpose: wire.Purpose, Situation: wire.Situation, NextActions: wire.NextActions,
+		QuestionsAndRisks: wire.QuestionsAndRisks, SuggestedSkills: skills,
+	}
+	return nil
+}
+
+func decodeHandoffSkillsV1(encoded []byte) ([]string, error) {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, fmt.Errorf("decode handoff suggested skills: %w", err)
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok || delimiter != '[' {
+		return nil, fmt.Errorf("handoff suggested skills must be an array")
+	}
+	skills := make([]string, 0, maxHandoffSuggestedSkillsV1)
+	for decoder.More() {
+		if len(skills) >= maxHandoffSuggestedSkillsV1 {
+			return nil, fmt.Errorf("handoff suggested skills exceed %d items", maxHandoffSuggestedSkillsV1)
+		}
+		var skill string
+		if err := decoder.Decode(&skill); err != nil {
+			return nil, fmt.Errorf("decode handoff suggested skill %d: %w", len(skills), err)
+		}
+		skills = append(skills, skill)
+	}
+	token, err = decoder.Token()
+	if err != nil {
+		return nil, fmt.Errorf("decode handoff suggested skills: %w", err)
+	}
+	if delimiter, ok = token.(json.Delim); !ok || delimiter != ']' {
+		return nil, fmt.Errorf("handoff suggested skills array is not closed")
+	}
+	if err := requireJSONEOFV1(decoder); err != nil {
+		return nil, fmt.Errorf("decode handoff suggested skills: %w", err)
+	}
+	return skills, nil
 }
 
 func decodeRecordsV1(encoded []byte, initialPayloadBytes int) ([]Record, error) {
@@ -103,6 +170,13 @@ func recordPayloadBytesV1(record Record) int {
 	}
 	if record.Wrap != nil {
 		bytes += len(record.Wrap.Scope) + len(record.Wrap.Synthesis)
+	}
+	if record.Handoff != nil {
+		bytes += len(record.Handoff.Purpose) + len(record.Handoff.Situation) +
+			len(record.Handoff.NextActions) + len(record.Handoff.QuestionsAndRisks)
+		for _, skill := range record.Handoff.SuggestedSkills {
+			bytes += len(skill)
+		}
 	}
 	return bytes
 }
