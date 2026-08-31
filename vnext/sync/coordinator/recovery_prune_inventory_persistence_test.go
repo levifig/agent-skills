@@ -94,9 +94,23 @@ func TestPersistRecoveryPruneInventoryResumesExactVerifiedCheckpoint(t *testing.
 	if replayed != ready {
 		t.Fatalf("ready replay = %#v, want %#v", replayed, ready)
 	}
-	if len(fixture.remote.pruneRequests) != 0 {
-		t.Fatalf("ready replay requests = %#v, want local exact-checkpoint reuse", fixture.remote.pruneRequests)
+	if len(fixture.remote.pruneRequests) != 2 || fixture.remote.pruneRequests[0].After != 0 ||
+		fixture.remote.pruneRequests[1].After != relay.MaxPruneInventoryPage {
+		t.Fatalf("ready replay requests = %#v, want full authenticated projection revalidation", fixture.remote.pruneRequests)
 	}
+
+	equivocatedRecords[0] = testRecoveryPruneInventoryRecord(t, fixture, 1, 0xe0)
+	fixture.remote.prune = recoveryPruneInventoryPages(fixture, snapshot, equivocatedRecords)
+	fixture.remote.pruneRequests = nil
+	_, err = fixture.coordinator.persistRecoveryPruneInventory(
+		context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
+	)
+	assertProblem(t, err, CodeConflict, PhasePruneInventory, ActionRestartRecovery)
+	if len(fixture.remote.pruneRequests) != 1 || fixture.remote.pruneRequests[0].After != 0 {
+		t.Fatalf("equivocated ready replay requests = %#v, want first-page rejection", fixture.remote.pruneRequests)
+	}
+	fixture.remote.prune = pages
+	fixture.remote.pruneRequests = nil
 	newerWatermark := recoveryDownloadWatermark(fixture.recovery.ProjectID, fixture.binding)
 	newerWatermark.RelayHead++
 	if _, err := fixture.store.AdvanceSyncRelayWatermark(context.Background(), newerWatermark); err != nil {
@@ -139,6 +153,59 @@ func TestPersistRecoveryPruneInventoryPersistsEmptySnapshot(t *testing.T) {
 		ready.ThroughPruneSequence != 0 || ready.LastMembershipGeneration != 0 ||
 		ready.InventoryDigest == (continuitysqlite.SyncRecoveryPruneInventoryDigest{}) {
 		t.Fatalf("empty prune candidate = %#v, want one ready empty checkpoint", ready)
+	}
+}
+
+func TestPersistRecoveryPruneInventoryPreflightsLocalFenceBeforeRelay(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		stagePartial bool
+	}{
+		{name: "fresh"},
+		{name: "staging", stagePartial: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newRecoveryDownloadFixture(t, 12)
+			stageRecoveryPrunePersistencePrefix(t, fixture, 12)
+			records := make([]relay.PruneInventoryRecord, 5)
+			for index := range records {
+				records[index] = testRecoveryPruneInventoryRecord(t, fixture, int64(index+1), byte(0xc0+index))
+			}
+			snapshot := relay.PruneInventorySnapshot{
+				MembershipGeneration: fixture.binding.MembershipGeneration,
+				ArrivalHead:          fixture.binding.InventoryArrivalHead,
+				PruneHead:            int64(len(records)),
+			}
+			pages := recoveryPruneInventoryPages(fixture, snapshot, records)
+			if test.stagePartial {
+				interrupted := errors.New("fixture preflight interruption")
+				fixture.remote.prune = func(ctx context.Context, request relay.PruneInventoryRequest) (relay.PruneInventoryPage, error) {
+					if request.After == relay.MaxPruneInventoryPage {
+						return relay.PruneInventoryPage{}, interrupted
+					}
+					return pages(ctx, request)
+				}
+				_, err := fixture.coordinator.persistRecoveryPruneInventory(
+					context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
+				)
+				assertProblem(t, err, CodeUnavailable, PhasePruneInventory, ActionRetry)
+			}
+
+			newerWatermark := recoveryDownloadWatermark(fixture.recovery.ProjectID, fixture.binding)
+			newerWatermark.RelayHead++
+			if _, err := fixture.store.AdvanceSyncRelayWatermark(context.Background(), newerWatermark); err != nil {
+				t.Fatalf("advance preflight relay watermark: %v", err)
+			}
+			fixture.remote.prune = pages
+			fixture.remote.pruneRequests = nil
+			_, err := fixture.coordinator.persistRecoveryPruneInventory(
+				context.Background(), fixture.recovery.ProjectID, fixture.prepared, fixture.binding,
+			)
+			assertProblem(t, err, CodeConflict, PhasePruneInventory, ActionRetry)
+			if len(fixture.remote.pruneRequests) != 0 {
+				t.Fatalf("stale %s preflight requests = %#v, want no relay contact", test.name, fixture.remote.pruneRequests)
+			}
+		})
 	}
 }
 

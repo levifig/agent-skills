@@ -195,7 +195,7 @@ func TestContinuitySQLiteRefusesDriftedV1BeforeMigration(t *testing.T) {
 	}
 }
 
-func TestContinuitySQLiteV10SyncSchemaIsExactAndCredentialFree(t *testing.T) {
+func TestContinuitySQLiteV11SyncSchemaIsExactAndCredentialFree(t *testing.T) {
 	t.Parallel()
 
 	store, err := Open(filepath.Join(testTempDir(t), "state"), "environment-a")
@@ -239,6 +239,8 @@ ORDER BY name`)
 		"continuity_sync_projects",
 		"continuity_sync_receipts",
 		"continuity_sync_recovery_prune_candidates",
+		"continuity_sync_recovery_prune_records",
+		"continuity_sync_recovery_prune_targets",
 		"continuity_sync_relay_watermarks",
 		"continuity_sync_terminal_candidate_frames",
 		"continuity_sync_terminal_candidates",
@@ -275,6 +277,9 @@ ORDER BY name`)
 			}
 			columns = append(columns, table+"."+column)
 			for _, fragment := range banned {
+				if table == "continuity_sync_recovery_prune_targets" && column == "fact_kind" && fragment == "fact_kind" {
+					continue
+				}
 				if strings.Contains(column, fragment) {
 					columnRows.Close()
 					t.Fatalf("sync column %s.%s contains forbidden semantic or credential fragment %q", table, column, fragment)
@@ -309,7 +314,8 @@ func TestContinuitySQLiteSchemaDDLGoldenChecksums(t *testing.T) {
 		{name: "v7", ddl: schemaV7DDL, checksum: "cc8885f15ec98c010752282222ece44fcd9e8378a212aa177d762112fca1e930", bytes: 34272},
 		{name: "v8", ddl: schemaV8DDL, checksum: "c65fb57b1fe6e50c71246b4b654aff767dd8ef7236c483070a634b033c6e67e9", bytes: 34469},
 		{name: "v9", ddl: schemaV9DDL, checksum: "67a38df6e7f269d7cdbdd7ec63c87f8bf1a5160e517ef224dbd3acc4bf1884e4", bytes: 34631},
-		{name: "v10", ddl: schemaDDL, checksum: "a06f0193b50c876d4a40495dbd6ce23caa2efac3ab6df847196c5a23019486d9", bytes: 37579},
+		{name: "v10", ddl: schemaV10DDL, checksum: "a06f0193b50c876d4a40495dbd6ce23caa2efac3ab6df847196c5a23019486d9", bytes: 37579},
+		{name: "v11", ddl: schemaDDL, checksum: "1a1a1f0f7db82e2a6a5d7e00c0e65bd4ea854a0ea68f5c682895c81239d90166", bytes: 41182},
 	}
 	for _, test := range tests {
 		test := test
@@ -567,6 +573,205 @@ WHERE project_id = 'project-v9-migration'`).Scan(
 	defer foreignKeys.Close()
 	if foreignKeys.Next() {
 		t.Fatal("migrated v10 schema has a foreign-key violation")
+	}
+}
+
+func TestContinuitySQLiteMigratesExactV10InvalidatingOnlyUnindexedPruneCandidates(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV10ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open exact v10 database: %v", err)
+	}
+	if err := validateSchemaVersion(db, 10, checksumSchemaV10(), expectedSchemaV10Objects()); err != nil {
+		db.Close()
+		t.Fatalf("validate exact v10 database: %v", err)
+	}
+	for index, projectID := range []string{"project-v10-ready", "project-v10-staging"} {
+		seed := byte(0x20 + index*0x10)
+		arrivalHead := int64(2)
+		if index == 1 {
+			arrivalHead = 8
+		}
+		if _, err := db.Exec(`
+INSERT INTO continuity_sync_projects(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, activation_state, downloaded_cursor,
+  applied_cursor, relay_head
+) VALUES(?, ?, ?, ?, 3, 'staging', ?, 0, ?)`,
+			projectID, schemaDigestBytes(seed), schemaDigestBytes(seed+1), schemaDigestBytes(seed+2),
+			arrivalHead, arrivalHead,
+		); err != nil {
+			db.Close()
+			t.Fatalf("seed v10 sync project %s: %v", projectID, err)
+		}
+		if _, err := db.Exec(`
+INSERT INTO continuity_sync_authorities(
+  project_id, digest_version, authority_digest, inventory_arrival_head
+) VALUES(?, 2, ?, ?)`, projectID, schemaDigestBytes(seed+3), arrivalHead); err != nil {
+			db.Close()
+			t.Fatalf("seed v10 authority %s: %v", projectID, err)
+		}
+		if _, err := db.Exec(`
+INSERT INTO continuity_sync_relay_watermarks(
+  project_id, channel_id, relay_generation, admin_public_key,
+  membership_generation, relay_head, membership_floor_known
+) VALUES(?, ?, ?, ?, 3, ?, 1)`,
+			projectID, schemaDigestBytes(seed), schemaDigestBytes(seed+1), schemaDigestBytes(seed+2), arrivalHead,
+		); err != nil {
+			db.Close()
+			t.Fatalf("seed v10 watermark %s: %v", projectID, err)
+		}
+		if _, err := db.Exec(`
+INSERT INTO continuity_sync_inbox(
+  project_id, arrival_sequence, envelope_digest, frame_kind, frame_bytes, state
+) VALUES(?, 1, ?, 'sealed', X'01', 'staged')`, projectID, schemaDigestBytes(seed+4)); err != nil {
+			db.Close()
+			t.Fatalf("seed v10 inbox %s: %v", projectID, err)
+		}
+	}
+	if _, err := db.Exec(`
+INSERT INTO continuity_facts(
+  fact_id, project_id, subject_kind, subject_id, fact_kind,
+  payload_version, content_json, environment_id, environment_sequence,
+  hlc_wall_millis, hlc_logical, envelope_version
+) VALUES(
+  'fact-v10-project', 'project-v10-ready', 'project-identity',
+  'project-v10-ready', 'project.registered', 1, '{}',
+  'environment-v10', 1, 100, 0, 1
+)`); err != nil {
+		db.Close()
+		t.Fatalf("seed v10 continuity fact: %v", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_recovery_prune_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  authority_digest_version, authority_digest, prune_head, page_count,
+  prune_count, target_count, through_prune_sequence,
+  last_membership_generation, rolling_inventory_digest, inventory_digest
+) VALUES(
+  'project-v10-ready', ?, 'ready', ?, ?, ?, 3, 2, 2, ?,
+  0, 1, 0, 0, 0, 0, ?, ?
+)`,
+		schemaDigestBytes(0x51), schemaDigestBytes(0x20), schemaDigestBytes(0x21),
+		schemaDigestBytes(0x22), schemaDigestBytes(0x23), schemaDigestBytes(0x52), schemaDigestBytes(0x53),
+	); err != nil {
+		db.Close()
+		t.Fatalf("seed v10 ready prune candidate: %v", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO continuity_sync_recovery_prune_candidates(
+  project_id, candidate_id, state, channel_id, relay_generation,
+  admin_public_key, membership_generation, inventory_arrival_head,
+  authority_digest_version, authority_digest, prune_head, page_count,
+  prune_count, target_count, through_prune_sequence,
+  last_membership_generation, rolling_inventory_digest, inventory_digest
+) VALUES(
+  'project-v10-staging', ?, 'staging', ?, ?, ?, 3, 8, 2, ?,
+  5, 1, 4, 4, 4, 2, ?, NULL
+)`,
+		schemaDigestBytes(0x61), schemaDigestBytes(0x30), schemaDigestBytes(0x31),
+		schemaDigestBytes(0x32), schemaDigestBytes(0x33), schemaDigestBytes(0x62),
+	); err != nil {
+		db.Close()
+		t.Fatalf("seed v10 staging prune candidate: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close seeded v10 database: %v", err)
+	}
+
+	store, err := Open(stateRoot, "environment-v11")
+	if err != nil {
+		t.Fatalf("Open(v10) error = %v", err)
+	}
+	defer store.Close()
+	if err := validateSchema(store.db); err != nil {
+		t.Fatalf("validate migrated v11 schema: %v", err)
+	}
+	for _, table := range []string{
+		"continuity_sync_recovery_prune_candidates",
+		"continuity_sync_recovery_prune_records",
+		"continuity_sync_recovery_prune_targets",
+	} {
+		var rows int64
+		if err := store.db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&rows); err != nil {
+			t.Fatalf("count migrated %s: %v", table, err)
+		}
+		if rows != 0 {
+			t.Fatalf("migrated %s rows = %d, want zero", table, rows)
+		}
+	}
+	var projectRows, authorityRows, watermarkRows, inboxRows, factRows int64
+	for query, destination := range map[string]*int64{
+		`SELECT COUNT(*) FROM continuity_sync_projects WHERE project_id LIKE 'project-v10-%'`:                    &projectRows,
+		`SELECT COUNT(*) FROM continuity_sync_authorities WHERE project_id LIKE 'project-v10-%'`:                 &authorityRows,
+		`SELECT COUNT(*) FROM continuity_sync_relay_watermarks WHERE project_id LIKE 'project-v10-%'`:            &watermarkRows,
+		`SELECT COUNT(*) FROM continuity_sync_inbox WHERE project_id LIKE 'project-v10-%' AND frame_bytes=X'01'`: &inboxRows,
+		`SELECT COUNT(*) FROM continuity_facts WHERE fact_id = 'fact-v10-project' AND content_json = '{}'`:       &factRows,
+	} {
+		if err := store.db.QueryRow(query).Scan(destination); err != nil {
+			t.Fatalf("inspect preserved v10 state: %v", err)
+		}
+	}
+	if projectRows != 2 || authorityRows != 2 || watermarkRows != 2 || inboxRows != 2 || factRows != 1 {
+		t.Fatalf("preserved v10 rows = projects %d authorities %d watermarks %d inbox %d facts %d", projectRows, authorityRows, watermarkRows, inboxRows, factRows)
+	}
+	foreignKeys, err := store.db.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatalf("check migrated v11 foreign keys: %v", err)
+	}
+	defer foreignKeys.Close()
+	if foreignKeys.Next() {
+		t.Fatal("migrated v11 schema has a foreign-key violation")
+	}
+}
+
+func TestContinuitySQLiteRefusesDriftedV10BeforeV11Migration(t *testing.T) {
+	t.Parallel()
+
+	stateRoot := filepath.Join(testTempDir(t), "state")
+	databasePath := createV10ContinuityDatabase(t, stateRoot)
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open exact v10 database: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE continuity_v10_intruder(value TEXT)`); err != nil {
+		db.Close()
+		t.Fatalf("create v10 drift: %v", err)
+	}
+	before := schemaIdentitySnapshot(t, db)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close drifted v10 database: %v", err)
+	}
+
+	if store, err := Open(stateRoot, "environment-v11"); err == nil {
+		store.Close()
+		t.Fatal("Open(drifted v10) error = nil, want refusal")
+	}
+	db, err = openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("reopen refused v10 database: %v", err)
+	}
+	defer db.Close()
+	after := schemaIdentitySnapshot(t, db)
+	if after != before {
+		t.Fatalf("refused v10 migration mutated schema identity: before=%#v after=%#v", before, after)
+	}
+	var indexTables int64
+	if err := db.QueryRow(`
+SELECT COUNT(*)
+FROM sqlite_schema
+WHERE type = 'table' AND name IN (
+  'continuity_sync_recovery_prune_records',
+  'continuity_sync_recovery_prune_targets'
+)`).Scan(&indexTables); err != nil {
+		t.Fatalf("inspect refused v10 prune index tables: %v", err)
+	}
+	if indexTables != 0 {
+		t.Fatalf("refused v10 migration retained %d prune index tables", indexTables)
 	}
 }
 
@@ -2872,6 +3077,60 @@ func createV9ContinuityDatabase(t *testing.T, stateRoot string) string {
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close v9 database: %v", err)
+	}
+	return databasePath
+}
+
+func createV10ContinuityDatabase(t *testing.T, stateRoot string) string {
+	t.Helper()
+
+	privateDirectory := filepath.Join(stateRoot, "vnext")
+	if err := os.MkdirAll(privateDirectory, 0o700); err != nil {
+		t.Fatalf("create v10 private directory: %v", err)
+	}
+	databasePath := filepath.Join(privateDirectory, databaseFileName)
+	file, err := os.OpenFile(databasePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("create v10 database: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close v10 database file: %v", err)
+	}
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		t.Fatalf("open v10 database: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		db.Close()
+		t.Fatalf("begin v10 schema: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schemaV10DDL); err != nil {
+		db.Close()
+		t.Fatalf("create v10 schema: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA application_id = 1280267825`); err != nil {
+		db.Close()
+		t.Fatalf("set v10 application id: %v", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 10`); err != nil {
+		db.Close()
+		t.Fatalf("set v10 user version: %v", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, 'vnext', 10, ?)`,
+		checksumSchemaV10(),
+	); err != nil {
+		db.Close()
+		t.Fatalf("record v10 schema identity: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		db.Close()
+		t.Fatalf("commit v10 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v10 database: %v", err)
 	}
 	return databasePath
 }

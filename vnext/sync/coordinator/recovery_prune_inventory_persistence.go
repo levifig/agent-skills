@@ -53,37 +53,19 @@ func (coordinator *Coordinator) persistRecoveryPruneInventory(
 		if current.ProjectID != expectedProjectID || current.Snapshot.Authority != binding {
 			return continuitysqlite.SyncRecoveryPruneCandidate{}, newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
 		}
-		if current.Ready {
-			if _, checkpointErr := recoveryPruneInventoryCheckpointFromCandidateV1(expectedProjectID, binding, current); checkpointErr != nil {
-				return continuitysqlite.SyncRecoveryPruneCandidate{}, newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
-			}
-			if err := coordinator.validateRecoveryPruneCredential(
-				ctx, expectedProjectID, prepared, binding, writerEnvironmentID,
-			); err != nil {
-				return continuitysqlite.SyncRecoveryPruneCandidate{}, err
-			}
-			expected := current.Checkpoint()
-			retained, storeErr := coordinator.store.StageVerifiedSyncRecoveryPruneCandidatePage(
-				ctx,
-				expectedProjectID,
-				current.Snapshot,
-				&expected,
-				continuitysqlite.SyncRecoveryPruneCandidatePage{
-					AfterPruneSequence:       current.ThroughPruneSequence,
-					LastMembershipGeneration: current.LastMembershipGeneration,
-					ResultingRollingDigest:   current.RollingInventoryDigest,
-					InventoryDigest:          current.InventoryDigest,
-				},
-			)
-			if storeErr != nil {
-				return continuitysqlite.SyncRecoveryPruneCandidate{}, mapRecoveryPruneInventoryStoreError(ctx, storeErr)
-			}
-			if retained != current {
-				return continuitysqlite.SyncRecoveryPruneCandidate{}, newProblem(CodeInternal, PhasePruneInventory, ActionRepairLocalStore)
-			}
-			return retained, nil
+		if _, checkpointErr := recoveryPruneInventoryCheckpointFromCandidateV1(expectedProjectID, binding, current); checkpointErr != nil {
+			return continuitysqlite.SyncRecoveryPruneCandidate{}, newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
 		}
 		revalidatePersistedPrefix = true
+	}
+	var expectedPreflight *continuitysqlite.SyncRecoveryPruneCandidate
+	if found {
+		expectedPreflight = &current
+	}
+	if err := coordinator.store.VerifySyncRecoveryPrunePreflight(
+		ctx, expectedProjectID, binding, expectedPreflight,
+	); err != nil {
+		return continuitysqlite.SyncRecoveryPruneCandidate{}, mapRecoveryPruneInventoryStoreError(ctx, err)
 	}
 
 	persisted := current
@@ -101,7 +83,15 @@ func (coordinator *Coordinator) persistRecoveryPruneInventory(
 					return newProblem(CodeInternal, PhasePruneInventory, ActionRepairLocalStore)
 				}
 				if revalidatePersistedPrefix {
-					if snapshot != current.Snapshot || revalidatedPageCount == math.MaxInt64 ||
+					if snapshot != current.Snapshot {
+						return newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
+					}
+					if verifyErr := coordinator.store.VerifySyncRecoveryPruneCandidatePageRecords(
+						ctx, expectedProjectID, snapshot, current.Checkpoint(), persistedPage,
+					); verifyErr != nil {
+						return mapRecoveryPruneInventoryStoreError(ctx, verifyErr)
+					}
+					if revalidatedPageCount == math.MaxInt64 ||
 						revalidatedPruneCount > math.MaxInt64-persistedPage.PagePruneCount ||
 						revalidatedTargetCount > math.MaxInt64-persistedPage.PageTargetCount {
 						return newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
@@ -112,11 +102,12 @@ func (coordinator *Coordinator) persistRecoveryPruneInventory(
 					if page.checkpoint.throughPruneSequence < current.ThroughPruneSequence {
 						return nil
 					}
-					if page.checkpoint.throughPruneSequence != current.ThroughPruneSequence || !page.more ||
+					if page.checkpoint.throughPruneSequence != current.ThroughPruneSequence || page.more == current.Ready ||
 						current.PageCount != revalidatedPageCount || current.PruneCount != revalidatedPruneCount ||
 						current.TargetCount != revalidatedTargetCount ||
 						current.LastMembershipGeneration != page.checkpoint.lastMembershipGeneration ||
-						current.RollingInventoryDigest != continuitysqlite.SyncRecoveryPruneRollingDigest(page.checkpoint.rollingDigest) {
+						current.RollingInventoryDigest != continuitysqlite.SyncRecoveryPruneRollingDigest(page.checkpoint.rollingDigest) ||
+						(current.Ready && current.InventoryDigest != continuitysqlite.SyncRecoveryPruneInventoryDigest(page.inventoryDigest)) {
 						return newProblem(CodeConflict, PhasePruneInventory, ActionRestartRecovery)
 					}
 					revalidatePersistedPrefix = false
@@ -199,8 +190,24 @@ func recoveryPruneCandidatePageFromVerifiedV1(
 		return continuitysqlite.SyncRecoveryPruneSnapshot{}, continuitysqlite.SyncRecoveryPruneCandidatePage{}, errInvalidRecoveryPruneInventoryDigestV1
 	}
 	var targetCount int64
-	for _, prune := range page.prunes {
+	records := make([]continuitysqlite.VerifiedSyncRecoveryPruneRecord, len(page.prunes))
+	for pruneIndex, prune := range page.prunes {
 		targetCount += int64(len(prune.targets))
+		targets := make([]continuitysqlite.VerifiedSyncRecoveryPruneTarget, len(prune.targets))
+		for targetIndex, target := range prune.targets {
+			targets[targetIndex] = continuitysqlite.VerifiedSyncRecoveryPruneTarget{
+				Reference: target.reference,
+				FactKind:  target.factKind,
+				HLC:       target.hlc,
+			}
+		}
+		records[pruneIndex] = continuitysqlite.VerifiedSyncRecoveryPruneRecord{
+			PruneSequence:        prune.pruneSequence,
+			PruneID:              [32]byte(prune.pruneID),
+			PruneCertificateID:   [32]byte(prune.pruneCertificateID),
+			MembershipGeneration: prune.membershipGeneration,
+			Targets:              targets,
+		}
 	}
 	return continuitysqlite.SyncRecoveryPruneSnapshot{
 		Authority: binding,
@@ -213,6 +220,7 @@ func recoveryPruneCandidatePageFromVerifiedV1(
 		ResultingRollingDigest:   continuitysqlite.SyncRecoveryPruneRollingDigest(page.checkpoint.rollingDigest),
 		InventoryDigest:          continuitysqlite.SyncRecoveryPruneInventoryDigest(page.inventoryDigest),
 		More:                     page.more,
+		Records:                  records,
 	}, nil
 }
 

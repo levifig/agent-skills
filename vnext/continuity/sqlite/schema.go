@@ -14,7 +14,7 @@ import (
 const (
 	applicationID = 1280267825
 	schemaLine    = "vnext"
-	schemaVersion = 10
+	schemaVersion = 11
 )
 
 const schemaTableV1SQL = `CREATE TABLE continuity_schema (
@@ -107,10 +107,20 @@ const schemaTableV9SQL = `CREATE TABLE continuity_schema (
   )
 ) STRICT`
 
-const schemaTableSQL = `CREATE TABLE continuity_schema (
+const schemaTableV10SQL = `CREATE TABLE continuity_schema (
   singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
   schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
   schema_version INTEGER NOT NULL CHECK (schema_version = 10),
+  schema_checksum TEXT NOT NULL CHECK (
+    length(schema_checksum) = 64
+    AND schema_checksum NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT`
+
+const schemaTableSQL = `CREATE TABLE continuity_schema (
+  singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+  schema_line TEXT NOT NULL CHECK (schema_line = 'vnext'),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 11),
   schema_checksum TEXT NOT NULL CHECK (
     length(schema_checksum) = 64
     AND schema_checksum NOT GLOB '*[^0-9a-f]*'
@@ -369,7 +379,7 @@ const syncReceiptsTableSQL = `CREATE TABLE continuity_sync_receipts (
   FOREIGN KEY (project_id) REFERENCES continuity_sync_projects(project_id)
 ) STRICT, WITHOUT ROWID`
 
-const syncRecoveryPruneCandidatesTableSQL = `CREATE TABLE continuity_sync_recovery_prune_candidates (
+const syncRecoveryPruneCandidatesTableV10SQL = `CREATE TABLE continuity_sync_recovery_prune_candidates (
   project_id TEXT NOT NULL PRIMARY KEY CHECK (
     length(project_id) BETWEEN 1 AND 128
     AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
@@ -459,6 +469,96 @@ const syncRecoveryPruneCandidatesTableSQL = `CREATE TABLE continuity_sync_recove
   ),
   FOREIGN KEY (project_id) REFERENCES continuity_sync_projects(project_id)
     ON DELETE RESTRICT
+) STRICT, WITHOUT ROWID`
+
+const syncRecoveryPruneCandidatesTableSQL = syncRecoveryPruneCandidatesTableV10SQL
+
+const syncRecoveryPruneCandidatesIdentityIndexSQL = `CREATE UNIQUE INDEX ux_continuity_sync_recovery_prune_candidates_identity
+ON continuity_sync_recovery_prune_candidates(project_id, candidate_id)`
+
+const syncRecoveryPruneRecordsTableSQL = `CREATE TABLE continuity_sync_recovery_prune_records (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  candidate_id BLOB NOT NULL CHECK (
+    length(candidate_id) = 32 AND candidate_id <> zeroblob(32)
+  ),
+  prune_sequence INTEGER NOT NULL CHECK (prune_sequence > 0),
+  prune_id BLOB NOT NULL CHECK (
+    length(prune_id) = 32 AND prune_id <> zeroblob(32)
+  ),
+  prune_certificate_id BLOB NOT NULL CHECK (
+    length(prune_certificate_id) = 32
+    AND prune_certificate_id <> zeroblob(32)
+  ),
+  membership_generation INTEGER NOT NULL CHECK (
+    membership_generation BETWEEN 1 AND 4294967295
+  ),
+  target_count INTEGER NOT NULL CHECK (target_count BETWEEN 1 AND 1024),
+  PRIMARY KEY (project_id, candidate_id, prune_sequence),
+  UNIQUE (project_id, candidate_id, prune_id),
+  UNIQUE (project_id, candidate_id, prune_certificate_id),
+  FOREIGN KEY (project_id, candidate_id)
+    REFERENCES continuity_sync_recovery_prune_candidates(project_id, candidate_id)
+    ON DELETE CASCADE
+) STRICT, WITHOUT ROWID`
+
+const syncRecoveryPruneTargetsTableSQL = `CREATE TABLE continuity_sync_recovery_prune_targets (
+  project_id TEXT NOT NULL CHECK (
+    length(project_id) BETWEEN 1 AND 128
+    AND project_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  candidate_id BLOB NOT NULL CHECK (
+    length(candidate_id) = 32 AND candidate_id <> zeroblob(32)
+  ),
+  prune_sequence INTEGER NOT NULL CHECK (prune_sequence > 0),
+  target_ordinal INTEGER NOT NULL CHECK (target_ordinal BETWEEN 1 AND 1024),
+  fact_id TEXT NOT NULL CHECK (
+    length(fact_id) BETWEEN 1 AND 128
+    AND fact_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  environment_id TEXT NOT NULL CHECK (
+    length(environment_id) BETWEEN 1 AND 128
+    AND environment_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+  ),
+  environment_sequence INTEGER NOT NULL CHECK (environment_sequence > 0),
+  arrival_sequence INTEGER NOT NULL CHECK (arrival_sequence > 0),
+  envelope_digest BLOB NOT NULL CHECK (
+    length(envelope_digest) = 32 AND envelope_digest <> zeroblob(32)
+  ),
+  certificate_id BLOB NOT NULL CHECK (
+    length(certificate_id) = 32 AND certificate_id <> zeroblob(32)
+  ),
+  previous_envelope_digest BLOB NOT NULL CHECK (
+    length(previous_envelope_digest) = 32
+  ),
+  key_generation INTEGER NOT NULL CHECK (
+    key_generation BETWEEN 1 AND 4294967295
+  ),
+  nonce BLOB NOT NULL CHECK (length(nonce) = 24),
+  fact_kind TEXT NOT NULL CHECK (fact_kind IN (
+    'scratchpad.participant-introduced',
+    'scratchpad.message-recorded',
+    'scratchpad.claim-recorded',
+    'scratchpad.claim-released'
+  )),
+  hlc_wall_millis INTEGER NOT NULL CHECK (hlc_wall_millis >= 0),
+  hlc_logical INTEGER NOT NULL CHECK (hlc_logical BETWEEN 0 AND 2147483647),
+  CHECK (
+    (environment_sequence = 1 AND previous_envelope_digest = zeroblob(32))
+    OR
+    (environment_sequence > 1 AND previous_envelope_digest <> zeroblob(32))
+  ),
+  PRIMARY KEY (project_id, candidate_id, arrival_sequence),
+  UNIQUE (project_id, candidate_id, prune_sequence, target_ordinal),
+  UNIQUE (project_id, candidate_id, fact_id),
+  UNIQUE (project_id, candidate_id, environment_id, environment_sequence),
+  UNIQUE (project_id, candidate_id, envelope_digest),
+  UNIQUE (project_id, candidate_id, key_generation, nonce),
+  FOREIGN KEY (project_id, candidate_id, prune_sequence)
+    REFERENCES continuity_sync_recovery_prune_records(project_id, candidate_id, prune_sequence)
+    ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID`
 
 const syncEnvironmentHeadsTableSQL = `CREATE TABLE continuity_sync_environment_heads (
@@ -1394,10 +1494,25 @@ const syncSchemaV9DDL = syncProjectsTableSQL + ";\n" +
 	syncTerminalCandidateFramesTableSQL + ";\n" +
 	syncTerminalCandidatesStagingIndexSQL + ";\n"
 
+const syncSchemaV10DDL = syncProjectsTableSQL + ";\n" +
+	syncInboxTableSQL + ";\n" +
+	syncReceiptsTableSQL + ";\n" +
+	syncRecoveryPruneCandidatesTableV10SQL + ";\n" +
+	syncEnvironmentHeadsTableSQL + ";\n" +
+	syncOutboxTableSQL + ";\n" +
+	syncTombstonesTableSQL + ";\n" +
+	syncEnvironmentCertificatesTableSQL + ";\n" +
+	syncTerminalCandidatesTableSQL + ";\n" +
+	syncTerminalCandidateFramesTableSQL + ";\n" +
+	syncTerminalCandidatesStagingIndexSQL + ";\n"
+
 const syncSchemaDDL = syncProjectsTableSQL + ";\n" +
 	syncInboxTableSQL + ";\n" +
 	syncReceiptsTableSQL + ";\n" +
 	syncRecoveryPruneCandidatesTableSQL + ";\n" +
+	syncRecoveryPruneCandidatesIdentityIndexSQL + ";\n" +
+	syncRecoveryPruneRecordsTableSQL + ";\n" +
+	syncRecoveryPruneTargetsTableSQL + ";\n" +
 	syncEnvironmentHeadsTableSQL + ";\n" +
 	syncOutboxTableSQL + ";\n" +
 	syncTombstonesTableSQL + ";\n" +
@@ -1502,6 +1617,16 @@ const schemaV9DDL = schemaTableV9SQL + ";\n" +
 	syncAuthorityCandidateSchemaDDL +
 	syncRelayWatermarksTableSQL + ";\n"
 
+const schemaV10DDL = schemaTableV10SQL + ";\n" +
+	factsTableSQL + ";\n" +
+	projectIdentityIndexSQL + ";\n" +
+	projectOrderIndexSQL + ";\n" +
+	subjectOrderIndexSQL + ";\n" +
+	projectIdentityTriggerSQL + ";\n" +
+	syncSchemaV10DDL +
+	syncAuthorityCandidateSchemaDDL +
+	syncRelayWatermarksTableSQL + ";\n"
+
 const schemaDDL = schemaTableSQL + ";\n" +
 	factsTableSQL + ";\n" +
 	projectIdentityIndexSQL + ";\n" +
@@ -1551,11 +1676,11 @@ func expectedSchemaV9Objects() []schemaObject {
 	}
 }
 
-func expectedSchemaObjects() []schemaObject {
+func expectedSchemaV10Objects() []schemaObject {
 	objects := expectedSchemaV9Objects()
 	for index := range objects {
 		if objects[index].name == "continuity_schema" {
-			objects[index].sql = schemaTableSQL
+			objects[index].sql = schemaTableV10SQL
 			break
 		}
 	}
@@ -1569,7 +1694,52 @@ func expectedSchemaObjects() []schemaObject {
 			kind:  "table",
 			name:  "continuity_sync_recovery_prune_candidates",
 			table: "continuity_sync_recovery_prune_candidates",
-			sql:   syncRecoveryPruneCandidatesTableSQL,
+			sql:   syncRecoveryPruneCandidatesTableV10SQL,
+		}
+		break
+	}
+	return objects
+}
+
+func expectedSchemaObjects() []schemaObject {
+	objects := expectedSchemaV10Objects()
+	for index := range objects {
+		if objects[index].name == "continuity_schema" {
+			objects[index].sql = schemaTableSQL
+			break
+		}
+	}
+	for index := range objects {
+		if objects[index].name != "ux_continuity_sync_terminal_candidates_staging_project" {
+			continue
+		}
+		objects = append(objects, schemaObject{})
+		copy(objects[index+1:], objects[index:])
+		objects[index] = schemaObject{
+			kind:  "index",
+			name:  "ux_continuity_sync_recovery_prune_candidates_identity",
+			table: "continuity_sync_recovery_prune_candidates",
+			sql:   syncRecoveryPruneCandidatesIdentityIndexSQL,
+		}
+		break
+	}
+	for index := range objects {
+		if objects[index].name != "continuity_sync_relay_watermarks" {
+			continue
+		}
+		objects = append(objects, schemaObject{}, schemaObject{})
+		copy(objects[index+2:], objects[index:len(objects)-2])
+		objects[index] = schemaObject{
+			kind:  "table",
+			name:  "continuity_sync_recovery_prune_records",
+			table: "continuity_sync_recovery_prune_records",
+			sql:   syncRecoveryPruneRecordsTableSQL,
+		}
+		objects[index+1] = schemaObject{
+			kind:  "table",
+			name:  "continuity_sync_recovery_prune_targets",
+			table: "continuity_sync_recovery_prune_targets",
+			sql:   syncRecoveryPruneTargetsTableSQL,
 		}
 		break
 	}
@@ -1742,6 +1912,10 @@ func expectedSchemaV1Objects() []schemaObject {
 
 func checksumSchema() string {
 	return checksumDDL(schemaDDL)
+}
+
+func checksumSchemaV10() string {
+	return checksumDDL(schemaV10DDL)
 }
 
 func checksumSchemaV9() string {
@@ -1949,8 +2123,12 @@ func migrateSchema(db *sql.DB) error {
 			if err := migrateSchemaV9ToV10(db); err != nil {
 				return err
 			}
+		case 10:
+			if err := migrateSchemaV10ToV11(db); err != nil {
+				return err
+			}
 		default:
-			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, 6, 7, 8, 9, or %d", version, schemaVersion)
+			return fmt.Errorf("continuity schema version = %d, want 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, or %d", version, schemaVersion)
 		}
 	}
 }
@@ -2655,7 +2833,7 @@ func migrateSchemaV9ToV10(db *sql.DB) error {
 		return fmt.Errorf("revalidate continuity v9 in migration: %w", err)
 	}
 
-	if _, err := tx.Exec(syncRecoveryPruneCandidatesTableSQL); err != nil {
+	if _, err := tx.Exec(syncRecoveryPruneCandidatesTableV10SQL); err != nil {
 		return fmt.Errorf("create continuity v10 recovery prune candidates: %w", err)
 	}
 	var candidateRows int64
@@ -2669,7 +2847,7 @@ func migrateSchemaV9ToV10(db *sql.DB) error {
 	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
 		return fmt.Errorf("drop continuity v9 schema identity: %w", err)
 	}
-	if _, err := tx.Exec(schemaTableSQL); err != nil {
+	if _, err := tx.Exec(schemaTableV10SQL); err != nil {
 		return fmt.Errorf("create continuity v10 schema identity: %w", err)
 	}
 	if _, err := tx.Exec(`PRAGMA user_version = 10`); err != nil {
@@ -2679,11 +2857,11 @@ func migrateSchemaV9ToV10(db *sql.DB) error {
 		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
 		schemaLine,
 		10,
-		checksumSchema(),
+		checksumSchemaV10(),
 	); err != nil {
 		return fmt.Errorf("record continuity v10 schema identity: %w", err)
 	}
-	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+	if err := validateSchemaVersion(tx, 10, checksumSchemaV10(), expectedSchemaV10Objects()); err != nil {
 		return fmt.Errorf("validate continuity v10 migration: %w", err)
 	}
 	if err := validateForeignKeys(tx); err != nil {
@@ -2691,6 +2869,97 @@ func migrateSchemaV9ToV10(db *sql.DB) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit continuity v10 migration: %w", err)
+	}
+	return nil
+}
+
+func migrateSchemaV10ToV11(db *sql.DB) error {
+	advanced, err := validateMigrationPreflight(db, 10)
+	if err != nil {
+		return fmt.Errorf("validate continuity v10 before migration: %w", err)
+	}
+	if advanced {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin continuity v11 migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	var version int
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("recheck continuity v10 schema version in migration: %w", err)
+	}
+	if version > 10 && version <= schemaVersion {
+		if err := validateKnownSchemaVersion(tx, version); err != nil {
+			return fmt.Errorf("validate concurrently advanced continuity schema: %w", err)
+		}
+		return nil
+	}
+	if version != 10 {
+		return fmt.Errorf("continuity schema changed during v11 migration")
+	}
+	if err := validateSchemaVersion(tx, 10, checksumSchemaV10(), expectedSchemaV10Objects()); err != nil {
+		return fmt.Errorf("revalidate continuity v10 in migration: %w", err)
+	}
+
+	if _, err := tx.Exec(`DELETE FROM continuity_sync_recovery_prune_candidates`); err != nil {
+		return fmt.Errorf("invalidate continuity v10 recovery prune candidates: %w", err)
+	}
+	var candidateRows int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM continuity_sync_recovery_prune_candidates`).Scan(&candidateRows); err != nil {
+		return fmt.Errorf("count invalidated continuity v10 recovery prune candidates: %w", err)
+	}
+	if candidateRows != 0 {
+		return fmt.Errorf("continuity v11 migration retained %d unindexed recovery prune candidates", candidateRows)
+	}
+	if _, err := tx.Exec(syncRecoveryPruneCandidatesIdentityIndexSQL); err != nil {
+		return fmt.Errorf("create continuity v11 recovery prune candidate identity index: %w", err)
+	}
+	if _, err := tx.Exec(syncRecoveryPruneRecordsTableSQL); err != nil {
+		return fmt.Errorf("create continuity v11 recovery prune records: %w", err)
+	}
+	if _, err := tx.Exec(syncRecoveryPruneTargetsTableSQL); err != nil {
+		return fmt.Errorf("create continuity v11 recovery prune targets: %w", err)
+	}
+	var recordRows, targetRows int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM continuity_sync_recovery_prune_records`).Scan(&recordRows); err != nil {
+		return fmt.Errorf("count continuity v11 recovery prune records: %w", err)
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM continuity_sync_recovery_prune_targets`).Scan(&targetRows); err != nil {
+		return fmt.Errorf("count continuity v11 recovery prune targets: %w", err)
+	}
+	if recordRows != 0 || targetRows != 0 {
+		return fmt.Errorf("continuity v11 migration synthesized recovery prune index rows: records=%d targets=%d", recordRows, targetRows)
+	}
+
+	if _, err := tx.Exec(`DROP TABLE continuity_schema`); err != nil {
+		return fmt.Errorf("drop continuity v10 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(schemaTableSQL); err != nil {
+		return fmt.Errorf("create continuity v11 schema identity: %w", err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 11`); err != nil {
+		return fmt.Errorf("set continuity v11 schema version: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO continuity_schema(singleton, schema_line, schema_version, schema_checksum) VALUES(1, ?, ?, ?)`,
+		schemaLine,
+		11,
+		checksumSchema(),
+	); err != nil {
+		return fmt.Errorf("record continuity v11 schema identity: %w", err)
+	}
+	if err := validateSchemaVersion(tx, schemaVersion, checksumSchema(), expectedSchemaObjects()); err != nil {
+		return fmt.Errorf("validate continuity v11 migration: %w", err)
+	}
+	if err := validateForeignKeys(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit continuity v11 migration: %w", err)
 	}
 	return nil
 }
@@ -2849,6 +3118,8 @@ func validateKnownSchemaVersion(db schemaQuerier, version int) error {
 		return validateSchemaVersion(db, 8, checksumSchemaV8(), expectedSchemaV8Objects())
 	case 9:
 		return validateSchemaVersion(db, 9, checksumSchemaV9(), expectedSchemaV9Objects())
+	case 10:
+		return validateSchemaVersion(db, 10, checksumSchemaV10(), expectedSchemaV10Objects())
 	case schemaVersion:
 		return validateSchemaVersion(db, schemaVersion, checksumSchema(), expectedSchemaObjects())
 	default:

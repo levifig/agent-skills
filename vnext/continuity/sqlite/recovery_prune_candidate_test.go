@@ -4,18 +4,185 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/levifig/loaf/vnext/continuity"
 )
 
+func TestSyncRecoveryPruneProjectionFormattingIsRedacted(t *testing.T) {
+	page := testSyncRecoveryPruneCandidatePageV1(0, 1, 1, 2, false, 0x31)
+	record := page.Records[0]
+	target := record.Targets[0]
+	for _, formatted := range []string{
+		fmt.Sprintf("%v", page),
+		fmt.Sprintf("%#v", page),
+		fmt.Sprintf("%v", record),
+		fmt.Sprintf("%#v", record),
+		fmt.Sprintf("%v", target),
+		fmt.Sprintf("%#v", target),
+	} {
+		for _, privateValue := range []string{
+			string(target.Reference.FactID),
+			string(target.Reference.EnvironmentID),
+			fmt.Sprintf("%x", record.PruneID),
+			fmt.Sprintf("%x", target.Reference.EnvelopeDigest),
+		} {
+			if strings.Contains(formatted, privateValue) {
+				t.Fatalf("formatted recovery prune projection exposed private value %q: %s", privateValue, formatted)
+			}
+		}
+	}
+}
+
+func TestVerifySyncRecoveryPruneCandidatePageRecordsRejectsSemanticSubstitution(t *testing.T) {
+	stateRoot := filepath.Join(testTempDir(t), "state-recovery-prune-candidate-semantic-substitution")
+	store, projectID, snapshot := openSyncRecoveryPruneCandidateFixtureV1(t, stateRoot, "semantic-substitution", 4, 1)
+	page := testSyncRecoveryPruneCandidatePageV1(0, 1, 1, 2, false, 0x31)
+	ready, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(context.Background(), projectID, snapshot, nil, page)
+	if err != nil {
+		t.Fatalf("stage ready recovery prune candidate: %v", err)
+	}
+	if err := store.VerifySyncRecoveryPruneCandidatePageRecords(
+		context.Background(), projectID, snapshot, ready.Checkpoint(), page,
+	); err != nil {
+		t.Fatalf("verify exact recovery prune projection: %v", err)
+	}
+	if _, err := store.db.Exec(`
+UPDATE continuity_sync_recovery_prune_targets
+SET fact_kind = ?
+WHERE project_id = ? AND candidate_id = ? AND arrival_sequence = ?`,
+		string(continuity.FactScratchpadClaimRecorded), string(projectID), ready.CandidateID[:],
+		page.Records[0].Targets[0].Reference.ArrivalSequence,
+	); err != nil {
+		t.Fatalf("substitute structurally valid recovery prune target: %v", err)
+	}
+	if current, found, err := store.CurrentSyncRecoveryPruneCandidate(context.Background(), projectID); err != nil || !found || current != ready {
+		t.Fatalf("structurally valid substituted candidate = (%#v, %t, %v), want retained checkpoint", current, found, err)
+	}
+	if err := store.VerifySyncRecoveryPruneCandidatePageRecords(
+		context.Background(), projectID, snapshot, ready.Checkpoint(), page,
+	); err == nil {
+		t.Fatal("semantic recovery prune substitution verification error = nil")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorConflict)
+	}
+}
+
+func TestSyncRecoveryPruneFinalPageAuditsEntireIndexBeforeReady(t *testing.T) {
+	stateRoot := filepath.Join(testTempDir(t), "state-recovery-prune-candidate-final-audit")
+	store, projectID, snapshot := openSyncRecoveryPruneCandidateFixtureV1(t, stateRoot, "final-audit", 8, 5)
+	firstPage := testSyncRecoveryPruneCandidatePageV1(0, 4, 4, 2, true, 0x31)
+	partial, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(context.Background(), projectID, snapshot, nil, firstPage)
+	if err != nil {
+		t.Fatalf("stage first recovery prune page: %v", err)
+	}
+	if _, err := store.db.Exec(`
+DELETE FROM continuity_sync_recovery_prune_targets
+WHERE project_id = ? AND candidate_id = ? AND prune_sequence = 1`,
+		string(projectID), partial.CandidateID[:],
+	); err != nil {
+		t.Fatalf("corrupt earlier recovery prune page: %v", err)
+	}
+	finalPage := testSyncRecoveryPruneCandidatePageV1(4, 1, 1, 3, false, 0x41)
+	expected := partial.Checkpoint()
+	if _, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+		context.Background(), projectID, snapshot, &expected, finalPage,
+	); err == nil {
+		t.Fatal("stage final page over corrupt prefix error = nil")
+	}
+	var pageCount, pruneCount, targetCount int64
+	if err := store.db.QueryRow(`
+SELECT page_count, prune_count, target_count
+FROM continuity_sync_recovery_prune_candidates
+WHERE project_id = ?`, string(projectID)).Scan(&pageCount, &pruneCount, &targetCount); err != nil {
+		t.Fatalf("read candidate after rejected final page: %v", err)
+	}
+	if pageCount != partial.PageCount || pruneCount != partial.PruneCount || targetCount != partial.TargetCount {
+		t.Fatalf("candidate after rejected final page = %d/%d/%d, want %d/%d/%d", pageCount, pruneCount, targetCount, partial.PageCount, partial.PruneCount, partial.TargetCount)
+	}
+	var finalRecords int64
+	if err := store.db.QueryRow(`
+SELECT COUNT(*)
+FROM continuity_sync_recovery_prune_records
+WHERE project_id = ? AND candidate_id = ? AND prune_sequence > ?`,
+		string(projectID), partial.CandidateID[:], partial.ThroughPruneSequence,
+	).Scan(&finalRecords); err != nil {
+		t.Fatalf("count rolled-back final recovery prune records: %v", err)
+	}
+	if finalRecords != 0 {
+		t.Fatalf("rolled-back final recovery prune records = %d, want 0", finalRecords)
+	}
+}
+
+func TestSyncRecoveryPruneReadyReplayAuditsEntireIndex(t *testing.T) {
+	stateRoot := filepath.Join(testTempDir(t), "state-recovery-prune-candidate-ready-replay-audit")
+	store, projectID, snapshot := openSyncRecoveryPruneCandidateFixtureV1(t, stateRoot, "ready-replay-audit", 8, 5)
+	firstPage := testSyncRecoveryPruneCandidatePageV1(0, 4, 4, 2, true, 0x31)
+	partial, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(context.Background(), projectID, snapshot, nil, firstPage)
+	if err != nil {
+		t.Fatalf("stage first recovery prune page: %v", err)
+	}
+	finalPage := testSyncRecoveryPruneCandidatePageV1(4, 1, 1, 3, false, 0x41)
+	expected := partial.Checkpoint()
+	ready, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+		context.Background(), projectID, snapshot, &expected, finalPage,
+	)
+	if err != nil {
+		t.Fatalf("stage ready recovery prune candidate: %v", err)
+	}
+	if _, err := store.db.Exec(`
+DELETE FROM continuity_sync_recovery_prune_targets
+WHERE project_id = ? AND candidate_id = ? AND prune_sequence = 1`,
+		string(projectID), ready.CandidateID[:],
+	); err != nil {
+		t.Fatalf("corrupt ready recovery prune prefix: %v", err)
+	}
+	readyCheckpoint := ready.Checkpoint()
+	if _, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+		context.Background(), projectID, snapshot, &readyCheckpoint,
+		SyncRecoveryPruneCandidatePage{
+			AfterPruneSequence:       ready.ThroughPruneSequence,
+			LastMembershipGeneration: ready.LastMembershipGeneration,
+			ResultingRollingDigest:   ready.RollingInventoryDigest,
+			InventoryDigest:          ready.InventoryDigest,
+		},
+	); err == nil {
+		t.Fatal("ready replay over corrupt prefix error = nil")
+	}
+}
+
+func TestSyncRecoveryPrunePreflightFencesExactPruneHead(t *testing.T) {
+	stateRoot := filepath.Join(testTempDir(t), "state-recovery-prune-candidate-preflight-prune-head")
+	store, projectID, snapshot := openSyncRecoveryPruneCandidateFixtureV1(t, stateRoot, "preflight-prune-head", 8, 6)
+	firstPage := testSyncRecoveryPruneCandidatePageV1(0, 4, 4, 2, true, 0x31)
+	partial, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(context.Background(), projectID, snapshot, nil, firstPage)
+	if err != nil {
+		t.Fatalf("stage first recovery prune page: %v", err)
+	}
+	if _, err := store.db.Exec(`
+UPDATE continuity_sync_recovery_prune_candidates
+SET prune_head = prune_head + 1
+WHERE project_id = ? AND candidate_id = ?`, string(projectID), partial.CandidateID[:]); err != nil {
+		t.Fatalf("change recovery prune candidate head: %v", err)
+	}
+	if err := store.VerifySyncRecoveryPrunePreflight(
+		context.Background(), projectID, snapshot.Authority, &partial,
+	); err == nil {
+		t.Fatal("preflight over changed prune head error = nil")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorConflict)
+	}
+}
+
 func TestSyncRecoveryPruneCandidateStagesReplaysReadiesAndDiscards(t *testing.T) {
 	stateRoot := filepath.Join(testTempDir(t), "state-recovery-prune-candidate-lifecycle")
 	store, projectID, snapshot := openSyncRecoveryPruneCandidateFixtureV1(t, stateRoot, "lifecycle", 8, 6)
 
-	firstPage := testSyncRecoveryPruneCandidatePageV1(0, 4, 7, 2, true, 0x31)
+	firstPage := testSyncRecoveryPruneCandidatePageV1(0, 4, 4, 2, true, 0x31)
 	first, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
 		context.Background(), projectID, snapshot, nil, firstPage,
 	)
@@ -23,7 +190,7 @@ func TestSyncRecoveryPruneCandidateStagesReplaysReadiesAndDiscards(t *testing.T)
 		t.Fatalf("StageVerifiedSyncRecoveryPruneCandidatePage(first) error = %v", err)
 	}
 	if first.ProjectID != projectID || first.CandidateID == ([32]byte{}) || first.Snapshot != snapshot ||
-		first.PageCount != 1 || first.PruneCount != 4 || first.TargetCount != 7 ||
+		first.PageCount != 1 || first.PruneCount != 4 || first.TargetCount != 4 ||
 		first.ThroughPruneSequence != 4 || first.LastMembershipGeneration != 2 ||
 		first.RollingInventoryDigest != firstPage.ResultingRollingDigest || first.Ready ||
 		first.InventoryDigest != (SyncRecoveryPruneInventoryDigest{}) {
@@ -53,7 +220,7 @@ func TestSyncRecoveryPruneCandidateStagesReplaysReadiesAndDiscards(t *testing.T)
 		t.Fatalf("CurrentSyncRecoveryPruneCandidate(reopen) = (%#v, %v, %v), want (%#v, true, nil)", current, found, err, first)
 	}
 
-	finalPage := testSyncRecoveryPruneCandidatePageV1(4, 2, 5, 3, false, 0x41)
+	finalPage := testSyncRecoveryPruneCandidatePageV1(4, 2, 2, 3, false, 0x41)
 	expected := first.Checkpoint()
 	ready, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
 		context.Background(), projectID, snapshot, &expected, finalPage,
@@ -61,7 +228,7 @@ func TestSyncRecoveryPruneCandidateStagesReplaysReadiesAndDiscards(t *testing.T)
 	if err != nil {
 		t.Fatalf("StageVerifiedSyncRecoveryPruneCandidatePage(final) error = %v", err)
 	}
-	if !ready.Ready || ready.PageCount != 2 || ready.PruneCount != 6 || ready.TargetCount != 12 ||
+	if !ready.Ready || ready.PageCount != 2 || ready.PruneCount != 6 || ready.TargetCount != 6 ||
 		ready.ThroughPruneSequence != snapshot.PruneHead || ready.LastMembershipGeneration != 3 ||
 		ready.RollingInventoryDigest != finalPage.ResultingRollingDigest || ready.InventoryDigest != finalPage.InventoryDigest {
 		t.Fatalf("ready candidate = %#v", ready)
@@ -71,6 +238,15 @@ func TestSyncRecoveryPruneCandidateStagesReplaysReadiesAndDiscards(t *testing.T)
 	)
 	if err != nil || replayed != ready {
 		t.Fatalf("exact successor replay = (%#v, %v), want (%#v, nil)", replayed, err, ready)
+	}
+	alteredProjection := cloneSyncRecoveryPrunePageV1(finalPage)
+	alteredProjection.Records[0].PruneID[0] ^= 0xff
+	if _, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+		context.Background(), projectID, snapshot, &expected, alteredProjection,
+	); err == nil {
+		t.Fatal("altered persisted projection replay error = nil")
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorConflict)
 	}
 	readyCheckpoint := ready.Checkpoint()
 	readyNoop := SyncRecoveryPruneCandidatePage{
@@ -104,11 +280,74 @@ func TestSyncRecoveryPruneCandidateStagesReplaysReadiesAndDiscards(t *testing.T)
 	if err := store.DiscardSyncRecoveryPruneCandidate(context.Background(), projectID, ready.Checkpoint()); err != nil {
 		t.Fatalf("DiscardSyncRecoveryPruneCandidate() error = %v", err)
 	}
+	assertSyncRecoveryPruneIndexCountsV1(t, store, projectID, 0, 0)
 	if err := store.DiscardSyncRecoveryPruneCandidate(context.Background(), projectID, ready.Checkpoint()); err != nil {
 		t.Fatalf("DiscardSyncRecoveryPruneCandidate(idempotent) error = %v", err)
 	}
 	if current, found, err := store.CurrentSyncRecoveryPruneCandidate(context.Background(), projectID); err != nil || found {
 		t.Fatalf("CurrentSyncRecoveryPruneCandidate(after discard) = (%#v, %v, %v), want absent", current, found, err)
+	}
+}
+
+func TestSyncRecoveryPruneCandidateRejectsCrossPageIdentityReuse(t *testing.T) {
+	store, projectID, snapshot := openSyncRecoveryPruneCandidateFixtureV1(
+		t, filepath.Join(testTempDir(t), "state-recovery-prune-cross-page-reuse"), "cross-page-reuse", 8, 6,
+	)
+	firstPage := testSyncRecoveryPruneCandidatePageV1(0, 4, 4, 2, true, 0x32)
+	first, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+		context.Background(), projectID, snapshot, nil, firstPage,
+	)
+	if err != nil {
+		t.Fatalf("stage first page: %v", err)
+	}
+	assertSyncRecoveryPruneIndexCountsV1(t, store, projectID, 4, 4)
+
+	tests := []struct {
+		name   string
+		mutate func(*SyncRecoveryPruneCandidatePage)
+	}{
+		{name: "prune id", mutate: func(page *SyncRecoveryPruneCandidatePage) {
+			page.Records[0].PruneID = firstPage.Records[0].PruneID
+		}},
+		{name: "prune certificate id", mutate: func(page *SyncRecoveryPruneCandidatePage) {
+			page.Records[0].PruneCertificateID = firstPage.Records[0].PruneCertificateID
+		}},
+		{name: "arrival sequence", mutate: func(page *SyncRecoveryPruneCandidatePage) {
+			page.Records[0].Targets[0].Reference.ArrivalSequence = firstPage.Records[1].Targets[0].Reference.ArrivalSequence
+		}},
+		{name: "fact id", mutate: func(page *SyncRecoveryPruneCandidatePage) {
+			page.Records[0].Targets[0].Reference.FactID = firstPage.Records[0].Targets[0].Reference.FactID
+		}},
+		{name: "source sequence", mutate: func(page *SyncRecoveryPruneCandidatePage) {
+			page.Records[0].Targets[0].Reference.EnvironmentID = firstPage.Records[1].Targets[0].Reference.EnvironmentID
+			page.Records[0].Targets[0].Reference.EnvironmentSequence = firstPage.Records[1].Targets[0].Reference.EnvironmentSequence
+		}},
+		{name: "envelope digest", mutate: func(page *SyncRecoveryPruneCandidatePage) {
+			page.Records[0].Targets[0].Reference.EnvelopeDigest = firstPage.Records[0].Targets[0].Reference.EnvelopeDigest
+		}},
+		{name: "generation nonce", mutate: func(page *SyncRecoveryPruneCandidatePage) {
+			page.Records[0].Targets[0].Reference.KeyGeneration = firstPage.Records[0].Targets[0].Reference.KeyGeneration
+			page.Records[0].Targets[0].Reference.Nonce = firstPage.Records[0].Targets[0].Reference.Nonce
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page := cloneSyncRecoveryPrunePageV1(testSyncRecoveryPruneCandidatePageV1(4, 2, 2, 3, false, 0x42))
+			test.mutate(&page)
+			expected := first.Checkpoint()
+			if _, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+				context.Background(), projectID, snapshot, &expected, page,
+			); err == nil {
+				t.Fatal("cross-page identity reuse error = nil")
+			} else {
+				assertSyncErrorCode(t, err, SyncErrorConflict)
+			}
+			current, found, err := store.CurrentSyncRecoveryPruneCandidate(context.Background(), projectID)
+			if err != nil || !found || current != first {
+				t.Fatalf("candidate after refused page = (%#v, %v, %v), want (%#v, true, nil)", current, found, err, first)
+			}
+			assertSyncRecoveryPruneIndexCountsV1(t, store, projectID, 4, 4)
+		})
 	}
 }
 
@@ -592,6 +831,31 @@ WHERE project_id = ?`, string(projectID)); err != nil {
 	}
 }
 
+func TestCurrentSyncRecoveryPruneCandidateFailsClosedOnIndexCardinalityCorruption(t *testing.T) {
+	store, projectID, snapshot := openSyncRecoveryPruneCandidateFixtureV1(
+		t, filepath.Join(testTempDir(t), "state-recovery-prune-index-corruption"), "index-corruption", 8, 6,
+	)
+	first, err := store.StageVerifiedSyncRecoveryPruneCandidatePage(
+		context.Background(), projectID, snapshot, nil,
+		testSyncRecoveryPruneCandidatePageV1(0, 4, 4, 2, true, 0x93),
+	)
+	if err != nil {
+		t.Fatalf("stage candidate: %v", err)
+	}
+	if _, err := store.db.Exec(`
+DELETE FROM continuity_sync_recovery_prune_targets
+WHERE project_id = ? AND candidate_id = ? AND arrival_sequence = 1`,
+		string(projectID), first.CandidateID[:],
+	); err != nil {
+		t.Fatalf("corrupt recovery prune target index: %v", err)
+	}
+	if _, found, err := store.CurrentSyncRecoveryPruneCandidate(context.Background(), projectID); err == nil || found {
+		t.Fatalf("CurrentSyncRecoveryPruneCandidate(corrupt index) = (found=%v, err=%v), want store error", found, err)
+	} else {
+		assertSyncErrorCode(t, err, SyncErrorStore)
+	}
+}
+
 func TestSyncRecoveryPruneCandidateCommitCancellationAfterAttemptIsUnknown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	commitCalls := 0
@@ -725,11 +989,111 @@ func testSyncRecoveryPruneCandidatePageV1(
 		LastMembershipGeneration: membership,
 		ResultingRollingDigest:   testSyncRecoveryPruneRollingDigestV1(seed),
 		More:                     more,
+		Records:                  testVerifiedSyncRecoveryPruneRecordsV1(after, prunes, targets, membership, seed),
 	}
 	if !more {
 		page.InventoryDigest = testSyncRecoveryPruneInventoryDigestV1(seed + 1)
 	}
 	return page
+}
+
+func testVerifiedSyncRecoveryPruneRecordsV1(
+	after,
+	prunes,
+	targets int64,
+	membership uint32,
+	seed byte,
+) []VerifiedSyncRecoveryPruneRecord {
+	if prunes <= 0 || targets < prunes {
+		return nil
+	}
+	records := make([]VerifiedSyncRecoveryPruneRecord, prunes)
+	remainingTargets := targets
+	arrivalSequence := after
+	for recordIndex := int64(0); recordIndex < prunes; recordIndex++ {
+		remainingPrunes := prunes - recordIndex
+		targetCount := int64(1)
+		if extra := remainingTargets - remainingPrunes; extra > 0 {
+			targetCount += extra
+		}
+		if targetCount > maximumSyncRecoveryPruneTargetsV1 {
+			targetCount = maximumSyncRecoveryPruneTargetsV1
+		}
+		remainingTargets -= targetCount
+		pruneSequence := after + recordIndex + 1
+		record := VerifiedSyncRecoveryPruneRecord{
+			PruneSequence:        pruneSequence,
+			PruneID:              sha256.Sum256([]byte{seed, byte(pruneSequence), 0x11}),
+			PruneCertificateID:   sha256.Sum256([]byte{seed, byte(pruneSequence), 0x12}),
+			MembershipGeneration: membership,
+			Targets:              make([]VerifiedSyncRecoveryPruneTarget, targetCount),
+		}
+		for targetIndex := int64(0); targetIndex < targetCount; targetIndex++ {
+			arrivalSequence++
+			envelopeDigest := sha256.Sum256([]byte{seed, byte(arrivalSequence), 0x21})
+			certificateID := sha256.Sum256([]byte{seed, byte(arrivalSequence), 0x22})
+			previousDigest := [32]byte{}
+			if arrivalSequence > 1 {
+				previousDigest = sha256.Sum256([]byte{seed, byte(arrivalSequence - 1), 0x21})
+			}
+			nonceDigest := sha256.Sum256([]byte{seed, byte(arrivalSequence), 0x23})
+			var nonce [24]byte
+			copy(nonce[:], nonceDigest[:len(nonce)])
+			record.Targets[targetIndex] = VerifiedSyncRecoveryPruneTarget{
+				Reference: VerifiedPruneReference{
+					FactID:                 continuity.FactID(fmt.Sprintf("fact-recovery-%02x-%d", seed, arrivalSequence)),
+					EnvironmentID:          continuity.EnvironmentID(fmt.Sprintf("environment-recovery-%02x", seed)),
+					EnvironmentSequence:    arrivalSequence,
+					ArrivalSequence:        arrivalSequence,
+					EnvelopeDigest:         envelopeDigest,
+					CertificateID:          certificateID,
+					PreviousEnvelopeDigest: previousDigest,
+					KeyGeneration:          1,
+					Nonce:                  nonce,
+				},
+				FactKind: continuity.FactScratchpadMessageRecorded,
+				HLC:      continuity.HybridTime{WallMillis: arrivalSequence},
+			}
+		}
+		records[recordIndex] = record
+	}
+	return records
+}
+
+func cloneSyncRecoveryPrunePageV1(page SyncRecoveryPruneCandidatePage) SyncRecoveryPruneCandidatePage {
+	clone := page
+	clone.Records = make([]VerifiedSyncRecoveryPruneRecord, len(page.Records))
+	for index := range page.Records {
+		clone.Records[index] = page.Records[index]
+		clone.Records[index].Targets = append([]VerifiedSyncRecoveryPruneTarget(nil), page.Records[index].Targets...)
+	}
+	return clone
+}
+
+func assertSyncRecoveryPruneIndexCountsV1(
+	t *testing.T,
+	store *Store,
+	projectID continuity.ProjectID,
+	wantRecords,
+	wantTargets int64,
+) {
+	t.Helper()
+	var records, targets int64
+	if err := store.db.QueryRow(`
+SELECT COUNT(*) FROM continuity_sync_recovery_prune_records WHERE project_id = ?`,
+		string(projectID),
+	).Scan(&records); err != nil {
+		t.Fatalf("count recovery prune records: %v", err)
+	}
+	if err := store.db.QueryRow(`
+SELECT COUNT(*) FROM continuity_sync_recovery_prune_targets WHERE project_id = ?`,
+		string(projectID),
+	).Scan(&targets); err != nil {
+		t.Fatalf("count recovery prune targets: %v", err)
+	}
+	if records != wantRecords || targets != wantTargets {
+		t.Fatalf("recovery prune index counts = records %d targets %d, want %d/%d", records, targets, wantRecords, wantTargets)
+	}
 }
 
 func testSyncRecoveryPruneRollingDigestV1(seed byte) SyncRecoveryPruneRollingDigest {
