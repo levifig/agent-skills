@@ -75,6 +75,9 @@ func (store *Store) BeginSyncAuthorityRecoveryTransition(
 		return SyncAuthorityRecoveryState{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
+		return SyncAuthorityRecoveryState{}, err
+	}
 
 	current, found, err := readAndValidateSyncAuthorityRecoveryStateV1(ctx, tx, projectID, store.environmentID)
 	if err != nil {

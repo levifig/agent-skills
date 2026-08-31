@@ -108,6 +108,9 @@ func (store *Store) StageVerifiedSyncAuthorityCandidatePage(
 	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
 		return SyncAuthorityCandidate{}, err
 	}
+	if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
+		return SyncAuthorityCandidate{}, err
+	}
 
 	canonicalBase, err := readCanonicalSyncAuthorityBaseV2(ctx, tx, projectID)
 	if err != nil {

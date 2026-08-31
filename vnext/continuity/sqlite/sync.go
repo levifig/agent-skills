@@ -251,6 +251,9 @@ func (store *Store) ActivateStagedSync(ctx context.Context, projectID continuity
 	if progress.ChannelID != binding.ChannelID {
 		return SyncProgress{}, syncProblem(SyncErrorStore, "sync_authority", "canonical authority and sync progress channels disagree")
 	}
+	if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
+		return SyncProgress{}, err
+	}
 	if progress.ActivationState == SyncActivationAttached && binding.AuthorityDigestVersion == 1 {
 		if err := requireKnownExactSyncRelayWatermarkV1(
 			ctx, tx, syncRelayWatermarkFromAuthorityBindingV1(projectID, binding),
@@ -398,6 +401,9 @@ func (store *Store) DiscardStagedSync(ctx context.Context, projectID continuity.
 	}
 	if progress.ActivationState != SyncActivationStaging {
 		return syncProblem(SyncErrorConflict, "activation_state", "attached channel binding is terminal")
+	}
+	if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
+		return err
 	}
 	authorityCandidate, err := anySyncAuthorityCandidateExistsV2(ctx, tx, projectID)
 	if err != nil {
@@ -851,6 +857,11 @@ func (store *Store) stageSyncPage(
 		return SyncProgress{}, syncTransactionProblem(ctx)
 	}
 	defer tx.Rollback()
+	if expectedAuthority == nil {
+		if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
+			return SyncProgress{}, err
+		}
+	}
 	var (
 		binding                SyncAuthorityBinding
 		terminalCandidate      TerminalCandidate
@@ -1352,6 +1363,9 @@ SELECT EXISTS (
 	}
 	defer tx.Rollback()
 	if err := requireNoSyncAuthorityRecoveryTransitionV1(ctx, tx, projectID); err != nil {
+		return SyncProgress{}, err
+	}
+	if err := requireNoActiveSyncRecoveryPruneCandidateV1(ctx, tx, projectID); err != nil {
 		return SyncProgress{}, err
 	}
 	progress, found, err := readSyncProgressV1(ctx, tx, projectID)
