@@ -442,6 +442,7 @@ func TestContinuitySQLiteContractHasExactSourceAndAPI(t *testing.T) {
 		"UnsealedLocalFact",
 		"UnsealedLocalFact.Fact",
 		"UnsealedLocalFact.PreviousEnvelopeDigest",
+		"ValidateStateRootLocation",
 		"VerifiedPrunePlan",
 		"VerifiedPrunePlan.BarrierArrivalSequence",
 		"VerifiedPrunePlan.ChannelID",
@@ -1664,7 +1665,7 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"filesystem_unix.go":               "4a06e1818660145b50a3a28a7c0b4e994df0eb5fc46bed56d1f424259000b0e2",
 		"filesystem_windows.go":            "0770148405c2b7f215a92e3706443bd6bf6438790c926f6c5a18461a09628818",
 		"schema.go":                        "1c07c23d6bf0d2e99148e126aa6c198de1ae5e49ee2a21e8d164aa083af99dcf",
-		"store.go":                         "d43c65b22cefe1cf8be9c6cb7e85137a3c59c155240a0f74922b3fc26ca59bb2",
+		"store.go":                         "c76b409a01c312860429bfe05ef7f4df213c10e55e3ed0a22b0e23f4b179d7b8",
 	}
 	for fileName, wantDigest := range wantSourceDigests {
 		gotDigest := digestSourceFile(t, filepath.Join(sqliteSourceRoot, fileName))
@@ -1752,12 +1753,13 @@ func TestContinuitySQLiteContractPinsOpenSafetyImplementation(t *testing.T) {
 		"store.go": {
 			"Close":                     "69f3a1056e0ce920d07dbdbf96c0559b9edf375218c904d29ea307d6623006f1",
 			"Open":                      "074877062be5bb129401c555bb8734fb952a284d8a8a00aaed2d20ca7f06f357",
+			"ValidateStateRootLocation": "0ecfa02813e63ab28ac3fa962389045a109f68d1c41024e95801f0ebbcfa8a55",
 			"WriterEnvironmentID":       "2a2fd671d845891184dc3073fffc876292463e385b44bdb3ccbf224a5ac84e65",
 			"databaseDSN":               "31b0b9b4bd1269c1e5f8c521c17fcac5ed99cfe1609e48e1937744a729788e19",
 			"inspectRegularPrivateFile": "177aaa7ec2087d38ca322829f4a54d9c333a51aea70be68823d1d9d34772e64a",
 			"openDatabase":              "63865fcf446d578fad398587c9c01c6e7330f6117673125cd4afd351b57c3dfc",
 			"prepareDatabaseFile":       "22eb5fd9fe6e793d6f846255ffd83be7e43748b2d41fcac76e4bc6f4322e74fb",
-			"preparePrivateDirectory":   "5024c5c56c7bf3b92ba98eaf138d8c78542146bdc992051583772566fb629fa0",
+			"preparePrivateDirectory":   "b54247a5d05c44348d7a83baedcb488aa836e4eae8e4deb6e4c26caa9ed21a50",
 			"retryableOpenError":        "b359c6f459c7490b1f8aed8df8e3f137456003c3a1d5b0a842cc639f53e437ca",
 			"schemaIsEmpty":             "d96549881a4a329b5815e73d4b144cbe6b8c3cb49a56b5e98c7736d7532ac4fc",
 			"secureSQLiteSidecars":      "403d22fdce31128b08551f01f6cb68102332930ed3c6ebaf0cceaf0d32fb0e89",

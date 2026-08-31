@@ -147,17 +147,24 @@ func validOpaqueID(value string) bool {
 	return true
 }
 
-func preparePrivateDirectory(stateRoot string) (string, error) {
+// ValidateStateRootLocation validates an absolute, clean state-root location
+// and its existing path components without creating anything. Callers that
+// must reserve a directory themselves can use this before Open.
+func ValidateStateRootLocation(stateRoot string) error {
 	if stateRoot == "" || !filepath.IsAbs(stateRoot) {
-		return "", fmt.Errorf("state root must be an absolute path")
+		return fmt.Errorf("state root must be an absolute path")
 	}
 	if filepath.Clean(stateRoot) != stateRoot {
-		return "", fmt.Errorf("state root must already be clean")
+		return fmt.Errorf("state root must already be clean")
 	}
 	if filepath.Dir(stateRoot) == stateRoot {
-		return "", fmt.Errorf("state root cannot be a filesystem root")
+		return fmt.Errorf("state root cannot be a filesystem root")
 	}
-	if err := validateStateRootLocationPlatform(stateRoot); err != nil {
+	return validateStateRootLocationPlatform(stateRoot)
+}
+
+func preparePrivateDirectory(stateRoot string) (string, error) {
+	if err := ValidateStateRootLocation(stateRoot); err != nil {
 		return "", err
 	}
 
