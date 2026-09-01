@@ -1,6 +1,10 @@
 ## Before creating this PR, complete these steps:
 
-### 1. CHANGELOG entry
+### 1. Shipping unit
+
+Confirm that the branch represents exactly one shippable root. Related stacked children must have verified ancestry and be assembled into the root with `git merge --ff-only`; independent shippable roots need separate PRs unless an explicit human decision records why one atomic landing is safer.
+
+### 2. CHANGELOG entry
 
 Add an entry under `## [Unreleased]` in `CHANGELOG.md`, categorized by Common Changelog impact:
 
@@ -37,7 +41,7 @@ is a workflow staging section for curated entries that land with PRs before a la
 - Your entry here
 ```
 
-### 2. PR title
+### 3. PR title
 
 Conventional commit format, under 70 characters:
 
@@ -48,15 +52,15 @@ fix: prevent divide by zero in sag calculation
 
 No scope prefixes. No SPEC/TASK IDs in the title.
 
-### 3. PR body
+### 4. PR body
 
 Build the body from the live canonical tracker record and the observed branch diff. Through the selected `project-management/v1` provider skill and harness-native connection, re-read the native reference, problem, definition of done, exclusions, relationships, and current status. Include the native reference, a concise change summary, criterion-by-criterion evidence, verification actually run, and remaining risk.
 
 Do not render or synchronize a Loaf-local work record. If the tracker connection or a required read capability is unavailable, stop and report the connection-specific gap rather than inventing or reconstructing canonical work state. After creating the PR, read the PR body back and confirm that it matches the live work contract and observed diff.
 
-### 4. Merge strategy
+### 5. Merge strategy
 
-Squash merge. Write a clean extended description (2-4 lines summarizing the branch). Never use the auto-generated squash description.
+Squash merge this one shippable unit. Write a clean extended description (2-4 lines summarizing the outcome). Never use the auto-generated squash description or create a merge commit merely to preserve feature-branch topology.
 
 ---
 

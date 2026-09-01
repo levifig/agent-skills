@@ -443,6 +443,30 @@ func TestTrackerContractAndProviderCapabilitiesShipByteIdenticalToEveryTarget(t 
 	}
 }
 
+func TestGitWorkflowPolicyPackagesSquashAndFastForwardBoundaries(t *testing.T) {
+	root := setupIsolatedRepositoryBuildRoot(t)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+
+	wants := []string{
+		"Working-branch commits are complete implementation checkpoints",
+		"A pull request is one shippable unit",
+		"git merge --ff-only",
+		"Merge commits are exceptions",
+		"Independent shippable roots",
+	}
+	for _, target := range defaultBuildTargets {
+		skill := readBuildFileString(t, filepath.Join(nativeBuildSkillTreeDir(root, target), "git-workflow", "SKILL.md"))
+		for _, want := range wants {
+			if !strings.Contains(skill, want) {
+				t.Errorf("%s generated git-workflow skill missing %q", target, want)
+			}
+		}
+	}
+}
+
 func TestGeneratedAmpActiveSkillsContainNoLegacyWorkAuthority(t *testing.T) {
 	root, err := loafRepositoryRoot()
 	if err != nil {
