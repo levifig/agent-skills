@@ -12,6 +12,7 @@ One operator's durable memory â€” journal, wraps, handoffs, refs, verification â
 
 ### Changed
 
+- Git workflow guidance treats working commits as implementation checkpoints, squash-merges one reviewed shippable root per PR, assembles related stacked work with verified fast-forwards, and preserves merge commits only for explicitly justified durable topology ([#211](https://github.com/levifig/loaf/issues/211)).
 - **Breaking:** The distroless sync-server image now binds HTTP `:8080` instead of `:8443`. Terminate TLS at a reverse proxy, or pass `--tls-cert` and `--tls-key` to `loaf serve`.
 - **Breaking:** `loaf serve` refuses ports `443` and `8443` unless `--tls-cert` and `--tls-key` are set, so `LoafToken` / `LoafAdmin` credentials are not sent on a TLS-looking cleartext listener ([#198](https://github.com/levifig/loaf/pull/198)).
 - `loaf issue start` walks to the shippable root of the issue tree. Only that root gets `issue/<root-alias>` and a worktree; starting a child creates or joins the root workspace and marks the child active. `loaf issue stop` on a child that does not own a worktree names the root ([#166](https://github.com/levifig/loaf/pull/166)).

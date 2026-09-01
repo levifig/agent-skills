@@ -36,7 +36,7 @@
       "kind": "hook-file",
       "source_path": "hooks/instructions/pre-pr-checklist.md",
       "destination": "hooks/instructions/pre-pr-checklist.md",
-      "sha256": "64a647e40d2d7f52224a60b978012265f80414c8eb2c893e61a97faa74375dd3",
+      "sha256": "ed897b6d832a36ca5b469bafb4dfabd5680c5560e34b0dcecee1604cca47c369",
       "mode": 420
     },
     {
@@ -44,7 +44,7 @@
       "kind": "hook-file",
       "source_path": "hooks/instructions/pre-pr-format.md",
       "destination": "hooks/instructions/pre-pr-format.md",
-      "sha256": "da8d29ce41a1218467f68d4186f906c47075d88b3339a9fb19a8b50f8f40de82",
+      "sha256": "0f0b5e3e93c2bf4e34c7214619d978ef3341bcf4370a84d5257cfb95b4ffd9cc",
       "mode": 420
     },
     {

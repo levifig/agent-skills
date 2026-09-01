@@ -20,8 +20,11 @@ Git conventions for branching, commits, PRs, and merge workflow.
 ## Critical Rules
 
 - Use Conventional Commits format for all commit messages
-- Commit complete units of work -- don't commit partial or in-progress changes
-- Squash merge feature branches -- never merge commits directly
+- Working-branch commits are complete implementation checkpoints. Keep each one atomic and buildable enough to support review, diagnosis, and safe continuation; do not commit partial or knowingly broken work.
+- A pull request is one shippable unit. Squash merge a reviewed feature or shippable-root PR into the default branch with a deliberately authored Conventional Commit title and useful extended description; never use an automatic dump of branch commit messages.
+- Related child or stacked branches join their shippable root without synthetic topology. Verify ancestry with `git merge-base --is-ancestor <root> <child>`, then use `git merge --ff-only <child>` from the root branch. If ancestry diverged, stop and reassess instead of creating a merge commit by default.
+- Merge commits are exceptions. Preserve one only when topology, provenance, or a long-lived integration is itself durable project information, and record the explicit rationale. Never create one merely to assemble related feature work.
+- Independent shippable roots must not disappear inside one giant squash solely because they share an implementation branch. Split them into separate reviewed PRs, or obtain an explicit human decision that one atomic landing is safer.
 - One branch per shippable root; `loaf issue start` walks to that root and creates or joins `issue/<root-alias-or-id>` (or use `feat/{slug}` / `fix/{slug}` when not starting from an issue). Related child issues share the parent's branch and the PR to main.
 - Never force-push to `main` or shared branches
 - Never push without explicit user confirmation
@@ -29,8 +32,12 @@ Git conventions for branching, commits, PRs, and merge workflow.
 ## Verification
 
 - Commit messages follow unscoped Conventional Commits format (`type: description`)
-- Branch is up to date with base branch before creating PR
+- Every working-branch commit is a complete checkpoint, and the candidate diff represents exactly one shippable root
+- Stacked work was verified as ancestral and assembled with `--ff-only`; no incidental merge commit exists
+- Independent shippable roots have separate PRs unless an explicit human decision documents why one atomic landing is safer
+- Branch is up to date with its base branch before creating the PR
 - PR title is under 70 characters with PR# suffix convention
+- The squash title and extended description describe the shipped outcome rather than replaying implementation commits
 
 ## Quick Reference
 
@@ -38,7 +45,9 @@ Git conventions for branching, commits, PRs, and merge workflow.
 |--------|----------------|
 | Branch naming | `issue/<root-alias-or-id>` from `loaf issue start`; else `feat/{slug}`, `fix/{slug}`, `chore/{slug}` |
 | Commit format | `type: description` |
-| Squash merge | `gh pr merge --squash` |
+| Assemble stacked child | Verify `git merge-base --is-ancestor <root> <child>`, then run `git merge --ff-only <child>` from the root |
+| Squash shippable PR | `gh pr merge --squash`; author the final title and description deliberately |
+| Preserve merge topology | Exceptional only; require explicit durable rationale before using a merge commit |
 | PR creation | `gh pr create --title "..." --body "..."` |
 
 ## Topics
