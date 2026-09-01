@@ -5,6 +5,7 @@
 - Commit Body
 - Linear Integration
 - Branch Naming
+- History Model
 - Pull Request Format
 - Changelog Discipline
 - Critical Rules
@@ -129,6 +130,32 @@ issue/<alias-or-id>
 - Short but descriptive (max 50 chars)
 - Prefer the started worktree branch from `loaf issue start` when implementing an issue
 
+## History Model
+
+Treat the three levels of Git history differently:
+
+1. **Working-branch commits are implementation checkpoints.** Keep them atomic, coherent, and useful for review or diagnosis. They may record how a shippable outcome was built, but they are not automatically permanent product-history units.
+2. **A pull request is one shippable unit.** It carries one reviewed root journey and normally lands as one deliberately authored squash commit on the default branch.
+3. **The default branch is product history.** Each commit should describe an observable, deployable outcome that can be reverted as a unit.
+
+### Stacked or Child Branches
+
+Related child work that belongs to one shippable root should not create an artificial merge bubble. Before assembling it, prove that the root is an ancestor of the child:
+
+```bash
+git merge-base --is-ancestor <root> <child>
+git switch <root>
+git merge --ff-only <child>
+```
+
+The second command must refuse if the histories diverged. When that happens, stop and inspect the competing changes; do not silently fall back to a merge commit or rewrite a shared branch.
+
+### Independent Roots and Merge Exceptions
+
+Independent shippable roots need separate reviewed PRs even when implementation happened on one branch. Do not conceal them inside one giant squash merely for convenience. If splitting would make the landing less safe, obtain an explicit human decision that names why one atomic change is preferable.
+
+Merge commits are reserved for cases where the topology is itself durable evidence, such as a long-lived integration branch, provenance-sensitive upstream import, or deliberately preserved parallel history. Record that rationale before merging. Ordinary feature assembly is not sufficient reason.
+
 ## Pull Request Format
 
 ### Title
@@ -149,10 +176,12 @@ gh pr create --title "type: summary" --body "$(loaf issue render <ref>)"
 
 ### Merge Strategy
 
-- **Prefer squash merge** unless explicitly told otherwise
+- **Squash merge one reviewed shippable-root PR** unless an explicitly approved topology-preservation exception applies
 - GitHub defaults the merge title to `PR title (#N)` — this is the desired format
 - **Write a clean extended description** for the squash merge commit — a one-line summary followed by bullet points grouped by feature area
 - **Never use the automatic squash description** that dumps all individual commit messages — it's noisy and unhelpful in git history
+- Assemble related stacked branches into their root with verified ancestry and `git merge --ff-only`; never create a merge commit merely to combine them
+- Split independent shippable roots before the PR, or record an explicit human decision that one atomic squash is safer
 - Don't push or merge without explicit request
 - The ship skill automates this workflow when ready to squash merge a PR; release publishes a version later from already-landed work
 
@@ -197,15 +226,15 @@ Before approving a release bump, compare `[Unreleased]` against the actual relea
 
 ### Always
 
-- Write atomic commits (one logical change)
-- Commit complete units of work — finish the change, review it, then commit once
+- Write atomic working-branch checkpoints, each representing one coherent logical change
+- Keep every checkpoint complete and buildable enough for review, diagnosis, and safe continuation
 - Use imperative mood in messages
 - Reference issue numbers when applicable
-- Test before committing
+- Run the checks proportionate to that checkpoint before committing
 
 ### Never
 
-- Commit partial or in-progress work — if feedback is likely, wait for it before committing
+- Commit a knowingly broken or internally incomplete checkpoint
 - Skip commit signing (wait for user if it fails)
 - Push without explicit user confirmation
 - Use scoped commit subjects (for example, `feat(auth):`; write `feat:` instead)
