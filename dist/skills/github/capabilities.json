@@ -1,0 +1,107 @@
+{
+  "schema": "loaf-provider-capabilities/v1",
+  "provider": "github",
+  "contract": "project-management/v1",
+  "connection": "harness-native",
+  "runtime_capability_discovery": "required",
+  "operations": [
+    {
+      "id": "connection.discover",
+      "native_semantic": "harness.exposed-github-connection",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": [], "execute": ["connection.list"], "after": []}
+    },
+    {
+      "id": "capability.discover",
+      "native_semantic": "harness.github-capability-description",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["connection.select"], "execute": ["connection.describe"], "after": []}
+    },
+    {
+      "id": "work.read",
+      "native_semantic": "github.repository-issue",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["destination.scope"], "execute": ["issue.read"], "after": []}
+    },
+    {
+      "id": "work.create",
+      "native_semantic": "github.repository-issue",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.search", "issue.read"], "execute": ["issue.create"], "after": ["issue.read"]}
+    },
+    {
+      "id": "work.update",
+      "native_semantic": "github.issue-fields",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.read"], "execute": ["issue.update"], "after": ["issue.read"]}
+    },
+    {
+      "id": "definition.write",
+      "native_semantic": "github.issue-body",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.read"], "execute": ["issue.body.write"], "after": ["issue.read"]}
+    },
+    {
+      "id": "hierarchy.read",
+      "native_semantic": "github.issue-parent-and-sub-issues",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["destination.scope"], "execute": ["issue.parent.read", "issue.sub_issues.read"], "after": []}
+    },
+    {
+      "id": "hierarchy.change",
+      "native_semantic": "github.issue-parent-and-sub-issues",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.parent.read", "issue.sub_issues.read"], "execute": ["issue.parent.write"], "after": ["issue.parent.read", "issue.sub_issues.read"]}
+    },
+    {
+      "id": "dependency.read",
+      "native_semantic": "github.issue-blocked-by-and-blocking",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["destination.scope"], "execute": ["issue.blocked_by.read", "issue.blocking.read"], "after": []}
+    },
+    {
+      "id": "dependency.change",
+      "native_semantic": "github.issue-blocked-by-and-blocking",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.blocked_by.read", "issue.blocking.read"], "execute": ["issue.blocked_by.write"], "after": ["issue.blocked_by.read", "issue.blocking.read"]}
+    },
+    {
+      "id": "status.read",
+      "native_semantic": "github.issue-state-and-state-reason",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["destination.scope"], "execute": ["issue.state.read", "issue.state_reason.read"], "after": []}
+    },
+    {
+      "id": "status.transition",
+      "native_semantic": "github.issue-state-and-state-reason",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.read", "issue.state.read", "issue.state_reason.read"], "execute": ["issue.state.write"], "after": ["issue.read", "issue.state.read", "issue.state_reason.read", "issue.duplicate_of.read"]}
+    },
+    {
+      "id": "comment.list",
+      "native_semantic": "github.issue-comments",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.read"], "execute": ["issue.comment.read"], "after": []}
+    },
+    {
+      "id": "comment.append",
+      "native_semantic": "github.issue-comment",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {"before": ["issue.read", "issue.comment.read"], "execute": ["issue.comment.write"], "after": ["issue.read", "issue.comment.read"]}
+    }
+  ]
+}

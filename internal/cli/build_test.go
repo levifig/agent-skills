@@ -348,7 +348,7 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 func TestSharedBuildPromotesTrackerNativeVNextFlowIntoAmp(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
 	seedNativeCodexBuildFixture(t, root)
-	for _, skill := range []string{"loaf-reference", "project-management", "linear", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration"} {
+	for _, skill := range []string{"loaf-reference", "project-management", "linear", "github", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration"} {
 		source := filepath.Join("..", "..", "vnext", "content", "skills", skill)
 		if err := copyDirContentsForInstall(source, filepath.Join(root, "vnext", "content", "skills", skill)); err != nil {
 			t.Fatal(err)
@@ -391,6 +391,12 @@ func TestSharedBuildPromotesTrackerNativeVNextFlowIntoAmp(t *testing.T) {
 	if got := readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "gitea", "SKILL.md")); !strings.Contains(got, "name: gitea") || !strings.Contains(got, "project-management/v1") {
 		t.Fatalf("dynamically discovered provider skill was not packaged:\n%s", got)
 	}
+	github := readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "github", "SKILL.md"))
+	for _, want := range []string{"project-management/v1", "repository Issues", "native sub-issues", "native issue dependencies"} {
+		if !strings.Contains(github, want) {
+			t.Fatalf("GitHub provider skill missing %q:\n%s", want, github)
+		}
+	}
 }
 
 func TestTrackerContractAndProviderCapabilitiesShipByteIdenticalToEveryTarget(t *testing.T) {
@@ -407,6 +413,7 @@ func TestTrackerContractAndProviderCapabilitiesShipByteIdenticalToEveryTarget(t 
 	sidecars := []string{
 		filepath.Join("project-management", "contract.json"),
 		filepath.Join("linear", "capabilities.json"),
+		filepath.Join("github", "capabilities.json"),
 	}
 	for _, sidecar := range sidecars {
 		want := readBuildFileString(t, filepath.Join(root, "vnext", "content", "skills", sidecar))
@@ -418,6 +425,12 @@ func TestTrackerContractAndProviderCapabilitiesShipByteIdenticalToEveryTarget(t 
 		}
 	}
 	for _, target := range defaultBuildTargets {
+		github := readBuildFileString(t, filepath.Join(nativeBuildSkillTreeDir(root, target), "github", "SKILL.md"))
+		for _, want := range []string{"project-management/v1", "repository Issues", "native sub-issues", "native issue dependencies"} {
+			if !strings.Contains(github, want) {
+				t.Errorf("%s generated GitHub provider skill missing %q", target, want)
+			}
+		}
 		for _, skill := range []string{"project-management", "shape", "orchestration", "loaf-reference"} {
 			body := readBuildFileString(t, filepath.Join(nativeBuildSkillTreeDir(root, target), skill, "SKILL.md"))
 			if strings.Contains(body, "project-manager") {

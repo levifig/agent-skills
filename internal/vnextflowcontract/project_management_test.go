@@ -15,6 +15,7 @@ import (
 const (
 	projectManagementContractPath = "skills/project-management/contract.json"
 	linearCapabilitiesPath        = "skills/linear/capabilities.json"
+	githubCapabilitiesPath        = "skills/github/capabilities.json"
 	projectManagerContractPath    = "agents/project-manager.contract.json"
 )
 
@@ -148,6 +149,65 @@ func TestProviderModuleCanBeAddedWithoutChangingCoreFlow(t *testing.T) {
 			t.Fatalf("provider leaked into core Flow declarations: %+v", declaration)
 		}
 	}
+}
+
+func TestTrackerSkillGitHubMappingUsesNativeIssueSemantics(t *testing.T) {
+	t.Parallel()
+
+	content := os.DirFS("../../vnext/content")
+	provider := providerCapabilities{}
+	if err := decodeStrictJSON(content, githubCapabilitiesPath, &provider); err != nil {
+		t.Fatal(err)
+	}
+	if provider.Provider != "github" {
+		t.Fatalf("provider = %q, want github", provider.Provider)
+	}
+	if got, want := provider.Operations, canonicalGitHubProviderOperations(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("GitHub operations = %#v, want native issue mapping %#v", got, want)
+	}
+	assertNoContractFindings(t, validateProviderModules(content))
+
+	skill, err := fs.ReadFile(content, "skills/github/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"repository Issues", "native sub-issue relationships", "native issue dependencies", "state_reason", "runtime capabilities"} {
+		if !strings.Contains(string(skill), want) {
+			t.Fatalf("GitHub skill missing native-semantics rule %q", want)
+		}
+	}
+	for _, forbidden := range []string{"GITHUB_TOKEN", "gh api", "http.Client", "loaf issue", "label.write"} {
+		if strings.Contains(string(skill), forbidden) {
+			t.Fatalf("GitHub skill contains forbidden transport or fallback %q", forbidden)
+		}
+	}
+}
+
+func TestTrackerSkillGitHubDuplicateTransitionRequiresNativeRelationshipReadback(t *testing.T) {
+	t.Parallel()
+
+	content := os.DirFS("../../vnext/content")
+	provider := providerCapabilities{}
+	if err := decodeStrictJSON(content, githubCapabilitiesPath, &provider); err != nil {
+		t.Fatal(err)
+	}
+	for _, mapping := range provider.Operations {
+		if mapping.ID != "status.transition" {
+			continue
+		}
+		for _, capability := range []string{"issue.read", "issue.state.read", "issue.state_reason.read"} {
+			if !stringInSlice(capability, mapping.Requires.Before) {
+				t.Fatalf("status.transition before = %v, want %q for duplicate-target type discrimination", mapping.Requires.Before, capability)
+			}
+		}
+		for _, capability := range []string{"issue.read", "issue.state.read", "issue.state_reason.read", "issue.duplicate_of.read"} {
+			if !stringInSlice(capability, mapping.Requires.After) {
+				t.Fatalf("status.transition after = %v, want %q for native duplicate relationship readback", mapping.Requires.After, capability)
+			}
+		}
+		return
+	}
+	t.Fatal("status.transition mapping missing")
 }
 
 func TestTrackerSkillContractRejectsExpandedProjectManagerAuthority(t *testing.T) {
@@ -628,6 +688,25 @@ func canonicalProviderOperations() []providerOperationMapping {
 		{ID: "status.transition", NativeSemantic: "linear.issue-state", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.state.read", "workflow.state.list"}, Execute: []string{"issue.state.write"}, After: []string{"issue.state.read"}}},
 		{ID: "comment.list", NativeSemantic: "linear.issue-comments", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read"}, Execute: []string{"issue.comment.read"}, After: []string{}}},
 		{ID: "comment.append", NativeSemantic: "linear.issue-comment", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read", "issue.comment.read"}, Execute: []string{"issue.comment.write"}, After: []string{"issue.read", "issue.comment.read"}}},
+	}
+}
+
+func canonicalGitHubProviderOperations() []providerOperationMapping {
+	return []providerOperationMapping{
+		{ID: "connection.discover", NativeSemantic: "harness.exposed-github-connection", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{}, Execute: []string{"connection.list"}, After: []string{}}},
+		{ID: "capability.discover", NativeSemantic: "harness.github-capability-description", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"connection.select"}, Execute: []string{"connection.describe"}, After: []string{}}},
+		{ID: "work.read", NativeSemantic: "github.repository-issue", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.read"}, After: []string{}}},
+		{ID: "work.create", NativeSemantic: "github.repository-issue", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.search", "issue.read"}, Execute: []string{"issue.create"}, After: []string{"issue.read"}}},
+		{ID: "work.update", NativeSemantic: "github.issue-fields", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read"}, Execute: []string{"issue.update"}, After: []string{"issue.read"}}},
+		{ID: "definition.write", NativeSemantic: "github.issue-body", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read"}, Execute: []string{"issue.body.write"}, After: []string{"issue.read"}}},
+		{ID: "hierarchy.read", NativeSemantic: "github.issue-parent-and-sub-issues", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.parent.read", "issue.sub_issues.read"}, After: []string{}}},
+		{ID: "hierarchy.change", NativeSemantic: "github.issue-parent-and-sub-issues", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.parent.read", "issue.sub_issues.read"}, Execute: []string{"issue.parent.write"}, After: []string{"issue.parent.read", "issue.sub_issues.read"}}},
+		{ID: "dependency.read", NativeSemantic: "github.issue-blocked-by-and-blocking", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.blocked_by.read", "issue.blocking.read"}, After: []string{}}},
+		{ID: "dependency.change", NativeSemantic: "github.issue-blocked-by-and-blocking", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.blocked_by.read", "issue.blocking.read"}, Execute: []string{"issue.blocked_by.write"}, After: []string{"issue.blocked_by.read", "issue.blocking.read"}}},
+		{ID: "status.read", NativeSemantic: "github.issue-state-and-state-reason", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"destination.scope"}, Execute: []string{"issue.state.read", "issue.state_reason.read"}, After: []string{}}},
+		{ID: "status.transition", NativeSemantic: "github.issue-state-and-state-reason", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read", "issue.state.read", "issue.state_reason.read"}, Execute: []string{"issue.state.write"}, After: []string{"issue.read", "issue.state.read", "issue.state_reason.read", "issue.duplicate_of.read"}}},
+		{ID: "comment.list", NativeSemantic: "github.issue-comments", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read"}, Execute: []string{"issue.comment.read"}, After: []string{}}},
+		{ID: "comment.append", NativeSemantic: "github.issue-comment", Availability: "runtime", MaximumFidelity: "exact", Requires: providerOperationRequirements{Before: []string{"issue.read", "issue.comment.read"}, Execute: []string{"issue.comment.write"}, After: []string{"issue.read", "issue.comment.read"}}},
 	}
 }
 
