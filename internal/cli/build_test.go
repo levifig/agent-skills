@@ -1106,6 +1106,19 @@ func TestNativeBuildValidationRunsTypeScriptToolWhenPresent(t *testing.T) {
 	}
 }
 
+func TestNativeBuildTypeScriptAmbientTypesCoverGeneratedAmpEvents(t *testing.T) {
+	plugin := renderNativeAmpPlugin(nil, "test")
+	ambient := nativeBuildTypeScriptAmbientTypes()
+	for _, event := range []string{"agent.start", "tool.call", "tool.result"} {
+		if !strings.Contains(plugin, "amp.on('"+event+"'") {
+			t.Fatalf("generated Amp plugin does not register %q", event)
+		}
+		if !strings.Contains(ambient, "on(event: '"+event+"'") {
+			t.Errorf("TypeScript ambient contract does not declare generated Amp event %q", event)
+		}
+	}
+}
+
 func TestNativeBuildValidationRejectsMalformedTypeScriptWhenEnabled(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	mkdirAll(t, filepath.Join(root, "dist", "opencode", "plugins"))
