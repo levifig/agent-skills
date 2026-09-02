@@ -1,57 +1,30 @@
-# State Assessment Template
+# [Project] state assessment
 
-State assessments are typically presented in-conversation. If saved, use a
-durable report artifact rather than `.agents/drafts/`.
+**As of:** [UTC timestamp]
+**Question:** [What the assessment must help the reader decide or do]
 
-**Filename timestamp:** `date -u +"%Y%m%d-%H%M%S"`
+## Operator Next
 
-```yaml
----
-title: "State Assessment: [YYYY-MM-DD]"
-type: state-assessment
-created: YYYY-MM-DDTHH:MM:SSZ
-status: active         # active | archived
-tags: []
----
+[The single most useful next action.]
 
-# Project State Assessment
+## Current Reality
 
-## Current Position
+[What works now, what is in flight, and what remains unavailable.]
 
-- [Summary of where the project stands]
+## Evidence
 
-## Strategic Context
+| Observation | Source | Confidence |
+|-------------|--------|------------|
+| [Observation] | [Project file, native tracker record, commit, or test] | [High / medium / low] |
 
-- **Vision:** [Brief summary]
-- **Key personas:** [Who we're building for]
-- **Current focus:** [Active issues]
+## Risks and Friction
 
-## Recent Progress
+[The constraints most likely to change the next decision.]
 
-- [Key accomplishments from recent sessions]
+## Near-Term Options
 
-## In Flight
+[Ranked paths with tradeoffs.]
 
-| Issue | Status | Notes |
-|-------|--------|-------|
-| LOAF-1 | active | [progress] |
-| LOAF-2 | todo | [next up] |
+## Recommendation
 
-## Ideas Pipeline
-
-- [Idea 1] -- raw
-- [Idea 2] -- raw
-
-## Lessons Learned (Recent)
-
-- [Insights from implementation feedback]
-
-## Open Questions
-
-- [Unresolved decisions or gaps]
-
-## Recommendations
-
-1. [Actionable next step]
-2. [Actionable next step]
-```
+[Recommended path and why it is the smallest useful move.]
