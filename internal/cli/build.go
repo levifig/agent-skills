@@ -388,6 +388,7 @@ declare module '@ampcode/plugin' {
     helpers: {
       shellCommandFromToolCall(event: ToolCallEvent): ShellCommand | null;
     };
+    on(event: 'agent.start', handler: () => void | Promise<void>): void;
     on(event: 'tool.call', handler: (event: ToolCallEvent) => ToolCallResult | Promise<ToolCallResult>): void;
     on(event: 'tool.result', handler: (event: ToolResultEvent) => void | Promise<void>): void;
   }
