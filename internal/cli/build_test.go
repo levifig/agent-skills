@@ -1109,13 +1109,27 @@ func TestNativeBuildValidationRunsTypeScriptToolWhenPresent(t *testing.T) {
 func TestNativeBuildTypeScriptAmbientTypesCoverGeneratedAmpEvents(t *testing.T) {
 	plugin := renderNativeAmpPlugin(nil, "test")
 	ambient := nativeBuildTypeScriptAmbientTypes()
-	for _, event := range []string{"agent.start", "tool.call", "tool.result"} {
-		if !strings.Contains(plugin, "amp.on('"+event+"'") {
-			t.Fatalf("generated Amp plugin does not register %q", event)
+	remaining := plugin
+	seen := make(map[string]struct{})
+	for {
+		start := strings.Index(remaining, "amp.on('")
+		if start < 0 {
+			break
 		}
+		remaining = remaining[start+len("amp.on('"):]
+		end := strings.IndexByte(remaining, '\'')
+		if end < 0 {
+			t.Fatal("generated Amp plugin has an unterminated event literal")
+		}
+		event := remaining[:end]
+		seen[event] = struct{}{}
 		if !strings.Contains(ambient, "on(event: '"+event+"'") {
 			t.Errorf("TypeScript ambient contract does not declare generated Amp event %q", event)
 		}
+		remaining = remaining[end+1:]
+	}
+	if len(seen) == 0 {
+		t.Fatal("generated Amp plugin registers no events")
 	}
 }
 
