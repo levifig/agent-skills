@@ -6,7 +6,7 @@ description: >-
   up, tidy `.agents/`, or decide what to retain. Produces artifact-by-artifact
   recommendations and performs only explicitly approved dispositions.
 user-invocable: true
-argument-hint: '[sessions|specs|plans|drafts|handoffs]'
+argument-hint: '[reports|handoffs|worktrees|all]'
 version: 0.5.0
 ---
 

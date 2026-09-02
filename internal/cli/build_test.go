@@ -500,6 +500,11 @@ func TestSharedBuildPackagesVNextTemporaryReportPolicyAcrossTargets(t *testing.T
 			}
 		}
 	}
+
+	claudeHousekeeping := readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "skills", "housekeeping", "SKILL.md"))
+	if !strings.Contains(claudeHousekeeping, "argument-hint: '[reports|handoffs|worktrees|all]'") {
+		t.Errorf("generated Claude Code housekeeping skill has a stale argument hint:\n%s", claudeHousekeeping)
+	}
 }
 
 func TestTrackerContractAndProviderCapabilitiesShipByteIdenticalToEveryTarget(t *testing.T) {
