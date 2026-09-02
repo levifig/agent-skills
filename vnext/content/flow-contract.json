@@ -63,6 +63,16 @@
       "name": "orchestration",
       "path": "skills/orchestration/SKILL.md",
       "kind": "workflow"
+    },
+    {
+      "name": "research",
+      "path": "skills/research/SKILL.md",
+      "kind": "supporting-workflow"
+    },
+    {
+      "name": "housekeeping",
+      "path": "skills/housekeeping/SKILL.md",
+      "kind": "supporting-workflow"
     }
   ],
   "ceremonies": [

@@ -124,9 +124,9 @@ func buildNativeSharedSkillsIntermediate(root string) error {
 }
 
 // overlayVNextFlowSkills promotes the isolated, machine-checked tracker-native
-// Flow into the common build intermediate. Every target therefore receives the
-// same authored Flow bytes. Legacy skill sources remain in content/ only as a
-// frozen compatibility input until the vNext cutover removes that tree.
+// Flow and its supporting workflows into the common build intermediate. Every
+// target therefore receives the same authored vNext bytes. Legacy skill sources
+// remain in content/ only as a frozen compatibility input until cutover.
 //
 // Shared vNext templates are projected into each consuming skill so links are
 // self-contained after installation in the canonical shared skills home. This
@@ -147,7 +147,7 @@ func overlayVNextFlowSkills(root string, dest string) error {
 		"project-management": {"work-contract.md", "tracker-update.md"},
 		"loaf-reference":     {"problem-narrative.md", "work-contract.md", "tracker-update.md"},
 	}
-	flowSkills := []string{"loaf-reference", "project-management", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration"}
+	flowSkills := []string{"loaf-reference", "project-management", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration", "research", "housekeeping"}
 	providers, err := discoverVNextProviderSkills(filepath.Join(sourceRoot, "skills"))
 	if err != nil {
 		return err

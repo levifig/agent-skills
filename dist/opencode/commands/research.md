@@ -1,147 +1,57 @@
 ---
 description: >-
-  Conducts project assessment and topic investigation. Use when stepping back to
-  understand the big picture or when the user asks "what's the current state?"
-  Produces state assessments, research findings with ranked options, or vision
-  change proposals. Not for problem discovery that should author a brief (use
-  pitch), multi-agent coordination (use orchestration), or implementation.
+  Conducts bounded project assessment and topic investigation. Use when the user
+  asks for the current state, evidence, options, or a researched recommendation.
+  Produces a direct synthesis or, when persistence is justified, a
+  skill-specific temporary report. Not for implementation or multi-agent
+  coordination.
 subtask: false
 version: 0.5.0
 ---
 
 # Research
 
-Patterns for zooming out, investigating topics, and evolving project direction.
+Investigate enough to support a decision, then stop. Research returns through the harness by default; a file is an exception earned by a concrete future use.
 
 ## Contents
+
 - Critical Rules
 - Verification
 - Quick Reference
 - Topics
-- Input Parsing
-- Confidence Hierarchy
-- Research Modes
-- Related Skills
-
-**Input:** $ARGUMENTS
 
 ## Critical Rules
 
-### Always
-- Interview before researching
-- Check project context first
-- Cite sources with confidence levels
-- Present options, let user decide
-- Get approval before editing VISION
-- Log invocation first: `loaf journal log "skill(research): <topic or mode>"`
-- Log findings to the project journal: `loaf journal log "discover(scope): summary of finding"`
-
-### Never
-- Edit VISION without explicit approval
-- Research indefinitely (set time bounds)
-- Ignore existing project decisions
-- Present research as implementation plan
-- Skip the interview step
+- As the first action, run `loaf journal log "skill(research): <concise intent>"` against the current private local journal. If the write fails, report the failure and continue only when research can safely proceed.
+- Establish the decision, scope, time bound, and needed confidence before broad investigation. Ask one question at a time when missing context materially changes the research.
+- Read project evidence first, then authoritative primary sources, then lower-confidence sources only when needed. Cite each material claim at the strongest available source.
+- Distinguish observation, inference, recommendation, and uncertainty.
+- Return through the harness by default. Persist a report only for asynchronous work, cross-conversation use, a large evidence set, multiple consumers, or an explicit user request.
+- When persistence is warranted, create an unused `.agents/reports/YYYYMMDDHHMMSS-slug.md` path. Generate the 14-digit timestamp in UTC, describe the report itself in the slug, and never overwrite an existing file.
+- Use the purpose-specific [research report](templates/research-report.md) or [state assessment](templates/state-assessment.md) template. Do not add universal status or lifecycle fields.
+- Put tracker or task provenance in the report content when useful, never in the filename.
+- Log a concise durable discovery when the result changes future decisions; do not copy the full report into the journal.
 
 ## Verification
 
-- Interview step was completed before research began
-- All findings cite sources with confidence levels (High/Medium/Low)
-- VISION.md was not modified without explicit user approval
+- The result answers the decision or question that bounded the work.
+- Material claims cite sources and label uncertainty honestly.
+- Options state meaningful tradeoffs and the recommendation follows from evidence.
+- A report file exists only when persistence was justified and its path is returned through the harness.
+- Any written report uses a research-owned template, UTC naming, and no universal report status.
 
 ## Quick Reference
 
-| Input Pattern | Mode |
-|---------------|------|
-| Empty / "project state" / "catch me up" | State Assessment |
-| Topic or question | Topic Investigation |
-| "let's brainstorm" / "ideas for X" | Redirect — user entry intent belongs to pitch (generative stance is an agent technique via explore/brainstorm, not this skill's front door) |
-| "should we change direction?" / "update VISION" | Vision Evolution |
+| Need | Output |
+|------|--------|
+| Immediate answer or compact investigation | Harness response only |
+| Current project overview needed beyond this response | [State assessment](templates/state-assessment.md) |
+| Durable evidence, options, or audit trail | [Research report](templates/research-report.md) |
+| Parallel or specialist investigation | Use orchestration; research still owns the research template |
 
 ## Topics
 
 | Topic | Template | Use When |
 |-------|----------|----------|
-| State Assessment | [state-assessment.md](templates/state-assessment.md) | Producing a project state overview |
-| Report | [report.md](templates/report.md) | Writing research, audit, analysis, or council output |
-
-## Input Parsing
-
-Parse `$ARGUMENTS` to determine mode:
-
-| Input Pattern | Mode |
-|---------------|------|
-| Empty / "project state" / "catch me up" | State Assessment |
-| Topic or question | Topic Investigation |
-| "let's brainstorm" / "ideas for X" | Redirect to pitch for human entry; do not open research's brainstorming mode as a pitch substitute |
-| "should we change direction?" / "update VISION" | Vision Evolution |
-
-## Confidence Hierarchy
-
-Prioritize sources in this order:
-
-1. **Project context** (highest) -- VISION.md, ARCHITECTURE.md, the project journal, codebase patterns
-2. **Authoritative docs** -- Context7, official docs, RFCs
-3. **Community knowledge** -- Stack Overflow (verified), GitHub issues, expert blogs
-4. **General web** (lowest) -- Search results, unverified sources
-
-Always check project context first. Rate findings: **High** (official/verified), **Medium** (authoritative, consistent), **Low** (community, single reference).
-
-## Research Modes
-
-### State Assessment
-
-**Trigger:** Empty input, "project state", "catch me up"
-
-1. Read project documents: VISION.md, STRATEGY.md, ARCHITECTURE.md
-2. Check private ideas with `loaf idea list --json`, then read current work and hierarchy from the canonical tracker through the selected `project-management/v1` provider skill
-3. Review recent journal activity with `loaf journal recent --json` and `loaf journal context`
-4. Check recent commits: `git log --oneline -20`
-5. Synthesize following [state-assessment template](templates/state-assessment.md)
-
-### Topic Investigation
-
-**Trigger:** Specific topic or question
-
-1. **Interview** (one question at a time, with a recommendation, using your harness's structured question tool if it has one): what are you trying to understand? What context do you have? What decision will this inform?
-2. Check project context first (ADRs, ARCHITECTURE, the project journal)
-3. Apply confidence hierarchy for external sources
-4. For a transient review artifact, use `loaf report generate` when an existing
-   SQLite-backed export kind fits; for authored long-form research, create a
-   Markdown report following the [report template](templates/report.md)
-
-**Output:** generated report Markdown to stdout, or an authored report at
-`.agents/reports/{YYYYMMDD}-{HHMMSS}-research-{slug}.md` when a durable prose
-artifact is explicitly needed.
-
-For SQLite-backed report state, use `loaf report create`, `loaf report
-finalize`, and `loaf report archive`. Do not hand-edit report lifecycle
-frontmatter to represent operational status.
-
-### Entry-intent redirect (not a research mode)
-
-**Trigger:** "Let's brainstorm" / "Ideas for X" / raw concept entry
-
-User-facing entry for a new concept is pitch (problem-discovery brief). Do not treat research as the brainstorm front door. When generative expansion is needed mid-research or mid-pitch, the agent may use the explore/brainstorm *techniques* — they are not substitutes for the pitch front door.
-
-### Vision Evolution
-
-**Trigger:** "Should we change direction?" / "Update VISION"
-
-1. Gather evidence (journal entries, feedback, market changes)
-2. Identify what's changed since last VISION update
-3. Propose specific changes with rationale
-4. **Get user approval before any edits**
-
-## Related Skills
-
-- **pitch** - Human problem-discovery when research crystallizes a concept that needs a brief
-- **orchestration** - For acting on research findings
-- **explore** / **brainstorm** - Agent techniques for divergent inquiry (not user front doors)
-- **reflect** - For updating strategy post-shipping
-- **architecture** - For making technical decisions
-- **strategy** - For discovering strategic context
-
-## Artifact Naming
-
-Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or the issue already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.
+| Research report | [research-report.md](templates/research-report.md) | Persisting evidence, options, and a recommendation |
+| State assessment | [state-assessment.md](templates/state-assessment.md) | Persisting a project state overview and immediate next actions |

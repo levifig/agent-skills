@@ -62,6 +62,12 @@ func TestKernelCommandSurfaceIsLimitedToIntrospection(t *testing.T) {
 			wantCode:   2,
 			wantStderr: "unknown command \"issue\"\nusage: loaf <version|ownership>\n",
 		},
+		{
+			name:       "report command remains outside kernel",
+			args:       []string{"report"},
+			wantCode:   2,
+			wantStderr: "unknown command \"report\"\nusage: loaf <version|ownership>\n",
+		},
 	}
 
 	for _, test := range tests {

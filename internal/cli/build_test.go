@@ -348,7 +348,7 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 func TestSharedBuildPromotesTrackerNativeVNextFlowIntoAmp(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
 	seedNativeCodexBuildFixture(t, root)
-	for _, skill := range []string{"loaf-reference", "project-management", "linear", "github", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration"} {
+	for _, skill := range []string{"loaf-reference", "project-management", "linear", "github", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration", "research", "housekeeping"} {
 		source := filepath.Join("..", "..", "vnext", "content", "skills", skill)
 		if err := copyDirContentsForInstall(source, filepath.Join(root, "vnext", "content", "skills", skill)); err != nil {
 			t.Fatal(err)
@@ -396,6 +396,114 @@ func TestSharedBuildPromotesTrackerNativeVNextFlowIntoAmp(t *testing.T) {
 		if !strings.Contains(github, want) {
 			t.Fatalf("GitHub provider skill missing %q:\n%s", want, github)
 		}
+	}
+}
+
+func TestSharedBuildPackagesVNextTemporaryReportPolicyAcrossTargets(t *testing.T) {
+	root := setupIsolatedRepositoryBuildRoot(t)
+	repo := testRepositoryRoot(t)
+	if err := os.Symlink(filepath.Join(repo, "vnext"), filepath.Join(root, "vnext")); err != nil {
+		t.Fatalf("Symlink(vnext) error = %v", err)
+	}
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+
+	for _, target := range defaultBuildTargets {
+		skillsRoot := nativeBuildSkillTreeDir(root, target)
+		research := readBuildFileString(t, filepath.Join(skillsRoot, "research", "SKILL.md"))
+		for _, want := range []string{
+			".agents/reports/YYYYMMDDHHMMSS-slug.md",
+			"Return through the harness by default",
+			"templates/research-report.md",
+		} {
+			if !strings.Contains(research, want) {
+				t.Errorf("%s generated research skill missing %q", target, want)
+			}
+		}
+		for _, template := range []string{"research-report.md", "state-assessment.md"} {
+			if _, err := os.Stat(filepath.Join(skillsRoot, "research", "templates", template)); err != nil {
+				t.Errorf("%s generated research template %s missing: %v", target, template, err)
+			}
+		}
+
+		housekeeping := readBuildFileString(t, filepath.Join(skillsRoot, "housekeeping", "SKILL.md"))
+		for _, want := range []string{
+			"Review every report individually",
+			"Leave it in place",
+			"Extract durable conclusions, then delete",
+			"Move the report to `docs/reports/`",
+			"explicit user approval",
+		} {
+			if !strings.Contains(housekeeping, want) {
+				t.Errorf("%s generated housekeeping skill missing %q", target, want)
+			}
+		}
+
+		orchestration := readBuildFileString(t, filepath.Join(skillsRoot, "orchestration", "SKILL.md"))
+		for _, want := range []string{
+			"Return through the harness by default",
+			"templates/background-result.md",
+			"templates/review-convergence.md",
+		} {
+			if !strings.Contains(orchestration, want) {
+				t.Errorf("%s generated orchestration skill missing %q", target, want)
+			}
+		}
+		for _, template := range []string{"background-result.md", "review-convergence.md"} {
+			if _, err := os.Stat(filepath.Join(skillsRoot, "orchestration", "templates", template)); err != nil {
+				t.Errorf("%s generated orchestration template %s missing: %v", target, template, err)
+			}
+		}
+
+		forbidden := []string{"loaf report", ".agents/reports/.work", ".agents/reports/archive"}
+		err := filepath.WalkDir(skillsRoot, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() || filepath.Ext(path) != ".md" {
+				return nil
+			}
+			body := readBuildFileString(t, path)
+			for _, token := range forbidden {
+				if strings.Contains(body, token) {
+					t.Errorf("%s generated skill %s contains retired report route %q", target, strings.TrimPrefix(path, skillsRoot+string(filepath.Separator)), token)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "vnext", "content", "templates", "report.md")); !os.IsNotExist(err) {
+		t.Errorf("vNext universal report template must not exist: %v", err)
+	}
+
+	agentPaths := []string{
+		filepath.Join(root, "plugins", "loaf", "agents", "background-runner.md"),
+		filepath.Join(root, "dist", "opencode", "agents", "background-runner.md"),
+		filepath.Join(root, "dist", "cursor", "agents", "background-runner.md"),
+	}
+	for _, path := range agentPaths {
+		body := readBuildFileString(t, path)
+		for _, want := range []string{"Return through the harness by default", ".agents/reports/YYYYMMDDHHMMSS-slug.md"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("generated background-runner %s missing %q", path, want)
+			}
+		}
+		for _, forbidden := range []string{"report status", "background_agent_id", "partial report"} {
+			if strings.Contains(body, forbidden) {
+				t.Errorf("generated background-runner %s contains retired report requirement %q", path, forbidden)
+			}
+		}
+	}
+
+	claudeHousekeeping := readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "skills", "housekeeping", "SKILL.md"))
+	if !strings.Contains(claudeHousekeeping, "argument-hint: '[reports|handoffs|worktrees|all]'") {
+		t.Errorf("generated Claude Code housekeeping skill has a stale argument hint:\n%s", claudeHousekeeping)
 	}
 }
 
@@ -621,7 +729,7 @@ func setupVNextProviderBuildFixture(t *testing.T) string {
 	t.Helper()
 	root := setupBuildCommandLoafRoot(t)
 	seedNativeCodexBuildFixture(t, root)
-	for _, skill := range []string{"loaf-reference", "project-management", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration"} {
+	for _, skill := range []string{"loaf-reference", "project-management", "pitch", "triage", "shape", "implement", "ship", "release", "orchestration", "research", "housekeeping"} {
 		if err := copyDirContentsForInstall(filepath.Join("..", "..", "vnext", "content", "skills", skill), filepath.Join(root, "vnext", "content", "skills", skill)); err != nil {
 			t.Fatal(err)
 		}
