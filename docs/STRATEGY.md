@@ -124,6 +124,8 @@ No dual authority is permitted during transition. Existing local work migrates o
 
 **Durability versus noise.** The journal must retain information that changes future decisions, not duplicate lifecycle state or syntheses that can be derived from source, git, and pull requests.
 
+**Reports are temporary skill output, not a product subsystem.** A skill returns through the harness unless a result has a concrete reason to survive the response. When persistence is earned, the producing skill owns its template and writes `.agents/reports/YYYYMMDDHHMMSS-slug.md`; Loaf adds no universal report schema, state row, sync behavior, or lifecycle command. Housekeeping reads each report and recommends leaving it, extracting durable conclusions then deleting it, deleting it, or deliberately promoting the whole report to `docs/reports/`, with user approval before every destructive or durable move.
+
 ## Open Questions
 
 
