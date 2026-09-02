@@ -1,110 +1,70 @@
 ---
 name: housekeeping
 description: >-
-  Reviews and maintains Loaf continuity artifacts, reports, handoffs, and Git
-  workspaces while treating the configured tracker as canonical shared work. Use
-  when the user asks "housekeeping," "clean up," or "tidy up .agents/." Provides
-  hygiene recommendations, archives completed work, and ensures extracted
-  knowledge is preserved. Not for strategic reflection (use reflect) or
-  knowledge management (use knowledge-base).
+  Reviews temporary reports, private continuity artifacts, and Git workspace
+  hygiene without creating another work system. Use when the user asks to clean
+  up, tidy `.agents/`, or decide what to retain. Produces artifact-by-artifact
+  recommendations and performs only explicitly approved dispositions.
 version: 0.5.0
 ---
 
 # Housekeeping
 
+Remove noise without erasing useful knowledge or inventing lifecycle state. The tracker remains canonical for shared work; the project journal remains append-only continuity.
+
 ## Contents
+
 - Critical Rules
 - Verification
 - Quick Reference
-- Mode-Aware Checks
-- Suggests Next
+- Report Review
 - Topics
-- Artifact Naming
-
-Systematic review of private continuity and repository hygiene without creating a second work system.
 
 ## Critical Rules
 
-**Always**
-- Log invocation as the first action: `loaf journal log "skill(housekeeping): <scope or trigger>"`
-- Review EVERY file individually — never sample or average
-- Read shared work status from the canonical tracker through the selected `project-management/v1` provider skill and harness-native connection
-- Extract lessons learned and decisions before archiving
-- Use deterministic Loaf commands for Loaf-owned artifacts and Git-native commands for worktrees; never raw `mv`
-- Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
-- Check report `status` is `done` (or `final`) before archiving reports (see [templates/report.md](templates/report.md))
-- Preserve the project journal, sparks, wraps, and useful handoffs; the journal is append-only and never a cleanup target
-- When delegated subagents are available, use the `librarian` profile for
-  `.agents/`-scoped durable artifact tending: report/handoff hygiene,
-  staleness notes, and lifecycle-safe cleanup recommendations.
-  Housekeeping still owns user confirmation and final archive decisions.
-- Log outcome to the project journal: `loaf journal log "decision(housekeeping): archived N reports; stopped M stale worktrees"`
-
-**Never**
-- Auto-archive without user confirmation for each artifact
-- Skip spark extraction before deleting brainstorm drafts
-- Leave `archived_at` or `archived_by` fields empty in archived files
-- Infer tracker state from local artifacts or Git state
-- Dispatch cleanup agents into a live started worktree another agent occupies
+- As the first action, run `loaf journal log "skill(housekeeping): <scope or trigger>"` against the current private local journal. If the write fails, report the failure and continue only when cleanup can safely proceed.
+- Review every report individually. Never sample, infer one report's value from another, or recommend a directory-wide action without reading each file.
+- Inspect the report's contents, references, consumers, Git state, and whether its durable conclusions already live in the tracker, journal, an ADR, or project documentation.
+- Present a concrete recommendation and rationale for every report before mutation.
+- Require explicit user approval for every deletion or move. A batch approval is valid only when it unambiguously names every artifact and disposition.
+- Preserve the project journal; it is append-only and never a cleanup target.
+- Read shared work state from the configured native tracker through `project-management/v1`. Never infer canonical workflow state from reports, local rows, branches, or worktrees.
+- Use reversible, path-specific operations where possible. Never overwrite a destination or remove an occupied or dirty worktree.
+- After approved actions, verify the exact source and destination paths and report partial failures honestly.
 
 ## Verification
 
-After work completes, verify:
-- Reports archived via `loaf report archive` after processing
-- Provider readback confirmed every tracker state used to justify cleanup
-- Git worktrees were checked for branch, dirtiness, reachability, and occupancy before any removal was proposed
-- Drafts checked for unprocessed sparks before deletion
-- Handoffs deleted only after explicit deprecation is confirmed
-- Summary table presented showing all actions taken
+- Every discovered report was read and received an individual recommendation.
+- No report was deleted or moved without explicit user approval.
+- Durable knowledge was extracted before an approved delete when the recommendation required it.
+- A report moved to `docs/reports/` has perennial value as a whole, not merely one reusable conclusion.
+- The journal and canonical tracker were not treated as cleanup mirrors.
+- Final output lists what remained, what changed, verification, and unresolved risk.
 
 ## Quick Reference
 
-### CLI Commands
+| Artifact | Canonical meaning | Housekeeping boundary |
+|----------|-------------------|-----------------------|
+| `.agents/reports/*.md` | Temporary skill output | Review individually and recommend one disposition |
+| `docs/reports/*.md` | Deliberately promoted perennial report | Normal documentation maintenance; do not demote automatically |
+| Project journal | Append-only private continuity | Read for context; never delete or archive |
+| Native tracker work | Canonical shared work | Read or mutate through the selected provider |
+| Git worktrees | Repository-native execution spaces | Inspect branch, dirtiness, reachability, and occupancy before proposing removal |
 
-```bash
-loaf housekeeping --dry-run          # Preview recommendations
-loaf housekeeping                    # Run artifact scanner
-git worktree list --porcelain        # Inspect repository-native workspaces
-loaf report archive <report>         # Archive a processed report
-```
+## Report Review
 
-Historical local issue/task/spec rows are frozen migration inputs, not current
-work. Normal housekeeping never promotes, reconciles, or synchronizes them.
+For every file matching `.agents/reports/*.md`, recommend exactly one of these dispositions:
 
-The project journal is append-only and never archived — it is not a housekeeping
-target. It is the canonical record housekeeping reads when extracting decisions
-before archiving other artifacts.
+1. **Leave it in place.** It still has an active near-term consumer or unresolved purpose.
+2. **Extract durable conclusions, then delete.** Some knowledge matters, but the report as a whole does not. Name the canonical destination for each conclusion and perform extraction before deletion.
+3. **Delete it.** Its purpose is complete and no unique evidence or conclusion remains useful.
+4. **Move the report to `docs/reports/`.** The report itself has perennial value, such as an audit, durable benchmark, incident analysis, or evidence record readers will revisit.
 
-### Artifact Lifecycle
-
-| Artifact | Active Location | Archive | Action |
-|----------|-----------------|---------|--------|
-| Shared work | Canonical native tracker | Provider-native archive/close semantics | Confirm, mutate through the selected provider, then read back |
-| Git worktrees | Git repository | Repository-native removal | Inspect branch and dirtiness independently of tracker status |
-| Drafts / brainstorms | SQLite state | SQLite resolved/archived status | User decision (spark extraction first) |
-| Handoffs | `.agents/handoffs/` | delete | Delete after status is confirmed `deprecated` |
-| Reports | SQLite state + generated/authored report Markdown | `archive/` | `loaf report archive` after processing |
-
-## Mode-Aware Checks
-
-Read the configured provider manifest before using optional fields. Never emulate
-unsupported hierarchy, status, archive, or assignment behavior. Historical
-local rows are reported only as migration candidates for a separate, explicit,
-one-time migration; they are never compared with the tracker during routine
-housekeeping.
-
-## Suggests Next
-
-After housekeeping, suggest reflect if the session produced key decisions or learnings worth integrating into strategic docs.
+Reports have no universal status, identifier, database row, or archive directory. Age alone does not decide value. Housekeeping proposes; the user approves; only then may the agent apply the exact disposition.
 
 ## Topics
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Report Template | [templates/report.md](templates/report.md) | Creating cleanup reports |
-| Tracker Workflows | [../project-management/SKILL.md](../project-management/SKILL.md) | Selecting a provider and reading canonical work |
-| Wrap Continuity | [../wrap/SKILL.md](../wrap/SKILL.md) | Preserving connective narrative before cleanup |
-
-## Artifact Naming
-
-Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or the issue already records that provenance. Put the source in a front-matter field (`source: LOAF-42`), not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.
+| Report authority | [Authority model](../loaf-reference/references/authority-model.md#temporary-reports) | Confirming why reports have no CLI, state, sync, or shared schema |
+| Tracker operations | [Project management](../project-management/SKILL.md) | Reading or changing canonical shared work during housekeeping |

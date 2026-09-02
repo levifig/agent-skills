@@ -208,7 +208,7 @@ func validateSkillDeclarations(content fs.FS, declarations []skillDeclaration) [
 		if declaration.Path != wantPath {
 			findings = append(findings, finding{"skill.path", declaration.Path, fmt.Sprintf("path must be %q", wantPath)})
 		}
-		if declaration.Kind != "reference" && declaration.Kind != "workflow" && declaration.Kind != "provider" {
+		if declaration.Kind != "reference" && declaration.Kind != "workflow" && declaration.Kind != "supporting-workflow" && declaration.Kind != "provider" {
 			findings = append(findings, finding{"skill.kind", declaration.Path, fmt.Sprintf("unknown kind %q", declaration.Kind)})
 		}
 
@@ -231,7 +231,7 @@ func validateSkillDeclarations(content fs.FS, declarations []skillDeclaration) [
 		if strings.HasPrefix(matter.Description, "Use ") || !strings.Contains(matter.Description, "Use when") {
 			findings = append(findings, finding{"skill.description", declaration.Path, "description must start with an action verb and include a Use when trigger"})
 		}
-		if declaration.Kind == "workflow" && !strings.Contains(matter.Description, "Produces") {
+		if (declaration.Kind == "workflow" || declaration.Kind == "supporting-workflow") && !strings.Contains(matter.Description, "Produces") {
 			findings = append(findings, finding{"skill.description", declaration.Path, "workflow description must state what it Produces"})
 		}
 		findings = append(findings, validateSkillSections(declaration.Path, string(body))...)
@@ -287,8 +287,8 @@ func validateSkillDirectory(content fs.FS, declaration skillDeclaration) []findi
 	for _, entry := range entries {
 		entryPath := path.Join(directory, entry.Name())
 		if entry.IsDir() {
-			if entry.Name() != "references" {
-				findings = append(findings, finding{"skill.surface", entryPath, "only the references directory is allowed beside SKILL.md"})
+			if entry.Name() != "references" && entry.Name() != "templates" {
+				findings = append(findings, finding{"skill.surface", entryPath, "only references and templates directories are allowed beside SKILL.md"})
 			}
 			continue
 		}
