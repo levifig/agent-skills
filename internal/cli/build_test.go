@@ -572,6 +572,26 @@ func TestGitWorkflowPolicyPackagesSquashAndFastForwardBoundaries(t *testing.T) {
 				t.Errorf("%s generated git-workflow skill missing %q", target, want)
 			}
 		}
+
+		commits := readBuildFileString(t, filepath.Join(nativeBuildSkillTreeDir(root, target), "git-workflow", "references", "commits.md"))
+		for _, want := range []string{
+			"Write atomic working-branch checkpoints",
+			"Keep every checkpoint complete and buildable enough for review, diagnosis, and safe continuation",
+			"Run the checks proportionate to that checkpoint before committing",
+			"Commit a knowingly broken or internally incomplete checkpoint",
+		} {
+			if !strings.Contains(commits, want) {
+				t.Errorf("%s generated git-workflow commit reference missing %q", target, want)
+			}
+		}
+		for _, forbidden := range []string{
+			"finish the change, review it, then commit once",
+			"if feedback is likely, wait for it before committing",
+		} {
+			if strings.Contains(commits, forbidden) {
+				t.Errorf("%s generated git-workflow commit reference still contains contradictory guidance %q", target, forbidden)
+			}
+		}
 	}
 }
 
