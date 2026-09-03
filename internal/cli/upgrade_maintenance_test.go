@@ -514,9 +514,39 @@ func TestExternalizedSkillsFeatureRemoved(t *testing.T) {
   "retired_targets": [],
   "retired_skills": [],
   "retired_agents": [],
+  "externalized_skills": [],
   "relocations": [],
   "aliases": []
 }`)
+	if _, found, err := loadInstallDeprecationManifest(root); !found || err == nil || !strings.Contains(err.Error(), `unknown field "externalized_skills"`) {
+		t.Fatalf("legacy externalized_skills manifest load = found %t, error %v; want unknown-field rejection", found, err)
+	}
+	var rejected bytes.Buffer
+	err = Runner{Stdout: &rejected, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--dry-run", "--json"})
+	rejection := fmt.Sprintf("%v\n%s", err, rejected.String())
+	if err == nil || !strings.Contains(rejection, `unknown field \"externalized_skills\"`) {
+		t.Fatalf("upgrade with legacy externalized_skills manifest result = %s, want unknown-field rejection", rejection)
+	}
+
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "retired_agents": [],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	plan := assertDryRunNonMutating(t, root, home, "upgrade", "--dry-run", "--json")
+	if len(plan.Deprecations) != 0 {
+		t.Fatalf("dry-run deprecations = %#v, want none for an unowned vendor skill", plan.Deprecations)
+	}
+	dryRun := runInstallCapture(t, root, "upgrade", "--dry-run", "--json")
+	for _, banned := range []string{"externalized", "thermo-nuclear-code-quality-review", "SPEC-053", "report-spec-053"} {
+		if strings.Contains(dryRun, banned) {
+			t.Fatalf("dry-run JSON must not contain %q:\n%s", banned, dryRun)
+		}
+	}
 
 	var stdout bytes.Buffer
 	err = Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--yes"})
