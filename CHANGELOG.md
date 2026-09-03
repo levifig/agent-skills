@@ -47,6 +47,7 @@ One operator's durable memory â€” journal, wraps, handoffs, refs, verification â
 
 ### Fixed
 
+- `loaf upgrade` leaves vendor skills outside Loaf's ownership silent and untouched instead of reporting a recurring externalized-skill migration notice ([#220](https://github.com/levifig/loaf/issues/220)).
 - `loaf release cut` preserves operator-curated `[Unreleased]` changelog prose as the release body instead of replacing it with auto-drafted issue notes; drafted notes are used only when unreleased is empty or stub-only.
 - Sync refresh rebuilds ref, worktree, and verification projections from pulled facts so a receiving replica shows CLI-facing mappings, start bindings, and receipts ([#204](https://github.com/levifig/loaf/pull/204)).
 - Repeated work-contract mapping and receipt upserts reuse the existing projection row id as the fact SubjectID, so a second render-out of the same ref rebuilds without colliding on the unique key ([#206](https://github.com/levifig/loaf/pull/206)).
