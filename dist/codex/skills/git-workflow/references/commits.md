@@ -224,15 +224,15 @@ Before approving a release bump, compare `[Unreleased]` against the actual relea
 
 ### Always
 
-- Write atomic commits (one logical change)
-- Commit complete units of work — finish the change, review it, then commit once
+- Write atomic working-branch checkpoints, each representing one coherent logical change
+- Keep every checkpoint complete and buildable enough for review, diagnosis, and safe continuation
 - Use imperative mood in messages
 - Reference issue numbers when applicable
-- Test before committing
+- Run the checks proportionate to that checkpoint before committing
 
 ### Never
 
-- Commit partial or in-progress work — if feedback is likely, wait for it before committing
+- Commit a knowingly broken or internally incomplete checkpoint
 - Skip commit signing (wait for user if it fails)
 - Push without explicit user confirmation
 - Use scoped commit subjects (for example, `feat(auth):`; write `feat:` instead)
