@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -488,46 +489,81 @@ func TestRunnerUpgradeReportsAliasTombstoneFromManifest(t *testing.T) {
 	}
 }
 
-func TestRunnerUpgradeReportsExternalizedSkillWithoutRemoving(t *testing.T) {
+func TestExternalizedSkillsFeatureRemoved(t *testing.T) {
+	repoRoot := testRepositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(repoRoot, "config", "deprecations.json"))
+	if err != nil {
+		t.Fatalf("read shipped deprecations.json: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("decode shipped deprecations.json: %v", err)
+	}
+	if _, ok := raw["externalized_skills"]; ok {
+		t.Fatal("shipped config/deprecations.json still has externalized_skills")
+	}
+	if _, _, err := loadInstallDeprecationManifest(repoRoot); err != nil {
+		t.Fatalf("loadInstallDeprecationManifest(repo root): %v", err)
+	}
+
 	root, home := setupInstallCommandFixture(t)
-	externalizedSkill := filepath.Join(home, ".agents", "skills", "vendor-skill")
-	writeInstallFile(t, filepath.Join(externalizedSkill, "SKILL.md"), "# Vendor skill\n")
+	vendorSkill := filepath.Join(home, ".agents", "skills", "thermo-nuclear-code-quality-review", "SKILL.md")
+	writeInstallFile(t, vendorSkill, "# Vendor skill\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [],
   "retired_skills": [],
   "retired_agents": [],
-  "externalized_skills": [
-    {
-      "skill": "vendor-skill",
-      "since": "v9.9.0",
-      "reason": "vendor-skill moved out of Loaf core",
-      "signoff": "report-spec-053-taxonomy-signoff",
-      "source": "https://github.com/example/skills/tree/main/skills/vendor-skill",
-      "install_command": "loaf skill add https://github.com/example/skills/tree/main/skills/vendor-skill",
-      "skill_homes": ["${HOME}/.agents/skills"]
-    }
-  ],
+  "externalized_skills": [],
+  "relocations": [],
+  "aliases": []
+}`)
+	if _, found, err := loadInstallDeprecationManifest(root); !found || err == nil || !strings.Contains(err.Error(), `unknown field "externalized_skills"`) {
+		t.Fatalf("legacy externalized_skills manifest load = found %t, error %v; want unknown-field rejection", found, err)
+	}
+	var rejected bytes.Buffer
+	err = Runner{Stdout: &rejected, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--dry-run", "--json"})
+	rejection := fmt.Sprintf("%v\n%s", err, rejected.String())
+	if err == nil || !strings.Contains(rejection, `unknown field \"externalized_skills\"`) {
+		t.Fatalf("upgrade with legacy externalized_skills manifest result = %s, want unknown-field rejection", rejection)
+	}
+
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "retired_agents": [],
   "relocations": [],
   "aliases": []
 }`)
 
+	plan := assertDryRunNonMutating(t, root, home, "upgrade", "--dry-run", "--json")
+	if len(plan.Deprecations) != 0 {
+		t.Fatalf("dry-run deprecations = %#v, want none for an unowned vendor skill", plan.Deprecations)
+	}
+	dryRun := runInstallCapture(t, root, "upgrade", "--dry-run", "--json")
+	for _, banned := range []string{"externalized", "thermo-nuclear-code-quality-review", "SPEC-053", "report-spec-053"} {
+		if strings.Contains(dryRun, banned) {
+			t.Fatalf("dry-run JSON must not contain %q:\n%s", banned, dryRun)
+		}
+	}
+
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--yes"})
+	err = Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
 	}
-	assertInstallFile(t, filepath.Join(externalizedSkill, "SKILL.md"), "# Vendor skill\n")
-	for _, want := range []string{
+	assertInstallFile(t, vendorSkill, "# Vendor skill\n")
+	out := stdout.String()
+	for _, banned := range []string{
+		"externalized",
+		"thermo-nuclear-code-quality-review",
+		"SPEC-053",
+		"report-spec-053",
 		"install deprecation cleanup",
-		"externalized skill vendor-skill",
-		"vendor-skill moved out of Loaf core",
-		"source: https://github.com/example/skills/tree/main/skills/vendor-skill",
-		"command: loaf skill add https://github.com/example/skills/tree/main/skills/vendor-skill",
-		"[signoff: report-spec-053-taxonomy-signoff]",
 	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		if strings.Contains(out, banned) {
+			t.Fatalf("stdout must not contain %q:\n%s", banned, out)
 		}
 	}
 }
