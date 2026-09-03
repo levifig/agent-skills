@@ -83,8 +83,6 @@ type deprecationPlanEntry struct {
 	Since           string `json:"since,omitempty"`
 	Window          string `json:"window,omitempty"`
 	Signoff         string `json:"signoff,omitempty"`
-	Source          string `json:"source,omitempty"`
-	Command         string `json:"command,omitempty"`
 }
 
 type projectFilePlanEntry struct {
@@ -816,12 +814,7 @@ func planInstallDeprecations(loafRoot string, explicitYes bool) ([]deprecationPl
 			Since:           action.Since,
 			Window:          action.Window,
 			Signoff:         action.Signoff,
-			Source:          action.Source,
-			Command:         action.Command,
 		})
-	}
-	for _, action := range result.Externalized {
-		appendEntry(action, "externalized", false)
 	}
 	for _, action := range result.Aliases {
 		appendEntry(action, "alias", false)
