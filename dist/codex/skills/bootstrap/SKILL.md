@@ -44,9 +44,9 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - **Pitched BRIEF is discovery-already-done** -- when `docs/BRIEF.md` has `source: pitch`, do not re-excavate the problem space; quote-back and gap-fill only for operating-document population
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes (including series-prep reading scoped concepts from it), the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents and minted issue bodies must stand on their own.
-- **Series-prep never auto-shapes and never creates branches** -- every mint is user-confirmed; no priority, date, or dependency fields; buckets are labels, never bindings; concepts that fail granularity stay BRIEF lines or sparks
+- **Series-prep never auto-shapes and never creates branches** -- every native tracker record is user-confirmed; use only exact provider-supported fields; concepts that fail granularity stay BRIEF lines or sparks
 - **Prepare an arc of rideable outcomes, not layers** -- series-prep describes the operator journeys that later shape will make concrete; storage, backend, API, UI, and verification are not milestones by themselves
-- **Record, don't provision Linear** -- when the project exposes a Linear MCP, record its server name in `.agents/loaf.json`; never install, connect, or authenticate it
+- **Record routing, never provision a provider** -- when the project exposes a provider connection, record non-secret routing hints in `.agents/loaf.json`; never install, connect, or authenticate it
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
 - **Log first** -- log invocation before interviewing: `loaf journal log "skill(bootstrap): <project or intake>"`
 - **Log outcome** -- log bootstrap completion to the project journal: `loaf journal log "decision(bootstrap): project bootstrapped, mode detected"`
@@ -58,9 +58,9 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - All expected operating documents (`docs/VISION.md`, `AGENTS.md` at minimum) exist and contain populated content
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
 - When `source: pitch`, the interview was gap-only (no re-excavation of already-specific problem sections)
-- When series-prep ran: each minted row is a backlog issue (`loaf issue new "<title>" --body "<problem narrative>" --status backlog`) with a standalone problem-space body and a nameable operator outcome rather than a component layer; an advisory bucket (`loaf issue bucket <ref> now|next|later`) may be set — buckets are labels, never bindings; `loaf issue check <ref>` only when a capture is shaped enough to check, otherwise nothing (a backlog issue with a problem body needs no ceremony); no folders, no docs-only commits; no branches created for the series; no auto-shape
+- When series-prep ran: each confirmed concept is a canonical native tracker backlog record created through the selected `project-management/v1` provider with a standalone problem-space body and a nameable operator outcome rather than a component layer; provider readback verified every native reference; no local work rows, folders, docs-only commits, branches, or auto-shape
 - Root `AGENTS.md` is a real file; on Claude Code, the compatibility symlink `.claude/CLAUDE.md -> ../AGENTS.md` exists (see Finalization)
-- When a Linear MCP was active, `.agents/loaf.json` records its exact server name under `integrations.linear.mcp_server_name`; bootstrap did not install or authenticate it
+- When a provider connection was active, `.agents/loaf.json` records its non-secret provider-namespaced routing hints; bootstrap did not install or authenticate it
 - Key decisions and interview outcomes were logged with `loaf journal log` and are readable with `loaf journal recent`
 
 ---
@@ -409,7 +409,7 @@ If the symlink already exists and points at `../AGENTS.md`, skip silently. If it
 
 Do not create `.claude/CLAUDE.md`. Ensure root `AGENTS.md` exists and is populated; that is the file every harness reads.
 
-Before journal recording, when `.agents/loaf.json` exists, inspect the Linear-capable MCP servers exposed by the current harness. With exactly one, preserve an existing matching value or record its exact name as `integrations.linear.mcp_server_name` and set `integrations.linear.enabled` to `true`; with several, ask which belongs to the project; with none, leave the integration unchanged. Ask before replacing a different recorded name, preserve unrelated fields, and never install, connect, or authenticate the MCP.
+Before journal recording, when `.agents/loaf.json` exists, inspect provider connections exposed by the current harness. When the user selects one, preserve or record only non-secret provider-namespaced routing hints such as `integrations.<provider>.mcp_server_name`; preserve opaque provider-specific keys and unrelated fields. Ask before replacing a different recorded connection, and never install, connect, authenticate, or store credentials.
 
 ### 3. Journal Recording
 
@@ -429,49 +429,33 @@ The journal should capture:
 Use [templates/journal.md](templates/journal.md) only as the rendered entry
 format reference; do not hand-author journal markdown as the source of truth.
 
-### 4. Series-Prep (initial arc as backlog issues)
+### 4. Series-Prep (initial arc in the canonical tracker)
 
-After operating documents are populated (and Knowledge Base Scaffolding above has run), close bootstrap by minting the BRIEF's initial arc as **backlog issues** — SQLite rows with a problem-space body and an optional advisory bucket label (`loaf issue bucket <ref> now|next|later`). Buckets are labels, never bindings. Series-prep is not roadmap planning: no milestone entities, no dates, no priorities, no dependency fields. Sequencing is prose in each issue body. No folders, no docs-only commits per capture — rows, not files.
+After operating documents are populated (and Knowledge Base Scaffolding above has run), close bootstrap by creating the BRIEF's initial arc as **canonical native tracker backlog records** through the selected provider skill and harness-native connection. Each record carries a standalone problem-space body. Use optional native labels, priority, or hierarchy only when the provider capability manifest reports exact support. Series-prep is not roadmap planning: no invented fields, parallel local work rows, folders, or docs-only commits. Sequencing can remain prose in each tracker body.
 
 **When to run**
 
 - Always offer series-prep when a project BRIEF exists and names more than one scoped concept (typical after a pitched BRIEF; also after a rich non-pitch brief).
-- If the BRIEF is a single atomic concept with no series, say so and skip to Next Steps — one future shape or a single issue later is enough.
+- If the BRIEF is a single atomic concept with no series, say so and skip to Next Steps — one future shape or a single native tracker record later is enough.
 - Series-prep **reads** the BRIEF during this phase only. After bootstrap ends, nothing references `docs/BRIEF.md` again; minted issue bodies and operating docs stand alone.
 
 **Procedure**
 
 1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options using your harness's structured question tool if it has one.
-2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own backlog issue when it names a complete operator outcome that is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line or becomes a spark — never a half-minted row. Component layers remain inside the future consuming slice.
+2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own tracker record when it names a complete operator outcome that is independently rideable **and** its problem can be **stated precisely now** without the others; otherwise it stays a BRIEF line or becomes a spark — never a half-created record. Component layers remain inside the future consuming slice.
 3. **Per confirmed concept (one at a time — never batch):**
-   1. Confirm mint with the builder (title, optional advisory bucket, one-line problem restatement). Buckets are labels, never bindings — a missing bucket does not block mint. If the concept fails granularity, do not mint — park as spark or BRIEF line.
+   1. Confirm creation with the builder (title, one-line problem restatement, and any exact provider-supported routing fields). Missing optional metadata never blocks capture. If the concept fails granularity, park it as a spark or BRIEF line.
    2. Propose a **working title** that names the concept, never another work unit (issue aliases, task ids). Confirm the title.
    3. **Seed a problem-space-only narrative** from the BRIEF's content for that concept (Problem Statement, Who Has It, Current Alternatives, Value Proposition, Constraints, Sequencing and Relationships as prose order relative to the arc, Sources if any, Open Questions). Do not copy solution design. The seeded body must stand alone as intent for later shape — cold-read without the project BRIEF or this session.
-   4. Mint the backlog issue:
-
-      ```bash
-      loaf issue new "<title>" --body "<problem narrative>" --status backlog
-      ```
-
-      Creates a SQLite row, not a folder. Use `--body -` or `--body-file <path>` when the narrative is long (see `loaf issue new --help`).
-   5. **Optionally set an advisory bucket** (a label, never a binding):
-
-      ```bash
-      loaf issue bucket <ref> now|next|later
-      ```
-   6. **Validate** only when the capture is shaped enough to check:
-
-      ```bash
-      loaf issue check <ref>
-      ```
-
-      A backlog issue with a problem body is capture-only and needs no ceremony — skip the check. Do not add criteria or an out-of-scope statement during series-prep (that is shape).
-   7. **Do not land a docs-only commit.** The row is the artifact. Never push; never open a PR; never create a branch.
+   4. Call the selected provider's `work.create` operation using the harness-native connection. Preserve the confirmed title and problem narrative exactly; do not configure credentials or call a Loaf provider client.
+   5. Read the created record back through `work.get`. Verify native identity, title, body, status, and every requested supported field before proceeding.
+   6. Do not add definition-of-done criteria or an out-of-scope statement during series-prep; that is shape.
+   7. **Do not land a docs-only commit.** The canonical tracker record is the shared artifact. Never push, open a PR, or create a branch.
 4. **Guards (hard):**
-   - Every mint is user-confirmed — never auto-mint the whole list
+   - Every create is user-confirmed — never auto-create the whole list
    - Never auto-run shape and never create branches during series-prep
-   - No priority, date, estimate, or dependency fields on issues
-   - No folders, no docs-only commits per capture — rows, not files
+   - Use only fields the provider reports with exact native fidelity; omit unsupported fields without emulation
+   - No local work rows, folders, or docs-only commits per capture
    - Concepts that fail granularity stay BRIEF lines or sparks; buckets are labels, never bindings
 
 **After the series**

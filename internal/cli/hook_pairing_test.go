@@ -176,14 +176,16 @@ func TestHookPairingOverTheLiveCursorFile(t *testing.T) {
 
 	paired := map[string][]string{}
 	foreign := 0
+	retired := 0
 	for event, entries := range events {
 		outcome, err := pairHookEventEntries(recognition, event, entries)
 		if err != nil {
 			t.Fatalf("pairHookEventEntries(%s) error = %v", event, err)
 		}
-		if len(outcome.retired) != 0 || len(outcome.duplicates) != 0 {
-			t.Fatalf("%s: retired = %#v, duplicates = %#v, want none", event, outcome.retired, outcome.duplicates)
+		if len(outcome.duplicates) != 0 {
+			t.Fatalf("%s: duplicates = %#v, want none", event, outcome.duplicates)
 		}
+		retired += len(outcome.retired)
 		foreign += len(outcome.foreign)
 		for _, pairing := range outcome.paired {
 			if pairing.pass != hookPairingTemplate {
@@ -195,12 +197,14 @@ func TestHookPairingOverTheLiveCursorFile(t *testing.T) {
 	if foreign != 33 {
 		t.Fatalf("pairing saw %d foreign entries, want 33", foreign)
 	}
+	if retired != 2 {
+		t.Fatalf("pairing saw %d retired Loaf entries, want task-board and Linear-magic", retired)
+	}
 	want := map[string][]string{
 		"preToolUse": {
 			"artifact-body-write",
 			"artifact-names",
 			"check-secrets",
-			"detect-linear-magic",
 			"ephemeral-provenance",
 			"github-account",
 			"render-drift",
@@ -211,7 +215,7 @@ func TestHookPairingOverTheLiveCursorFile(t *testing.T) {
 			"workflow-pre-pr",
 			"workflow-pre-push",
 		},
-		"postToolUse":  {"generate-task-board", "kb-staleness-nudge", "workflow-post-merge"},
+		"postToolUse":  {"kb-staleness-nudge", "workflow-post-merge"},
 		"sessionStart": {"session-start-loaf"},
 	}
 	for event := range paired {

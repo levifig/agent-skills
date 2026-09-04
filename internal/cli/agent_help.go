@@ -93,6 +93,13 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
+			Name:        "harness",
+			Description: "Diagnose or reconcile Loaf-owned installed harness content without updating the CLI, project config, human instructions, authentication material, or tracker state",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "reconcile", Description: "Use one initiating harness to reconcile the complete installed shared-skills cohort and write a receipt", Options: []agentHelpOption{{Flags: "--target <target>", Description: "Initiating installed target; the reconciliation scope is the complete shared-skills cohort"}, {Flags: "--json", Description: "Output the cohort reconcile receipt as JSON"}}},
+			},
+		},
+		{
 			Name:        "setup",
 			Description: "One-step bootstrap: init + build + install",
 		},
@@ -154,6 +161,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Name: "schema", Description: "Preview or apply pending SQLite schema upgrades with a verified backup before mutation", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Preview pending schema upgrades without writing"}, {Flags: "--apply", Description: "Apply pending schema upgrades after creating and verifying a backup"}, {Flags: "--json", Description: "Output schema upgrade action, versions, pending migrations, backup, and verification as JSON"}}},
 				{Name: "lifecycle-statuses", Description: "Normalize legacy lifecycle statuses in SQLite with a backup and rollback manifest", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Preview status normalization on a temporary database copy"}, {Flags: "--apply", Description: "Normalize live SQLite statuses after creating a backup"}, {Flags: "--rollback <manifest>", Description: "Restore statuses from a lifecycle-statuses rollback manifest"}, {Flags: "--json", Description: "Output migration contract, project context, counts, backup, and rollback fields as JSON"}}},
 				{Name: "journal-first", Description: "Transform the global database to the journal-first model: purge lifecycle noise, drop the session entity, rekey journal search; destructive by consent", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Preview counts against a temporary database copy without mutation or backup"}, {Flags: "--apply", Description: "Take a mandatory backup, then apply the migration to the live database"}, {Flags: "--json", Description: "Output migration contract, counts, backup path, and schema version as JSON"}}},
+				{Name: "vnext-rehearsal", Description: "Import a verified legacy backup into a brand-new isolated vNext database without activation or cutover", Options: []agentHelpOption{{Flags: "--backup <ABSOLUTE-SQLITE>", Description: "Absolute, clean path to a verified standalone legacy SQLite backup"}, {Flags: "--to <ABSOLUTE-NEW-DIRECTORY>", Description: "Absolute, clean path to a brand-new isolated destination directory"}, {Flags: "--json", Description: "Output structured source, archive, projection, and destination evidence as JSON"}}},
 				{Name: "worktree-storage", Description: "Move linked-worktree .agents content to the main checkout", Options: []agentHelpOption{{Flags: "--apply", Description: "Perform the migration; dry-run is the default"}, {Flags: "--force-from-worktree", Description: "On conflict, keep the worktree-local copy"}, {Flags: "--force-from-main", Description: "On conflict, keep the main-worktree copy"}}},
 			},
 		},
@@ -186,7 +194,7 @@ func agentHelpCommands() []agentHelpCommand {
 		},
 		{
 			Name:        "issue",
-			Description: "Manage issues in native SQLite state",
+			Description: "Frozen local-work compatibility for explicit one-time migration; never ongoing tracker-native Flow authority",
 			Subcommands: []agentHelpSubcommand{
 				{Name: "new", Description: "Create a ref-keyed work contract or a legacy issue", Options: []agentHelpOption{{Flags: "--ref <authority-ref>", Description: "Provider-qualified authority ref; writes a work contract instead of an internal issue row"}, {Flags: "--body <text>", Description: "Inline issue body, or '-' to read from stdin"}, {Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--kind <kind>", Description: "Issue kind: delivery or decision"}, {Flags: "--parent <ref>", Description: "Parent issue ref"}, {Flags: "--fog <text>", Description: "Questions not yet sharp enough to be issues"}, {Flags: "--status <status>", Description: "Write status after create: " + strings.Join(state.IssueWriteStatuses(), ", ") + "; still records the initial triage event"}, {Flags: "--json", Description: "Output the created issue, global database scope, and project identity as JSON"}}},
 				{Name: "absorb", Description: "Mint an issue from leftover SQLite work, or dismiss the source", Options: []agentHelpOption{{Flags: "--all", Description: "Project every leftover row in scope for the current project"}, {Flags: "--history", Description: "Include done and archived tasks, and ordinarily resolved intents"}, {Flags: "--dry-run", Description: "Rehearse --all without writing"}, {Flags: "--dismiss", Description: "Archive the source as superseded without minting an issue"}, {Flags: "--json", Description: "Output the absorb result, global database scope, and project identity as JSON"}}},
@@ -206,9 +214,9 @@ func agentHelpCommands() []agentHelpCommand {
 				{Name: "render", Description: "Emit a paste-ready PR body", Options: []agentHelpOption{{Flags: "--json", Description: "Output the markdown, issue, global database scope, and project identity as JSON"}}},
 				{Name: "identity", Description: "Show, define, or align the local issue prefix", Options: []agentHelpOption{{Flags: "--prefix <prefix>", Description: "Define the local issue prefix and rewrite existing aliases"}, {Flags: "--align", Description: "Rewrite a leaked LOAF prefix to the project slug"}, {Flags: "--all", Description: "With --align, rewrite every leaked project in the global database"}, {Flags: "--dry-run", Description: "Rehearse --prefix or --align without writing"}, {Flags: "--json", Description: "Output identity or rewrite result as JSON"}}},
 				{Name: "export", Description: "Export issues, identity, criteria, claims, and relationships as JSON", Options: []agentHelpOption{{Flags: "--json", Description: "Output the export snapshot"}}},
-				{Name: "pull", Description: "Adopt an existing Linear issue", Options: []agentHelpOption{{Flags: "--tree", Description: "Also adopt the sub-issue tree with parent edges intact"}, {Flags: "--json", Description: "Output the adopted issue and tree as JSON"}}},
-				{Name: "push", Description: "Write the local render and status to Linear", Options: []agentHelpOption{{Flags: "--json", Description: "Output the push result as JSON"}}},
-				{Name: "reconcile", Description: "Compare local and Linear and surface conflicts", Options: []agentHelpOption{{Flags: "--take-local", Description: "Write the local status to Linear"}, {Flags: "--take-tracker", Description: "Write the Linear status to local through the events path"}, {Flags: "--json", Description: "Output the reconcile result as JSON"}}},
+				{Name: "pull", Description: "Legacy adapter only; not a tracker-native Flow operation", Options: []agentHelpOption{{Flags: "--tree", Description: "Also adopt the sub-issue tree with parent edges intact"}, {Flags: "--json", Description: "Output the legacy adapter result as JSON"}}},
+				{Name: "push", Description: "Legacy adapter only; local-to-tracker synchronization is not supported by current Flow", Options: []agentHelpOption{{Flags: "--json", Description: "Output the legacy adapter result as JSON"}}},
+				{Name: "reconcile", Description: "Legacy adapter only; local-to-tracker synchronization is not supported by current Flow", Options: []agentHelpOption{{Flags: "--take-local", Description: "Legacy adapter option"}, {Flags: "--take-tracker", Description: "Legacy adapter option"}, {Flags: "--json", Description: "Output the legacy adapter result as JSON"}}},
 			},
 		},
 		{
@@ -248,7 +256,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Flags: "--json", Description: "Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON"},
 			},
 		},
-		{Name: "doctor", Description: "Diagnose project alignment, including leftover SQLite work and leaked issue prefixes", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}, {Flags: "--json", Description: "Output the identical check set as read-only JSON; never prompts or repairs"}}},
+		{Name: "doctor", Description: "Diagnose project alignment, managed content, and leftover migration work", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}, {Flags: "--json", Description: "Output the identical check set as read-only JSON; never prompts or repairs"}}},
 		{
 			Name:        "release",
 			Description: "Cut a retroactive release from already-landed work",

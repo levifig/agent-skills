@@ -89,7 +89,7 @@ After completing work, reflect extracts learnings and proposes updates to strate
 ### Step 2: Gather Evidence
 
 Sources:
-1. **Completed issues** (`loaf issue list` / `loaf issue show <ref>` with status `done`) -- look for lessons in the issue body
+1. **Completed tracker work** — use the selected `project-management/v1` provider skill and harness-native connection to read completed canonical records and their bodies
 2. **Project journal** (`loaf journal recent --json`, `loaf journal search <topic>`) -- insights, surprises, pivots
 3. **Recent commits** (`git log --oneline -30`)
 4. **Implementation reality** -- what was harder/easier than expected? What assumptions were wrong?

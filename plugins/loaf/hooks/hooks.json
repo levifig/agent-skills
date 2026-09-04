@@ -96,13 +96,6 @@
             "timeout": 30,
             "description": "Validate commit messages follow conventions",
             "failClosed": true
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal log --detect-linear",
-            "if": "Bash(git commit:*)",
-            "timeout": 30,
-            "description": "Detect Linear magic words for auto-status updates"
           }
         ]
       }
@@ -111,12 +104,6 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" task refresh",
-            "description": "Regenerate TASKS.md when task files change",
-            "timeout": 30
-          },
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/kb-staleness-nudge.sh",
@@ -132,7 +119,7 @@
             "type": "command",
             "command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/instructions/post-merge.md\"",
             "if": "Bash(gh pr merge:*)",
-            "description": "Inject issue-done, worktree-stop, and journal housekeeping after a gh pr merge hook; command matching does not prove success",
+            "description": "Inject native tracker readback, direct Git worktree cleanup, and journal housekeeping after a gh pr merge hook; command matching does not prove success",
             "timeout": 5
           }
         ]

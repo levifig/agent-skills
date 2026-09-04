@@ -72,6 +72,9 @@ func (r hookRecognition) ownsEntry(entry map[string]any) (hookOwnership, error) 
 		if matched {
 			return hookOwnership{owned: true, reason: hookOwnershipExecutable, hookID: hookID}, nil
 		}
+		if r.matchesFrozenRetiredExecutable(identity.tokens) {
+			return hookOwnership{owned: true, reason: hookOwnershipLegacy}, nil
+		}
 	}
 	if identity.ok && r.referencesManagedPath(identity.tokens) {
 		return hookOwnership{owned: true, reason: hookOwnershipManagedPath}, nil
@@ -80,6 +83,16 @@ func (r hookRecognition) ownsEntry(entry map[string]any) (hookOwnership, error) 
 		return hookOwnership{owned: true, reason: hookOwnershipLegacy}, nil
 	}
 	return hookOwnership{}, nil
+}
+
+func (r hookRecognition) matchesFrozenRetiredExecutable(tokens []string) bool {
+	normalized := r.normalizeCommandTokens(tokens)
+	for _, retired := range [][]string{{hookExecutableSentinel, "task", "refresh"}, {hookExecutableSentinel, "journal", "log", "--detect-linear"}} {
+		if hookTokensEqual(normalized, retired) {
+			return true
+		}
+	}
+	return false
 }
 
 // legacyCodexHookID names the one hook the frozen Codex matcher-group shape can

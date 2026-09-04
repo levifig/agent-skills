@@ -89,22 +89,9 @@
         "failClosed": true,
         "command": "loaf check --hook validate-commit",
         "if": "Bash(git commit:*)"
-      },
-      {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Bash",
-        "command": "loaf journal log --detect-linear",
-        "if": "Bash(git commit:*)"
       }
     ],
     "postToolUse": [
-      {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Edit|Write",
-        "command": "loaf task refresh"
-      },
       {
         "loaf-managed": true,
         "timeout": 5,

@@ -316,57 +316,6 @@
       ]
     },
     {
-      "event": "preToolUse",
-      "hook_id": "detect-linear-magic",
-      "type": "command",
-      "template": {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Bash",
-        "command": "loaf journal log --detect-linear",
-        "if": "Bash(git commit:*)"
-      },
-      "signatures": [
-        [
-          "loaf",
-          "journal",
-          "log",
-          "--detect-linear"
-        ]
-      ],
-      "stems": [
-        [
-          "journal",
-          "log",
-          "--detect-linear"
-        ]
-      ]
-    },
-    {
-      "event": "postToolUse",
-      "hook_id": "generate-task-board",
-      "type": "command",
-      "template": {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Edit|Write",
-        "command": "loaf task refresh"
-      },
-      "signatures": [
-        [
-          "loaf",
-          "task",
-          "refresh"
-        ]
-      ],
-      "stems": [
-        [
-          "task",
-          "refresh"
-        ]
-      ]
-    },
-    {
       "event": "postToolUse",
       "hook_id": "kb-staleness-nudge",
       "type": "command",

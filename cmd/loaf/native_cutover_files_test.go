@@ -26,7 +26,7 @@ func TestNativeCutoverPackageAndSourceGuards(t *testing.T) {
 	if got := manifest.Scripts["prepublishOnly"]; got != "npm run build:release" {
 		t.Fatalf("prepublishOnly = %q, want release artifact builder", got)
 	}
-	wantFiles := []string{"bin/", "config/", "content/"}
+	wantFiles := []string{"bin/", "config/", "content/", "vnext/content/"}
 	if got := append([]string(nil), manifest.Files...); !sameSortedStrings(got, wantFiles) {
 		t.Fatalf("package.json files = %#v, want exactly %#v", manifest.Files, wantFiles)
 	}

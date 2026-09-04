@@ -4,7 +4,6 @@ The last shaping step, before `loaf issue check` and any review offer. An agent 
 
 Run through these before finalizing:
 
-- **Is this rideable?** Can the named rider use the result today as a complete small product? Does the journey exercise all new machinery? What evidence demanded the complexity? Could less deliver the same outcome without reducing integrity? If this is only a wheel, which immediate consuming slice makes it rideable? Use the foundations Rideable Increments reference.
 - **Is scope still bounded?** Has the draft crept beyond what the problem statement justifies? Could this issue be smaller and still be verifiable alone and revertible alone?
 - **Does every new command, state, or lifecycle verb name its ceremony?** If a command or state can't name the ceremony that exercises it, cut it — don't build it now and hope a use appears.
 - **Is a second progress flag creeping into the body?** `readiness`, `phase`, `stage`, or anything else that reintroduces a declared progress flag. Status lives on the issue row (`loaf issue status`). Shaped, covered, and ready are derived by `loaf issue check`. `loaf issue bucket` is a label only and is never read as a constraint.

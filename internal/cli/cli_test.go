@@ -902,12 +902,9 @@ func TestRunnerInitScaffoldsProjectNatively(t *testing.T) {
 		}
 	}
 	var config struct {
-		Version     string `json:"version"`
-		Initialized string `json:"initialized"`
-		Issue       struct {
-			Authority string `json:"authority"`
-			Prefix    string `json:"prefix"`
-		} `json:"issue"`
+		Version     string          `json:"version"`
+		Initialized string          `json:"initialized"`
+		Issue       json.RawMessage `json:"issue"`
 	}
 	body, err := os.ReadFile(filepath.Join(workingDir, ".agents", "loaf.json"))
 	if err != nil {
@@ -919,8 +916,8 @@ func TestRunnerInitScaffoldsProjectNatively(t *testing.T) {
 	if config.Version != "1.0.0" || config.Initialized == "" {
 		t.Fatalf("loaf.json = %#v, want version and initialized timestamp", config)
 	}
-	if config.Issue.Authority != "local" || config.Issue.Prefix == "" {
-		t.Fatalf("loaf.json issue = %#v, want local bootstrap prefix", config.Issue)
+	if len(config.Issue) != 0 {
+		t.Fatalf("loaf.json issue = %s, want no legacy issue authority block", config.Issue)
 	}
 	output := stdout.String()
 	for _, want := range []string{"loaf init", "Go (go.mod)", "go-development", "Project initialized"} {
@@ -11731,10 +11728,6 @@ func TestRunnerReportCreateAndShowSQLiteBody(t *testing.T) {
 	assertCLIReportContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 }
 
-
-
-
-
 func TestRunnerReportShowUsesMarkdownFallbackWhenMarkdownOnly(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -12474,14 +12467,6 @@ func decodeReportShow(t *testing.T, data []byte) state.ReportShow {
 	return result
 }
 
-
-
-
-
-
-
-
-
 func decodeArtifactEntityCreateResult(t *testing.T, data []byte) state.ArtifactEntityCreateResult {
 	t.Helper()
 	var result state.ArtifactEntityCreateResult
@@ -12964,6 +12949,26 @@ func TestRunnerUnknownTopLevelCommandIsNative(t *testing.T) {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 		}
+	}
+}
+
+func TestHarnessIsKnownBeforeLinkedWorktreeMigrationGate(t *testing.T) {
+	if got := unknownTopLevelCommandNative([]string{"harness", "reconcile", "--target", "amp"}); got != "" {
+		t.Fatalf("unknownTopLevelCommandNative(harness) = %q, want known command", got)
+	}
+}
+
+func TestHarnessReconcilePreA3GateSeparatesGlobalAndProjectLayouts(t *testing.T) {
+	main := initCLIGitRepo(t)
+	linked := addCLILinkedWorktree(t, main, "pre-a3-harness")
+	seedCLIWorktreeAgents(t, linked)
+	t.Setenv(projectEnvironmentEnv, "")
+	if shouldRefuseCommandNative([]string{"harness", "reconcile", "--target", "amp"}, linked) {
+		t.Fatal("global harness reconcile was blocked by project storage migration")
+	}
+	t.Setenv(projectEnvironmentEnv, "1")
+	if !shouldRefuseCommandNative([]string{"harness", "reconcile", "--target", "amp"}, linked) {
+		t.Fatal("project-bound harness reconcile bypassed pre-A3 storage migration")
 	}
 }
 

@@ -1,0 +1,15 @@
+{
+  "id": "project-manager/v1",
+  "execution": "optional",
+  "behavior_source": {
+    "contract_id": "project-management/v1",
+    "contract_path": "skills/project-management/contract.json",
+    "skill_path": "skills/project-management/SKILL.md",
+    "provider_route": "selected-provider-skill"
+  },
+  "authority": {
+    "connector": "selected-provider-skill-only",
+    "non_connector_authority": "none"
+  },
+  "fallback": "main-agent-same-contract"
+}

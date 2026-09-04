@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -128,6 +129,9 @@ func installedHarnessDriftReadings(binaryVersion string) []harnessDriftReading {
 func (reading harnessDriftReading) doctorDetailLine(binaryVersion string) string {
 	switch reading.state {
 	case harnessDriftContentStale:
+		if reading.target == "amp" {
+			return fmt.Sprintf("%s content is %s (%s) - Amp will attempt managed-content reconciliation at its next agent start; run `loaf harness reconcile --target amp` for an explicit receipt", reading.name, reading.marker, reading.configDir)
+		}
 		return fmt.Sprintf("%s content is %s (%s) - run `loaf upgrade`", reading.name, reading.marker, reading.configDir)
 	case harnessDriftBinaryStale:
 		// Both directions are named because the marker alone cannot choose
@@ -145,6 +149,22 @@ func (reading harnessDriftReading) doctorDetailLine(binaryVersion string) string
 	default:
 		return ""
 	}
+}
+
+func (reading harnessDriftReading) reconcileReceiptDetailLine() string {
+	body, err := readRegularFile(filepath.Join(reading.configDir, harnessReconcileReceiptFile), projectFileReadLimit)
+	if err != nil {
+		return ""
+	}
+	receipt := harnessReconcileReceipt{}
+	if json.Unmarshal(body, &receipt) != nil || receipt.ContractVersion != 1 || receipt.Target != reading.target {
+		return fmt.Sprintf("%s reconcile receipt is unreadable or does not match this target (%s)", reading.name, filepath.Join(reading.configDir, harnessReconcileReceiptFile))
+	}
+	when := receipt.RecordedAt
+	if when == "" {
+		when = "time not recorded"
+	}
+	return fmt.Sprintf("%s last managed-content reconcile: %s → %s, outcome %s, %s, restart_required=%t", reading.name, emptyVersion(receipt.FromVersion), receipt.ToVersion, receipt.Outcome, when, receipt.RestartRequired)
 }
 
 // harnessDriftNudge renders the single SessionStart line for the invoking

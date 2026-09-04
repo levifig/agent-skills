@@ -1,0 +1,237 @@
+{
+  "schema": "loaf-flow/v1",
+  "tracker_contract": "project-management/v1",
+  "authority": {
+    "shared_work": "tracker",
+    "service_connections": "harness",
+    "flow_ceremonies": "loaf",
+    "code": "git"
+  },
+  "execution": {
+    "primary": {
+      "actor": "main-agent",
+      "behavior_contract": "skills/project-management/contract.json",
+      "behavior_skill": "skills/project-management/SKILL.md",
+      "provider_route": "selected-provider-skill"
+    }
+  },
+  "local_work_record": false,
+  "tracker_proxy": false,
+  "tracker_sync": false,
+  "skills": [
+    {
+      "name": "loaf-reference",
+      "path": "skills/loaf-reference/SKILL.md",
+      "kind": "reference"
+    },
+    {
+      "name": "project-management",
+      "path": "skills/project-management/SKILL.md",
+      "kind": "reference"
+    },
+    {
+      "name": "pitch",
+      "path": "skills/pitch/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "triage",
+      "path": "skills/triage/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "shape",
+      "path": "skills/shape/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "implement",
+      "path": "skills/implement/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "ship",
+      "path": "skills/ship/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "release",
+      "path": "skills/release/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "orchestration",
+      "path": "skills/orchestration/SKILL.md",
+      "kind": "workflow"
+    },
+    {
+      "name": "research",
+      "path": "skills/research/SKILL.md",
+      "kind": "supporting-workflow"
+    },
+    {
+      "name": "housekeeping",
+      "path": "skills/housekeeping/SKILL.md",
+      "kind": "supporting-workflow"
+    }
+  ],
+  "ceremonies": [
+    {
+      "name": "pitch",
+      "skill": "pitch",
+      "input": "human-context",
+      "output": "problem-narrative",
+      "template": "problem-narrative",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "comment.list"
+      ]
+    },
+    {
+      "name": "triage",
+      "skill": "triage",
+      "input": "native-work-candidates",
+      "output": "native-dispositions",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "work.update",
+        "status.read",
+        "status.transition",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "shape",
+      "skill": "shape",
+      "input": "problem-narrative",
+      "output": "work-contract",
+      "template": "work-contract",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "work.create",
+        "work.update",
+        "definition.write",
+        "hierarchy.read",
+        "hierarchy.change",
+        "dependency.read",
+        "dependency.change",
+        "status.read"
+      ]
+    },
+    {
+      "name": "implement",
+      "skill": "implement",
+      "input": "work-contract",
+      "output": "implementation-evidence",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "hierarchy.read",
+        "dependency.read",
+        "status.read",
+        "status.transition",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "ship",
+      "skill": "ship",
+      "input": "implementation-evidence",
+      "output": "quality-verdict",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "hierarchy.read",
+        "dependency.read",
+        "status.read",
+        "status.transition",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "release",
+      "skill": "release",
+      "input": "landed-work",
+      "output": "release-outcome",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "work.update",
+        "status.read",
+        "comment.list",
+        "comment.append"
+      ]
+    },
+    {
+      "name": "orchestration",
+      "skill": "orchestration",
+      "input": "work-contract",
+      "output": "execution-coordination",
+      "template": "tracker-update",
+      "tracker_operations": [
+        "connection.discover",
+        "capability.discover",
+        "work.read",
+        "hierarchy.read",
+        "dependency.read",
+        "status.read",
+        "comment.list",
+        "comment.append"
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "problem-narrative",
+      "path": "templates/problem-narrative.md",
+      "required_fields": [
+        "problem",
+        "affected_people",
+        "current_reality",
+        "desired_outcome",
+        "constraints",
+        "unknowns",
+        "handoff"
+      ]
+    },
+    {
+      "id": "work-contract",
+      "path": "templates/work-contract.md",
+      "required_fields": [
+        "problem",
+        "definition_of_done",
+        "out_of_scope",
+        "verification",
+        "risks"
+      ]
+    },
+    {
+      "id": "tracker-update",
+      "path": "templates/tracker-update.md",
+      "required_fields": [
+        "native_ref",
+        "summary",
+        "evidence",
+        "status_intent",
+        "blockers",
+        "next_step"
+      ]
+    }
+  ]
+}

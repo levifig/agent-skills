@@ -266,8 +266,8 @@ func TestHookRecognitionAcceptsAPreviouslyRecordedInstallPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ownsEntry error = %v", err)
 	}
-	if !ownership.owned || ownership.hookID != "generate-task-board" {
-		t.Fatalf("ownsEntry = %#v, want the previously recorded path recognized", ownership)
+	if !ownership.owned || ownership.hookID != "" || ownership.reason != hookOwnershipLegacy {
+		t.Fatalf("ownsEntry = %#v, want the previously recorded retired path recognized", ownership)
 	}
 }
 

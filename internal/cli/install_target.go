@@ -92,6 +92,11 @@ type targetInstallOptions struct {
 	AmpSkillsDir        string
 	AmpPluginsDir       string
 	TargetAdapterOps    *targetAdapterInstallOperations
+	// GlobalManagedContent is retained for explicit global-only maintenance
+	// callers. Harness startup reconciliation resolves the active layout and
+	// does not set this override, so project-bound agents update their owned
+	// local harness content.
+	GlobalManagedContent bool
 	// HookState resolves the user-scoped state hook reconciliation reads and
 	// writes. Only Cursor and Codex reach it, and only when they actually
 	// reconcile, so a target that keeps no shared hooks file never opens it.
@@ -473,6 +478,9 @@ func installSkillsDestination(options targetInstallOptions) string {
 	// resolved destination so a genuine per-target override would stay correct.
 	if options.Target == "amp" && options.AmpSkillsDir != "" {
 		return options.AmpSkillsDir
+	}
+	if options.GlobalManagedContent {
+		return filepath.Join(installHomeDir(options), ".agents", "skills")
 	}
 	if projectEnvironmentActive() && options.ProjectRoot != "" {
 		return filepath.Join(options.ProjectRoot, ".agents", "skills")

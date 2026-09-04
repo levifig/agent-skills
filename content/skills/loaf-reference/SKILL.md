@@ -22,7 +22,7 @@ The Loaf operating manual for agents: how to discover commands, diagnose project
 - Prefer `--json` surfaces when diagnosing: `loaf config check --json`, `loaf state doctor --json`. Parse the structured output instead of scraping human-readable text.
 - Run the deterministic CLI command before hand-editing anything it manages; the command owns its files.
 - Use `--fix` only for safe, mechanical repairs, and review what it changed.
-- Ask the user for project-owned choices — GitHub account, issue identity (authority and prefix), tracker or integration election, which harnesses to install — never guess them.
+- Ask the user for project-owned choices — GitHub account, native tracker destination and routing hints, which harnesses to install — never guess them.
 - Never hand-edit Loaf-managed hook files; regenerate them through `loaf build` and `loaf install`.
 - Re-run the relevant check after any change and confirm it passes.
 - Log meaningful decisions to the journal: `loaf journal log "decision(scope): ..."`.
@@ -57,6 +57,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf upgrade` | Refresh Loaf in place: harness content sync plus deprecation cleanup anywhere, and project-surface refresh only inside a detected Loaf repo | — |
 | `loaf config` | Validate and refresh project Loaf config | check |
 | `loaf hooks` | Inspect and set which Loaf hooks project into an installed harness's hooks file | list, enable, disable |
+| `loaf harness` | Diagnose or reconcile Loaf-owned installed harness content without updating the CLI, project config, human instructions, authentication material, or tracker state | reconcile |
 | `loaf init` | Initialize a project with Loaf structure | — |
 | `loaf release` | Cut a retroactive release from already-landed work | suggest, cut |
 | `loaf search` | Search SQLite artifact bodies, journal entries, and indexed docs | — |
@@ -67,7 +68,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf project` | Manage durable project identity | list, show, identity, rename, move, delete |
 | `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, journal-first, worktree-storage |
 | `loaf task` | Manage project tasks; superseded by loaf issue for new work | list, show, status, create, update, archive, refresh, sync |
-| `loaf issue` | Manage issues in native SQLite state | new, absorb, show, list, tree, frontier, start, stop, edit, retitle, status, dod, dod add, dod list, dod remove, dod claim, dod unclaim, promote, check, verify, bucket, link, render, identity, export, pull, push, reconcile |
+| `loaf issue` | Frozen local-work compatibility for explicit one-time migration; never ongoing tracker-native Flow authority | new, absorb, show, list, tree, frontier, start, stop, edit, retitle, status, dod, dod add, dod list, dod remove, dod claim, dod unclaim, promote, check, verify, bucket, link, render, identity, export, pull, push, reconcile |
 | `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, edit, finalize, archive |
 | `loaf plan` | Manage plans in native SQLite state | new, show, list, link |
 | `loaf handoff` | Manage handoffs in native SQLite state | new, show, list, link |
@@ -88,7 +89,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf bundle` | Manage bundles in native SQLite state | list, create, update, show, add, remove |
 | `loaf link` | Manage explicit relationships in native SQLite state | create, list, remove |
 | `loaf check` | Run enforcement hook checks | — |
-| `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, leftover SQLite work, issue prefix and config) | — |
+| `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, managed content, and leftover migration work) | — |
 
 ## Topics
 

@@ -133,7 +133,7 @@ func TestRunnerStateMigrateSourceHelpIsNative(t *testing.T) {
 // is the test-side transcription the help surface is held against; adding a
 // case to that switch without adding it here leaves the new source unprobed,
 // and adding it here without listing it in writeMigrateHelp fails parity.
-var migrateDispatchableSources = []string{"lifecycle-statuses", "journal-first", "schema", "markdown", "storage-home", "worktree-storage"}
+var migrateDispatchableSources = []string{"lifecycle-statuses", "journal-first", "schema", "markdown", "storage-home", "tracker-export", "vnext-rehearsal", "worktree-storage"}
 
 func TestRunnerMigrateHelpExitsZeroAndListsEverySource(t *testing.T) {
 	// Bare `loaf migrate --help` used to fall through the switch and exit

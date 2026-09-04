@@ -4,7 +4,7 @@ Guidelines for maintaining and extending Loaf - An Opinionated Agentic Framework
 
 See [README.md](README.md) for what Loaf is and how to install it.
 
-> **New work is an Issue.** The Loaf Flow is **pitch → shape → implement → ship → release** (at issue scale and project scale). `/pitch` is the human front door: it grills the problem space and hands a problem narrative to shape, or authors project `docs/BRIEF.md`. `/shape` consumes that narrative (or runs full narrowing when none exists), mints the row with `loaf issue new`, and shapes it in place — problem body, definition-of-done criteria, and an explicit out-of-scope statement. `loaf issue check` validates readiness. Decomposition happens only when a criterion earns its own DoD (`loaf issue promote`). Work is built in a started worktree (`loaf issue start`). `/ship` is the sole quality gate: the PR body is `loaf issue render` output. Releases are retroactive (`loaf release suggest` / `loaf release cut`).
+> **New shared work is tracker-native.** The Loaf Flow is **pitch → shape → implement → ship → release**. `/pitch` discovers the problem. `/shape` creates or updates the canonical native tracker record through the selected `project-management/v1` provider skill, including body, definition of done, out-of-scope, and supported hierarchy. `/implement` reads that record, then uses repository-native Git mechanics. `/ship` is the sole quality gate and writes verified status through the provider after readback. Releases are retroactive. Historical local issue commands are frozen migration compatibility, never an ongoing synchronization path or second work record.
 
 ## Quick Start
 
@@ -101,7 +101,7 @@ The project journal is the canonical session model, and it is the only session-r
 
 **Wrap is an optional checkpoint, not a lifecycle transition.** Write a `wrap` entry only when a conversation holds synthesis worth saving — "tried X, abandoned because Y, next is Z" — the connective narrative that evaporates with the context window. Nothing is ever "unwrapped"; a conversation that ends without one leaves a perfectly valid journal.
 
-**Continuity is derived and ephemeral.** At conversation start the SessionStart hook runs `loaf journal context --from-hook` to emit a layered digest — the latest project wrap, recent branch entries, and open issues — computed at read time and never persisted. Subagent invocations exit silently and write nothing.
+**Continuity is derived and ephemeral.** At conversation start the SessionStart hook runs `loaf journal context --from-hook` to emit the contract-v2 active-truth digest: named journal and Git-derived layers with explicit source availability and diagnostics, computed at read time and never persisted. It does not query or mirror native tracker work; agents read that state through the selected provider skill and harness-owned connection. Subagent invocations exit silently and write nothing.
 
 ### Naming Conventions
 
@@ -601,7 +601,7 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
-<!-- loaf:managed:start sha256=21e91a6226ead7de1ef1d3d61c4e2060dc9763e8485192f6efc0060a09bbe66e -->
+<!-- loaf:managed:start sha256=dd1528fbcd47b62e9cf4e5943d2deb78e5118e60a0111608eed79b07cca4d873 -->
 <!-- Maintained by loaf install/upgrade - do not edit manually -->
 ## Loaf Framework
 
@@ -610,12 +610,17 @@ Configure target-specific behavior and sidecars.
 - `discover(scope)`: Something learned
 - `block(scope)` / `unblock(scope)`: Blockers and resolutions
 - `spark(scope)`: Ideas to promote via `/idea`
-- `todo(scope)`: Action items to file as issues
+- `todo(scope)`: Action items to file in the configured native tracker
+
+**Tracker Authority:**
+Shared work identity, definition, definition of done, status, hierarchy, assignment, and collaboration live only in the configured native tracker. Use the selected `project-management/v1` provider skill through a connection already exposed and authenticated by the harness.
+Loaf never configures provider authentication, calls a provider API itself, proxies tracker traffic, or keeps an ongoing local-to-tracker mapping. Local-to-tracker synchronization does not exist. A legacy local project may be moved once through an explicit, agentic, verified migration; ongoing work then remains tracker-native.
 
 **CLI Commands:**
 - `loaf journal log/recent/search/context` - Project journal
 - `loaf check` - Run enforcement hooks
-- `loaf issue/kb` - Issue and knowledge management
+- `loaf kb` - Local project knowledge
+- `loaf issue` and its Linear push/pull/reconcile commands are frozen migration compatibility only; never use them as ongoing work authority or synchronization
 
 **Journal Discipline:**
 Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf journal log "type(scope): description"`. Entry types: `decision`, `discover`, `wrap`. Do not defer journaling - log before responding.

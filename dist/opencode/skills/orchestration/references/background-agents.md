@@ -1,107 +1,29 @@
 # Background Agents
 
-Background agents handle low-priority, long-running, or non-interactive work while the user continues with other tasks.
+Background execution changes when work runs; it does not make every result a repository artifact.
 
-## Contents
+## When to Use
 
-- When to Use Background Agents
-- Spawning Background Agents
-- Tracking
-- Result Retrieval
-- Workflow Example
-- Anti-Patterns
-- Integration Points
+Use a background agent for bounded, non-interactive work that can complete without clarification while the main conversation continues. Give it the native work reference, acceptance criteria, allowed actions, relevant paths, and required verification.
 
-## When to Use Background Agents
+## Result Boundary
 
-| Appropriate | Not Appropriate |
-|-------------|-----------------|
-| Security audits | Interactive debugging |
-| Code coverage analysis | User-facing questions |
-| Large-scale refactoring reports | Time-sensitive fixes |
-| Documentation audits | Work needing user decisions mid-task |
-| Dependency vulnerability scans | Blocking tasks for current work |
+Return through the harness by default. The orchestrator can inspect and consolidate that return without creating a file.
 
-Good candidates have clear completion criteria, can run without clarification, and produce a report or durable artifact.
+Persist a result only when at least one condition applies:
 
-## Spawning Background Agents
+- the harness may discard the return before it is consumed;
+- another conversation or consumer needs the full result;
+- the evidence is too large for a useful direct return;
+- the user explicitly asks to keep it.
 
-Background-agent APIs differ by product. Read only the labeled section for the harness you are running; the others are intentional cross-harness documentation, not instructions for you.
+When a file is warranted, specify the producing skill's template and an unused path matching `.agents/reports/YYYYMMDDHHMMSS-slug.md`. Generate the 14-digit timestamp in UTC. The slug describes the report, not its tracker issue, task, agent, or work unit. Put provenance in the report body when it helps readers.
 
-### Claude Code
+Do not add status, an agent identifier, lifecycle fields, or archive instructions. The background agent returns the path through the harness. Housekeeping later owns any disposition recommendation.
 
-Use the Task tool with `run_in_background: true`:
+## Verification
 
-```python
-Task(
-    subagent_type="background-runner",
-    prompt="""
-    Run full security audit on backend codebase.
-
-    Scope:
-    - src/api/
-    - src/services/
-
-    Write report to: .agents/reports/YYYYMMDD-HHMMSS-security-audit.md
-    Reference: LOAF-123 if relevant
-    """,
-    run_in_background=True
-)
-```
-
-### Cursor
-
-Background agents are configured via the `is_background: true` YAML property. When spawning, specify the report destination and any issue refs:
-
-```
-@background-runner Run security audit on backend codebase.
-Write report to .agents/reports/.
-Reference LOAF-123 if relevant.
-```
-
-The background agent's journal entries are tagged with its own harness id automatically — there is no session alias to pass.
-
-### Other harnesses
-
-If your product has no dedicated background-agent API, run the work in a separate conversation or thread, give it the same report path and durable IDs, and track spawn/completion with `loaf journal log` as below.
-
-## Tracking
-
-Track background work with durable references:
-
-1. Log the spawn with `loaf journal log "todo(background): started <id> for <task>"`.
-2. Ask the background agent to write a report under `.agents/reports/`.
-3. When complete, log `discover(background): <id> wrote <report>`.
-4. Process findings into issues, ADRs, or report verdicts as appropriate.
-
-Use a stable ID such as `bg-YYYYMMDD-HHMMSS-description` in the prompt and journal entries.
-
-## Result Retrieval
-
-Background agents write results to `.agents/reports/` with enough metadata to identify the source task and report status. In SQLite-backed projects, use `loaf report list`, `loaf report show`, and `loaf report archive` when report state is available.
-
-## Workflow Example
-
-1. Orchestrator identifies non-blocking security audit work.
-2. Orchestrator logs the background spawn to the journal.
-3. Background agent writes `.agents/reports/YYYYMMDD-HHMMSS-auth-security.md`.
-4. Orchestrator reviews the report, creates follow-up issues, and logs the outcome.
-5. Report state is finalized or archived through the report lifecycle.
-
-## Anti-Patterns
-
-| Don't | Do Instead |
-|-------|------------|
-| Use for blocking work | Keep blocking work in foreground |
-| Spawn without tracking | Log the spawn and require a report path |
-| Ignore completed results | Process reports into issues, findings, or decisions |
-| Use for interactive tasks | Reserve for autonomous work |
-| Spawn many concurrent background agents | Limit concurrency to avoid resource contention |
-| Skip result location in prompt | Always specify where output belongs |
-
-## Integration Points
-
-- `loaf journal log` records spawn and completion facts.
-- `loaf journal recent` surfaces recent background-work entries.
-- `loaf report` commands own durable report lifecycle when available.
-- The wrap workflow should mention unprocessed background reports when writing a wrap.
+- The agent's work is bounded and traceable to the live contract.
+- The harness return names the outcome, evidence, verification, blockers, and any written path.
+- A report exists only when persistence was justified.
+- A written path is unique, uses UTC naming, and was not overwritten.

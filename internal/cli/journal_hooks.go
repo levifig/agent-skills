@@ -231,9 +231,9 @@ func (r Runner) journalLogFromHook(options *journalLogOptions, projectRoot proje
 	return true, nil
 }
 
-// runJournalContextResumption prints the layered continuity digest for
-// post-compaction resumption. It is the same deterministic query as
-// SessionStart: latest project wrap + recent branch entries + open tasks.
+// runJournalContextResumption prints the contract-v2 active-truth continuity
+// digest for post-compaction resumption. It is the same deterministic query as
+// SessionStart: named journal and Git-derived layers with explicit diagnostics.
 func (r Runner) runJournalContextResumption(out io.Writer, runtime state.Runtime) error {
 	hookInput, err := r.readJournalHookInput()
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,12 +53,11 @@ func TestRunnerConfigCheckFixCreatesProjectConfig(t *testing.T) {
 		t.Fatalf("knowledge = %#v, want default local dirs", knowledge)
 	}
 	integrations := config["integrations"].(map[string]any)
-	if integrations["linear"].(map[string]any)["enabled"] != false || integrations["serena"].(map[string]any)["enabled"] != false {
-		t.Fatalf("integrations = %#v, want safe disabled defaults", integrations)
+	if len(integrations) != 0 {
+		t.Fatalf("integrations = %#v, want no invented provider selection", integrations)
 	}
-	issue := config["issue"].(map[string]any)
-	if issue["authority"] != "local" || strings.TrimSpace(fmt.Sprint(issue["prefix"])) == "" {
-		t.Fatalf("issue = %#v, want local bootstrap prefix", issue)
+	if _, exists := config["issue"]; exists {
+		t.Fatalf("config = %#v, want no active local issue authority", config)
 	}
 }
 
@@ -73,7 +71,8 @@ func TestConfigCheckValidatesOptionalLinearMCPServerName(t *testing.T) {
 	if err := json.Unmarshal(body, &config); err != nil {
 		t.Fatalf("Unmarshal(default config) error = %v", err)
 	}
-	linear := config["integrations"].(map[string]any)["linear"].(map[string]any)
+	linear := map[string]any{}
+	config["integrations"].(map[string]any)["linear"] = linear
 	linear["mcp_server_name"] = "linear-work"
 	_, _, validationErrors := ensureLoafConfigDefaults(config, now)
 	if len(validationErrors) != 0 {
@@ -84,6 +83,41 @@ func TestConfigCheckValidatesOptionalLinearMCPServerName(t *testing.T) {
 	_, _, validationErrors = ensureLoafConfigDefaults(config, now)
 	if !strings.Contains(strings.Join(validationErrors, "\n"), "integrations.linear.mcp_server_name must be a nonempty string") {
 		t.Fatalf("blank MCP server name errors = %#v, want nonempty-string error", validationErrors)
+	}
+}
+
+func TestConfigAcceptsProviderNamespacedRoutingWithoutLegacyIssueAuthority(t *testing.T) {
+	now := time.Date(2026, time.August, 31, 0, 0, 0, 0, time.UTC)
+	body, err := json.Marshal(defaultLoafConfig(now, t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(body, &config); err != nil {
+		t.Fatal(err)
+	}
+	config["integrations"] = map[string]any{
+		"linear": map[string]any{
+			"mcp_server_name": "linear-work",
+			"workspace":       "DojoHQ",
+			"default_team":    "Dojo",
+			"team_key":        "DOJO",
+			"team_keywords": map[string]any{
+				"dojo":     []any{"dojo", "platform"},
+				"personal": []any{"personal"},
+			},
+		},
+		"community-tracker": map[string]any{
+			"mcp_server_name": "community-native",
+			"routing_magic":   map[string]any{"opaque": true},
+		},
+	}
+	updated, _, validationErrors := ensureLoafConfigDefaults(config, now)
+	if len(updated) != 0 || len(validationErrors) != 0 {
+		t.Fatalf("updated=%v errors=%v, want extensible provider routing accepted unchanged", updated, validationErrors)
+	}
+	if _, exists := config["issue"]; exists {
+		t.Fatal("validation invented a legacy issue authority block")
 	}
 }
 
@@ -447,7 +481,7 @@ func jsonStrings(t *testing.T, value any) []string {
 	return result
 }
 
-func TestRunnerConfigCheckWarnsMissingIssuePrefixWithoutInventing(t *testing.T) {
+func TestRunnerConfigCheckAcceptsTrackerNativeConfigWithoutIssueBlock(t *testing.T) {
 	root, _ := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, ".agents", "loaf.json"), strings.Join([]string{
 		`{`,
@@ -468,11 +502,11 @@ func TestRunnerConfigCheckWarnsMissingIssuePrefixWithoutInventing(t *testing.T) 
 
 	before := runConfigCheckJSON(t, root, false)
 	if !before.OK {
-		t.Fatalf("before = %#v, want valid config with issue.prefix warning", before)
+		t.Fatalf("before = %#v, want valid tracker-native config", before)
 	}
 	joined := strings.Join(before.Warnings, "\n")
-	if !strings.Contains(joined, "issue.prefix is not configured") {
-		t.Fatalf("warnings = %q, want missing issue.prefix", joined)
+	if strings.Contains(joined, "issue.prefix") || strings.Contains(joined, "issue.authority") {
+		t.Fatalf("warnings = %q, want no legacy issue config warning", joined)
 	}
 
 	after := runConfigCheckJSON(t, root, true)

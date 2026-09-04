@@ -10,11 +10,11 @@ Loaf is an opinionated agentic framework that gives AI coding assistants structu
 
 **Project journal model** — A single SQLite-backed journal captures decisions and progress across every conversation, project-scoped and correlated by an opaque harness id. There is no session entity to open or close, so concurrent conversations across branches and worktrees stay conflict-free. Handoff artifacts live separately in `.agents/handoffs/`. Work survives context loss, compaction, and `/clear`.
 
-**Issue workflow** — The Loaf Flow is pitch → shape → implement → ship → release. `/pitch` authors a problem-space narrative; `/shape` bounds an Issue in place (`loaf issue new`, body + DoD + out-of-scope; decompose with `loaf issue promote` only when a criterion earns its own DoD). `loaf issue check` validates readiness; work is built in a started worktree (`loaf issue start`). `/ship` is the sole quality gate (PR body is `loaf issue render`); `/release` cuts retroactively (`loaf release suggest` / `cut`).
+**Tracker-native workflow** — The Loaf Flow is pitch → shape → implement → ship → release. `/pitch` authors a problem-space narrative; `/shape` creates or updates the canonical native tracker work contract through the selected provider skill. The tracker owns identity, body, definition of done, status, hierarchy, assignment, and collaboration. `/implement` uses repository-native Git mechanics; `/ship` is the sole quality gate and updates the native record after verification; `/release` cuts retroactively. Loaf never synchronizes a parallel local issue database with the tracker.
 
 **Profile-based agents** — Functional profiles are defined by tool access, not job titles. A Smith with `python-development` skills becomes a backend engineer; the same Smith with `infrastructure-management` becomes a DevOps engineer. Skills determine what an agent knows; the profile determines what it can touch.
 
-**Conversation continuity** — Pick up exactly where you left off with full traceability. The project journal captures decisions and progress in SQLite; a derived, ephemeral digest (latest wrap + recent branch entries + open issues) is emitted at conversation start. Explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
+**Conversation continuity** — Pick up exactly where you left off with full traceability. The project journal captures decisions and progress in SQLite; a derived, ephemeral contract-v2 digest emits named journal and Git-derived active-truth layers with explicit availability and diagnostics at conversation start. Native tracker work is read through the selected provider and harness connection, never mirrored into this local digest. Explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
 
 **Hooks as quality gates** — Two hook types: enforcement hooks (pre-commit secrets scanning, pre-push linting) block bad commits automatically; skill instruction hooks inject context at tool invocation time. Language-aware and automatic.
 
@@ -26,18 +26,18 @@ Loaf keeps intent, implementation, and learning connected:
 flowchart LR
     idea["/idea · spark<br/><i>capture — offline-safe, no ID</i>"] --> triage["/triage"]
     pitch["/pitch<br/><i>problem discovery</i>"] --> shape
-    triage -- promote --> shape["/shape<br/><b>the Issue</b>: body · DoD · out-of-scope"]
-    shape -- "criterion earns its own DoD<br/>loaf issue promote" --> shape
-    shape -- "sharp question" --> decision["decision issue"]
+    triage -- promote --> shape["/shape<br/><b>native tracker work</b>: body · DoD · out-of-scope"]
+    shape -- "criterion earns its own DoD<br/>provider-native child" --> shape
+    shape -- "sharp question" --> decision["native decision work"]
     decision -- answered --> shape
-    shape -- ready --> build["/implement<br/>loaf issue start: worktree · branch · PR"]
+    shape -- ready --> build["/implement<br/>Git worktree · branch · PR"]
     build --> ship["/ship<br/><b>the sole quality gate</b>"]
     ship -- merge --> main[("main")]
     main -. "reads landed since last tag" .-> release["/release<br/>suggest → cut"]
     release -- "tag · notes · members as fact" --> main
 ```
 
-Everything left of ship plans **forward** and can be re-planned freely — issues are recursive (`loaf issue tree`), questions too foggy to act on stay as prose until they sharpen into decision issues, and Now/Next/Later are advisory buckets. The release track only ever reads **backward**: a release is cut from what actually landed, so it can never contain unimplemented work. The journal records every step; `/reflect` and an optional `/wrap` preserve what the work taught.
+Everything left of ship plans **forward** and can be re-planned freely in the canonical tracker. Provider-native hierarchy is used only when supported with exact fidelity; questions too foggy to act on stay as prose until they sharpen. The release track reads **backward** from what actually landed. The private journal records continuity; `/reflect` and an optional `/wrap` preserve what the work taught.
 
 ### Pitch and Shape
 
@@ -47,8 +47,8 @@ Discover the problem, author a brief, then bound an implementable Issue (or boot
 |---------|--------------|
 | `/pitch` | Human problem-discovery: authors a problem narrative for shape, or project `docs/BRIEF.md` |
 | `/idea` | Quick capture of rough ideas for later triage / pitch / shape |
-| `/shape` | Bound an issue in place (body, DoD criteria, out-of-scope); `loaf issue check` validates readiness |
-| `/bootstrap` | Populate operating docs; with `source: pitch`, gap-interview and file the initial issue arc |
+| `/shape` | Bound canonical native tracker work in place (body, DoD criteria, out-of-scope), then verify by provider readback |
+| `/bootstrap` | Populate operating docs; with `source: pitch`, gap-interview and create the initial native tracker arc |
 | `/strategy` | Discover and document strategic direction |
 
 ### Implement and Ship
@@ -58,7 +58,7 @@ Implement a shaped issue through a started worktree and pull request, review the
 | Command | What It Does |
 |---------|--------------|
 | `/implement` | Execute a shaped issue with orchestrated agent delegation |
-| `/ship` | Review, verify, and land one PR — the sole quality gate; PR body is `loaf issue render` |
+| `/ship` | Review, verify, and land one PR — the sole quality gate; tracker contract and verification evidence form the PR body |
 | `/release` | Cut a retroactive release from already-landed issues (`loaf release suggest` / `cut`) |
 
 ### Preserve Learning
@@ -83,7 +83,7 @@ CLI commands that support the workflow:
 | `loaf config check` | Validate project config and installed Loaf-managed hooks |
 | `loaf check` | Run enforcement hooks manually |
 | `loaf project` | Manage durable project identity (show, rename, move) |
-| `loaf issue` | Create, shape, start, and inspect issues |
+| `loaf issue` | Frozen legacy local-issue and one-time migration compatibility; not ongoing tracker work |
 | `loaf kb` | Knowledge base management |
 | `loaf journal` | Project journal: log, recent, search, show, context, export |
 | `loaf housekeeping` | Review and archive agent artifacts |
@@ -124,7 +124,7 @@ Skills you invoke directly to drive work forward.
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `handoff` | Creating disposable transfer packets in `.agents/handoffs/` |
 | `bootstrap` | Bootstrapping new or existing projects (initial issue arc after pitched BRIEF) |
-| `linear` | Managing Linear issues, projects, cycles, and Loaf issue coordination through configured MCP servers |
+| `linear` | Mapping `project-management/v1` operations to Linear through the harness's already-configured, authenticated native connection |
 | `wrap` | Optional end-of-conversation checkpoint: shipped, pending, next |
 
 Explore and brainstorm are agent techniques (not user slash entry); agents reach for them when direction is undecided — human entry intent routes to `/pitch`.

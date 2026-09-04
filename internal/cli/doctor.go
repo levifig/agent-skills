@@ -198,7 +198,7 @@ func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
 
 func writeDoctorHelp(out io.Writer) {
 	fmt.Fprint(out, "Usage: loaf doctor [--fix [--force]] [--verbose] [--json]\n\n")
-	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, fenced content, leftover SQLite work, leaked issue prefixes)\n\n")
+	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, managed content, and leftover migration work)\n\n")
 	fmt.Fprint(out, "Options:\n")
 	fmt.Fprint(out, "  --fix       Offer each safe repair and prompt y/N before applying it\n")
 	fmt.Fprint(out, "  --force     With --fix, apply every offered repair without prompting\n")
@@ -310,8 +310,6 @@ func doctorChecks() []doctorCheck {
 		checkDuplicateFencedSections(),
 		checkHarnessContentDrift(),
 		checkLeftoverAbsorbWork(),
-		checkIssuePrefixLeak(),
-		checkIssuePrefixConfig(),
 	}
 }
 
@@ -332,20 +330,27 @@ func checkHarnessContentDrift() doctorCheck {
 				return doctorResult{Status: doctorSkip, Message: "No harness carries installed Loaf content"}
 			}
 			var details []string
+			var receipts []string
 			for _, reading := range readings {
 				if line := reading.doctorDetailLine(ctx.cliVersion); line != "" {
 					details = append(details, line)
+				}
+				if line := reading.reconcileReceiptDetailLine(); line != "" {
+					receipts = append(receipts, line)
 				}
 			}
 			if len(details) == 0 {
 				return doctorResult{
 					Status:  doctorPass,
 					Message: fmt.Sprintf("All %d installed harnesses carry loaf %s", len(readings), ctx.cliVersion),
+					Detail:  strings.Join(receipts, "\n"),
 				}
 			}
+			driftCount := len(details)
+			details = append(details, receipts...)
 			return doctorResult{
 				Status:  doctorWarn,
-				Message: fmt.Sprintf("%d of %d installed harnesses do not carry loaf %s", len(details), len(readings), ctx.cliVersion),
+				Message: fmt.Sprintf("%d of %d installed harnesses do not carry loaf %s", driftCount, len(readings), ctx.cliVersion),
 				Detail:  strings.Join(details, "\n"),
 			}
 		},
@@ -373,62 +378,6 @@ func checkLeftoverAbsorbWork() doctorCheck {
 				}
 			}
 			return leftoverAbsorbDoctorResult(report)
-		},
-	}
-}
-
-func checkIssuePrefixLeak() doctorCheck {
-	return doctorCheck{
-		Name:        "issue-prefix",
-		Description: "Local issue prefix matches the project slug",
-		Run: func(ctx doctorContext) doctorResult {
-			root, err := project.ResolveRoot(ctx.projectRoot)
-			if err != nil {
-				return doctorResult{Status: doctorSkip, Message: "Project root is not resolvable"}
-			}
-			from, to, leaked, err := state.IssuePrefixLeak(context.Background(), root, state.PathResolver{StateHome: ctx.stateHome})
-			if state.LeftoverAbsorbUnavailable(err) {
-				return doctorResult{Status: doctorSkip, Message: leftoverAbsorbSkipMessage(err)}
-			}
-			if err != nil {
-				return doctorResult{Status: doctorWarn, Message: "Could not inspect issue prefix", Detail: err.Error()}
-			}
-			if leaked {
-				return doctorResult{
-					Status:  doctorWarn,
-					Message: fmt.Sprintf("Issue prefix %s does not match project slug %s; preview with `%s`", from, to, state.IssuePrefixAlignCommand),
-					Detail:  fmt.Sprintf("Apply: loaf issue identity --align"),
-				}
-			}
-			return doctorResult{Status: doctorPass, Message: "No leaked LOAF issue prefix"}
-		},
-	}
-}
-
-func checkIssuePrefixConfig() doctorCheck {
-	return doctorCheck{
-		Name:        "issue-config",
-		Description: "Issue identity is recorded in .agents/loaf.json",
-		Run: func(ctx doctorContext) doctorResult {
-			root, err := project.ResolveRoot(ctx.projectRoot)
-			if err != nil {
-				return doctorResult{Status: doctorSkip, Message: "Project root is not resolvable"}
-			}
-			report, err := state.ReportIssuePrefixConfig(context.Background(), root, state.PathResolver{StateHome: ctx.stateHome})
-			if state.LeftoverAbsorbUnavailable(err) {
-				return doctorResult{Status: doctorSkip, Message: leftoverAbsorbSkipMessage(err)}
-			}
-			if err != nil {
-				return doctorResult{Status: doctorWarn, Message: "Could not inspect issue config", Detail: err.Error()}
-			}
-			message, detail := report.DoctorMessage()
-			if message != "" {
-				return doctorResult{Status: doctorWarn, Message: message, Detail: detail}
-			}
-			if report.HasIdentity {
-				return doctorResult{Status: doctorPass, Message: "Issue identity is recorded in .agents/loaf.json"}
-			}
-			return doctorResult{Status: doctorPass, Message: "No materialized issue identity"}
 		},
 	}
 }

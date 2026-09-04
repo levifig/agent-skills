@@ -132,27 +132,7 @@ hooks:
       failClosed: true
       description: Validate commit messages follow conventions
 
-    # Linear - Commit reference detection (ADVISORY)
-    - id: detect-linear-magic
-      skill: linear
-      type: command
-      command: 'loaf journal log --detect-linear'
-      matcher: "Bash"
-      if: "Bash(git commit:*)"
-      blocking: false
-      timeout: 30000
-      description: Detect Linear magic words for auto-status updates
-
   post-tool:
-    # Orchestration - Task board generation (side-effect)
-    - id: generate-task-board
-      skill: orchestration
-      type: command
-      command: 'loaf task refresh'
-      matcher: "Edit|Write"
-      timeout: 30000
-      description: Regenerate TASKS.md when task files change
-
     # Knowledge Base - Staleness nudge (side-effect)
     - id: kb-staleness-nudge
       skill: knowledge-base
@@ -161,7 +141,7 @@ hooks:
       timeout: 5000
       description: Track covered edits and nudge when covered knowledge is stale
 
-    # Git Workflow - Post-merge housekeeping (side-effect)
+    # Git Workflow - Post-merge tracker readback and Git housekeeping (side-effect)
     - id: workflow-post-merge
       skill: git-workflow
       type: command
@@ -169,7 +149,7 @@ hooks:
       matcher: "Bash"
       if: "Bash(gh pr merge:*)"
       timeout: 5000
-      description: Inject issue-done, worktree-stop, and journal housekeeping after a gh pr merge hook; command matching does not prove success
+      description: Inject native tracker readback, direct Git worktree cleanup, and journal housekeeping after a gh pr merge hook; command matching does not prove success
 
   session:
     # SessionStart — emit the layered continuity digest (latest project wrap +

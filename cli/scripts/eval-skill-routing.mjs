@@ -21,7 +21,7 @@ const API_URL = "https://api.anthropic.com/v1/messages";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const DEFAULT_MODEL = "claude-opus-4-6";
 const MAX_DESC_CHARS = 250;
-const EXPECTED_SKILL_COUNT = 36;
+const EXPECTED_SKILL_COUNT = 37;
 
 const PRICING = {
   "claude-opus-4-6": { input: 15, output: 75 },
@@ -141,6 +141,11 @@ const TEST_CASES = {
     "Triage the high-priority bugs in our Linear workspace",
     "Move these Linear issues into the next cycle and assign their owners",
     "Audit this Linear project and summarize the remaining blockers",
+  ],
+  "migrate-project": [
+    "Move this project's local Loaf issues into Linear",
+    "Migrate our open Loaf work to the GitHub issue tracker",
+    "Create a verified Jira mapping from this Loaf tracker export",
   ],
   orchestration: [
     "Coordinate work across multiple agents",
@@ -280,6 +285,18 @@ const CONFLICT_PROBES = [
     choices: ["linear", "orchestration"],
     expected: "orchestration",
     prompt: "Coordinate three agents working on separate issues and keep their progress aligned",
+  },
+  {
+    group: "linear-migrate-project",
+    choices: ["linear", "migrate-project"],
+    expected: "migrate-project",
+    prompt: "Move the open issues in this local Loaf project into our Linear project",
+  },
+  {
+    group: "linear-migrate-project",
+    choices: ["linear", "migrate-project"],
+    expected: "linear",
+    prompt: "Update the owners and priorities of issues already in our Linear project",
   },
   {
     group: "strategy-reflect",
