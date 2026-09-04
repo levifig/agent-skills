@@ -17,6 +17,7 @@ Read the live canonical work contract through [`project-management/v1`](../proje
 - Critical Rules
 - Verification
 - Quick Reference
+- Harness Integration
 - Topics
 
 ## Critical Rules
@@ -53,6 +54,12 @@ Read the live canonical work contract through [`project-management/v1`](../proje
 | Review finding | Add a regression test, fix, and re-run affected gates |
 | Criteria satisfied | Hand live reference, diff, and evidence to ship |
 
+## Harness Integration
+
+### Amp
+
+When delegating through the managed `loaf_delegate` tool, read [Amp native delegation](../orchestration/references/amp-native-delegation.md). Keep tracker operations, shell commands, tests, and acceptance with the main agent. An incompatible delegation result does not authorize selecting another mode or broadening child tools.
+
 ## Topics
 
-No supporting references. Load the repository's language, testing, and domain guidance for the implementation itself.
+Load the repository's language, testing, and domain guidance for the implementation itself.
