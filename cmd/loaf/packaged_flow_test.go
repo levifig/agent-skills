@@ -56,6 +56,19 @@ func TestPackagedRebuildPreservesTrackerNativeFlow(t *testing.T) {
 			for _, file := range []string{"package.json", "bin/package.json", "cli/scripts/package-release.mjs"} {
 				writeFixtureFile(t, filepath.Join(source, file), readFixtureFile(t, filepath.Join(repo, file)))
 			}
+			// The fixture supplies an already-built binary. Some npm versions
+			// still run prepare during pack --ignore-scripts; omit lifecycle
+			// hooks here without changing the real package's file selection.
+			var manifest map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(readFixtureFile(t, filepath.Join(source, "package.json"))), &manifest); err != nil {
+				t.Fatal(err)
+			}
+			delete(manifest, "scripts")
+			manifestJSON, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFixtureFile(t, filepath.Join(source, "package.json"), string(manifestJSON))
 			copyFixtureBinary(t, filepath.Join(repo, "bin/loaf"), filepath.Join(source, "bin/loaf"))
 			copyFixtureBinary(t, binary, filepath.Join(source, "bin/native", target, nativeName))
 			writeFixtureFile(t, filepath.Join(source, "vnext/continuity/unshipped.go"), "package continuity\n")
