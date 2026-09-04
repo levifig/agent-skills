@@ -62,6 +62,7 @@ Coordinate agents around the same native reference and work contract. The main a
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Delegation | [delegation.md](references/delegation.md) | Defining agent boundaries, writer ownership, and review convergence |
+| Amp native delegation | [amp-native-delegation.md](references/amp-native-delegation.md) | Delegating one bounded implementation or review turn through the managed Amp plugin |
 | Background agents | [background-agents.md](references/background-agents.md) | Running bounded non-interactive work and deciding whether its result needs a file |
 | Background result | [background-result.md](templates/background-result.md) | Persisting a background result that must outlive its harness return |
 | Review convergence | [review-convergence.md](templates/review-convergence.md) | Persisting multi-round review evidence and dispositions |
