@@ -37,6 +37,11 @@ type doctorFixResult struct {
 
 type doctorContext struct {
 	projectRoot string
+	// distributionRoot is the installed distribution whose desired harness
+	// artifacts doctor compares against. Tests that exercise checks in
+	// isolation may leave it empty when no distribution-backed diagnosis is
+	// expected.
+	distributionRoot string
 	// cliVersion is the installed distribution's version — the binary the
 	// caller just ran. Checks that compare project or harness state against
 	// the running loaf read it here; an empty value means provenance could
@@ -113,11 +118,14 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 	// never the project's own package.json: outside a Loaf checkout the two
 	// are unrelated, and inside a stale checkout they must not be conflated.
 	cliVersion := ""
-	if distributionRoot, err := r.resolveInstalledDistributionRoot(); err == nil {
+	distributionRoot := ""
+	if resolvedRoot, err := r.resolveInstalledDistributionRoot(); err == nil {
+		distributionRoot = resolvedRoot
 		cliVersion = packageVersion(distributionRoot)
 	}
+	ctx := doctorContext{projectRoot: runtimeRoot, distributionRoot: distributionRoot, cliVersion: cliVersion, stateHome: r.StateHome}
 	if options.jsonOutput {
-		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion, stateHome: r.StateHome}, cliVersion)
+		result := runDoctorChecksJSON(ctx, cliVersion)
 		if err := writeJSON(out, result); err != nil {
 			return err
 		}
@@ -126,7 +134,7 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		}
 		return nil
 	}
-	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion, stateHome: r.StateHome}, options, cliVersion, r.Stdin)
+	report := runDoctorChecks(out, ctx, options, cliVersion, r.Stdin)
 	if report.Failures > 0 {
 		return ExitError{Code: 1}
 	}
@@ -337,6 +345,39 @@ func checkHarnessContentDrift() doctorCheck {
 				}
 				if line := reading.reconcileReceiptDetailLine(); line != "" {
 					receipts = append(receipts, line)
+				}
+			}
+			plan := harnessPlanDiagnosis{}
+			if ctx.distributionRoot != "" {
+				var err error
+				plan, err = diagnoseHarnessPlan(ctx)
+				if err != nil {
+					details = append(details, "Upgrade planner could not inspect installed harness content: "+err.Error(), "Run `loaf upgrade --dry-run` after resolving the reported integrity problem.")
+					details = append(details, receipts...)
+					return doctorResult{
+						Status:  doctorFail,
+						Message: "Installed harness content could not be verified",
+						Detail:  strings.Join(details, "\n"),
+					}
+				}
+				details = append(details, plan.details...)
+			}
+			if plan.conflicts > 0 {
+				details = append(details, "Inspect with `loaf upgrade --dry-run`; resolve conflicts before running `loaf upgrade`.")
+				details = append(details, receipts...)
+				return doctorResult{
+					Status:  doctorFail,
+					Message: fmt.Sprintf("Installed harness content has %d conflict(s)", plan.conflicts),
+					Detail:  strings.Join(details, "\n"),
+				}
+			}
+			if plan.changes > 0 {
+				details = append(details, "Inspect with `loaf upgrade --dry-run`; apply with `loaf upgrade`.")
+				details = append(details, receipts...)
+				return doctorResult{
+					Status:  doctorWarn,
+					Message: fmt.Sprintf("Installed harness content has %d pending change(s)", plan.changes),
+					Detail:  strings.Join(details, "\n"),
 				}
 			}
 			if len(details) == 0 {
