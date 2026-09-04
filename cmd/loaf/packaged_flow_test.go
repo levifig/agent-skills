@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"io/fs"
@@ -71,11 +72,17 @@ func TestPackagedRebuildPreservesTrackerNativeFlow(t *testing.T) {
 				t.Helper()
 				cmd := exec.Command(command, args...)
 				cmd.Dir, cmd.Env = dir, env
-				output, err := cmd.CombinedOutput()
+				var diagnostics bytes.Buffer
+				cmd.Stderr = &diagnostics
+				output, err := cmd.Output()
 				if err != nil {
-					t.Fatalf("%s %v: %v\n%s", command, args, err, output)
+					t.Fatalf("%s %v: %v\nstdout:\n%s\nstderr:\n%s", command, args, err, output, diagnostics.String())
 				}
 				return output
+			}
+			// npm may emit update notices on stderr even with --json.
+			if got := run(source, node, "-e", `process.stdout.write("[]"); process.stderr.write("npm notice fixture\n")`); string(got) != "[]" {
+				t.Fatalf("command diagnostics contaminated stdout: %q", got)
 			}
 			run(source, filepath.Join(source, "bin/native", target, nativeName), "build", "--target", "codex")
 			want := packagedTreeDigests(t, filepath.Join(source, "dist/codex/skills"))
