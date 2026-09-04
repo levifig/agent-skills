@@ -152,6 +152,7 @@ func canonicalContentInventory() []contentInventoryEntry {
 		{Path: "skills/orchestration", Directory: true},
 		{Path: "skills/orchestration/SKILL.md"},
 		{Path: "skills/orchestration/references", Directory: true},
+		{Path: "skills/orchestration/references/amp-native-delegation.md"},
 		{Path: "skills/orchestration/references/background-agents.md"},
 		{Path: "skills/orchestration/references/delegation.md"},
 		{Path: "skills/orchestration/templates", Directory: true},

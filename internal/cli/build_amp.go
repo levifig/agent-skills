@@ -107,6 +107,7 @@ func renderNativeAmpPlugin(hooks []nativeBuildHook, version string) string {
 	return nativeAmpHeader(version) + "\n\n" +
 		nativeAmpCoreFunctions() + "\n\n" +
 		nativeAmpToolHelpers() + "\n\n" +
+		nativeAmpDelegation + "\n\n" +
 		nativeAmpHookDataWithoutSession(hooks) + "\n\n" +
 		"export default function (amp: PluginAPI) {\n" + nativeAmpPluginBody() + "\n}"
 }
@@ -427,7 +428,9 @@ const postToolHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(p
 }
 
 func nativeAmpPluginBody() string {
-	body := `  amp.on('agent.start', async () => {
+	body := `  const delegation = registerLoafDelegation(amp);
+  amp.on('agent.start', async (event) => {
+    if (delegation.owns(event.thread.id)) return {};
     const result = await runHook('harness', '', 'managed-content-reconcile', 'loaf harness reconcile --target amp --json', undefined, undefined, 10000, false);
     const detail = (result.stdout || result.stderr).trim();
     if (result.exitCode !== 0) {
@@ -442,9 +445,12 @@ func nativeAmpPluginBody() string {
         console.warn(%%BT%%[loaf] Managed-content reconcile returned an unreadable receipt: ${detail}%%BT%%);
       }
     }
+    return {};
   });
 
   amp.on('tool.call', async (event: AmpToolCallEvent) => {
+    const rejection = await delegation.check(event);
+    if (rejection) return { action: 'reject-and-continue', message: rejection };
     const toolName = normalizeAmpToolName(event.tool);
     const toolInput = normalizeAmpToolInput(amp, event);
     const hookPayload = serializeHookPayload(toolName, toolInput, event);
