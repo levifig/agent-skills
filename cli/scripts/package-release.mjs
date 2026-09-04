@@ -27,6 +27,11 @@ if (!version) {
   process.exit(1);
 }
 
+if (!existsSync(join(rootDir, "vnext", "content", "skills"))) {
+  console.error("ERROR: missing tracker-native Flow content at vnext/content/skills.");
+  process.exit(1);
+}
+
 const releaseTargets = [
   "darwin-arm64",
   "darwin-x64",
@@ -65,7 +70,7 @@ for (const target of requestedTargets) {
   for (const entry of ["package.json", "README.md", "CHANGELOG.md"]) {
     copyIfPresent(join(rootDir, entry), join(packageRoot, entry));
   }
-  for (const dir of ["config", "content", "dist", "plugins"]) {
+  for (const dir of ["config", "content", "vnext/content", "dist", "plugins"]) {
     copyIfPresent(join(rootDir, dir), join(packageRoot, dir), { recursive: true });
   }
   rmSync(join(packageRoot, "dist", "release"), { recursive: true, force: true });
