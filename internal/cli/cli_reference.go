@@ -101,6 +101,16 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "harness",
+			Description: "Diagnose or reconcile Loaf-owned installed harness content without updating the CLI, project config, human instructions, authentication material, or tracker state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "reconcile", Description: "Use one initiating harness to reconcile the complete installed shared-skills cohort and write a receipt", Options: []cliReferenceOption{
+					{Flags: "--target <target>", Description: "Initiating installed target; the reconciliation scope is the complete shared-skills cohort"},
+					{Flags: "--json", Description: "Output the cohort reconcile receipt as JSON"},
+				}},
+			},
+		},
+		{
 			Name:        "init",
 			Description: "Initialize a project with Loaf structure",
 			Options: []cliReferenceOption{
@@ -425,7 +435,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "issue",
-			Description: "Manage issues in native SQLite state",
+			Description: "Frozen local-work compatibility for explicit one-time migration; never ongoing tracker-native Flow authority",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "new", Description: "Create a ref-keyed work contract or a legacy issue", Options: []cliReferenceOption{
 					{Flags: "--ref <authority-ref>", Description: "Provider-qualified authority ref; writes a work contract instead of an internal issue row"},
@@ -532,17 +542,17 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Name: "export", Description: "Export issues, identity, criteria, claims, and relationships as JSON", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output the export snapshot"},
 				}},
-				{Name: "pull", Description: "Adopt an existing Linear issue", Options: []cliReferenceOption{
+				{Name: "pull", Description: "Legacy adapter only; not a tracker-native Flow operation", Options: []cliReferenceOption{
 					{Flags: "--tree", Description: "Also adopt the sub-issue tree with parent edges intact"},
 					{Flags: "--json", Description: "Output the adopted issue and tree as JSON"},
 				}},
-				{Name: "push", Description: "Write the local render and status to Linear", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output the push result as JSON"},
+				{Name: "push", Description: "Legacy adapter only; local-to-tracker synchronization is not supported by current Flow", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the legacy adapter result as JSON"},
 				}},
-				{Name: "reconcile", Description: "Compare local and Linear and surface conflicts", Options: []cliReferenceOption{
-					{Flags: "--take-local", Description: "Write the local status to Linear"},
-					{Flags: "--take-tracker", Description: "Write the Linear status to local through the events path"},
-					{Flags: "--json", Description: "Output the reconcile result as JSON"},
+				{Name: "reconcile", Description: "Legacy adapter only; local-to-tracker synchronization is not supported by current Flow", Options: []cliReferenceOption{
+					{Flags: "--take-local", Description: "Legacy adapter option"},
+					{Flags: "--take-tracker", Description: "Legacy adapter option"},
+					{Flags: "--json", Description: "Output the legacy adapter result as JSON"},
 				}},
 			},
 		},
@@ -887,7 +897,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "doctor",
-			Description: "Diagnose Loaf project alignment (symlinks, stale files, leftover SQLite work, issue prefix and config)",
+			Description: "Diagnose Loaf project alignment (symlinks, stale files, managed content, and leftover migration work)",
 			Options: []cliReferenceOption{
 				{Flags: "--fix", Description: "Offer each safe repair and prompt y/N before applying it"},
 				{Flags: "--force", Description: "With --fix, apply every offered repair without prompting"},
@@ -926,7 +936,7 @@ The Loaf operating manual for agents: how to discover commands, diagnose project
 		"- Prefer `--json` surfaces when diagnosing: `loaf config check --json`, `loaf state doctor --json`. Parse the structured output instead of scraping human-readable text.",
 		"- Run the deterministic CLI command before hand-editing anything it manages; the command owns its files.",
 		"- Use `--fix` only for safe, mechanical repairs, and review what it changed.",
-		"- Ask the user for project-owned choices — GitHub account, issue identity (authority and prefix), tracker or integration election, which harnesses to install — never guess them.",
+		"- Ask the user for project-owned choices — GitHub account, native tracker destination and routing hints, which harnesses to install — never guess them.",
 		"- Never hand-edit Loaf-managed hook files; regenerate them through `loaf build` and `loaf install`.",
 		"- Re-run the relevant check after any change and confirm it passes.",
 		"- Log meaningful decisions to the journal: `loaf journal log \"decision(scope): ...\"`.",

@@ -1,8 +1,8 @@
 ---
 name: housekeeping
 description: >-
-  Reviews and maintains agent artifacts in .agents/ plus issue hygiene —
-  reports, handoffs, councils, archived issues, and stale started worktrees.
+  Reviews and maintains Loaf continuity artifacts, reports, handoffs, and Git
+  workspaces while treating the configured tracker as canonical shared work.
   Use when the user asks "housekeeping," "clean up," or "tidy up .agents/."
   Provides hygiene recommendations, archives completed work, and ensures
   extracted knowledge is preserved. Not for strategic reflection (use reflect)
@@ -20,19 +20,19 @@ description: >-
 - Topics
 - Artifact Naming
 
-Systematic review of `.agents/` artifacts and issue workspaces.
+Systematic review of private continuity and repository hygiene without creating a second work system.
 
 ## Critical Rules
 
 **Always**
 - Log invocation as the first action: `loaf journal log "skill(housekeeping): <scope or trigger>"`
 - Review EVERY file individually — never sample or average
-- Check Loaf issue status (and Linear overlay, if enabled) before archiving linked artifacts
+- Read shared work status from the canonical tracker through the selected `project-management/v1` provider skill and harness-native connection
 - Extract lessons learned and decisions before archiving
-- Use CLI (`loaf housekeeping`, `loaf report archive`, `loaf issue status` / `loaf issue stop`) — never raw `mv`
+- Use deterministic Loaf commands for Loaf-owned artifacts and Git-native commands for worktrees; never raw `mv`
 - Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
 - Check report `status` is `done` (or `final`) before archiving reports (see [templates/report.md](templates/report.md))
-- In SQLite-backed projects, verify lifecycle through `loaf issue list --json`, `loaf issue list --started`, `loaf issue list --archived`, and `loaf report list --json`
+- Preserve the project journal, sparks, wraps, and useful handoffs; the journal is append-only and never a cleanup target
 - When delegated subagents are available, use the `librarian` profile for
   `.agents/`-scoped durable artifact tending: report/handoff hygiene,
   staleness notes, and lifecycle-safe cleanup recommendations.
@@ -43,16 +43,15 @@ Systematic review of `.agents/` artifacts and issue workspaces.
 - Auto-archive without user confirmation for each artifact
 - Skip spark extraction before deleting brainstorm drafts
 - Leave `archived_at` or `archived_by` fields empty in archived files
-- Run `loaf issue stop` from inside the started worktree
+- Infer tracker state from local artifacts or Git state
 - Dispatch cleanup agents into a live started worktree another agent occupies
 
 ## Verification
 
 After work completes, verify:
 - Reports archived via `loaf report archive` after processing
-- Archived issues reviewed via `loaf issue list --archived` (`cancelled` / `duplicate` archive through `loaf issue status`)
-- Stale started worktrees reviewed via `loaf issue list --started` (a `(missing)` marker means the recorded path is gone)
-- SQLite-backed report/issue state reflects lifecycle changes when initialized
+- Provider readback confirmed every tracker state used to justify cleanup
+- Git worktrees were checked for branch, dirtiness, reachability, and occupancy before any removal was proposed
 - Drafts checked for unprocessed sparks before deletion
 - Handoffs deleted only after explicit deprecation is confirmed
 - Summary table presented showing all actions taken
@@ -64,24 +63,12 @@ After work completes, verify:
 ```bash
 loaf housekeeping --dry-run          # Preview recommendations
 loaf housekeeping                    # Run artifact scanner
-loaf issue list --started            # Started worktrees (alias, title, branch, path)
-loaf issue list --archived           # cancelled / duplicate rows
-loaf issue stop <ref>                # Remove worktree; keeps branch; does not change status
-loaf issue status <ref> cancelled    # Archive an abandoned issue
-loaf issue status <ref> duplicate --duplicate-of <surviving>
+git worktree list --porcelain        # Inspect repository-native workspaces
 loaf report archive <report>         # Archive a processed report
-loaf issue absorb --all --dry-run    # Preview leftover TASK/INTENT to issue
-loaf issue absorb --all --history --dry-run  # Include done/archived leftover rows
 ```
 
-`loaf housekeeping` still prints leftover `specs` / `tasks` sections when those
-SQLite tables have rows. Preview leftover TASK/INTENT work with
-`loaf issue absorb --all --dry-run`. Add `--history` when done or archived
-leftover rows should move too. Persist with the same command without `--dry-run`.
-A single leftover row is `loaf issue absorb <ref>` (or `--dismiss` to archive
-without minting). Do not invent a bulk import. Change-local
-`docs/changes/**/tasks/` are never imported. Do not create new records on the
-leftover tables. The `loaf task` / `loaf spec` CLI is legacy.
+Historical local issue/task/spec rows are frozen migration inputs, not current
+work. Normal housekeeping never promotes, reconciles, or synchronizes them.
 
 The project journal is append-only and never archived — it is not a housekeeping
 target. It is the canonical record housekeeping reads when extracting decisions
@@ -91,47 +78,19 @@ before archiving other artifacts.
 
 | Artifact | Active Location | Archive | Action |
 |----------|-----------------|---------|--------|
-| Issues | SQLite (`loaf issue list`) | `cancelled` / `duplicate` via `loaf issue status` | Confirm, then status; `done` is ship, not housekeeping |
-| Started worktrees | `loaf issue list --started` | `loaf issue stop <ref>` | Stop stale or `(missing)` trees after confirmation |
+| Shared work | Canonical native tracker | Provider-native archive/close semantics | Confirm, mutate through the selected provider, then read back |
+| Git worktrees | Git repository | Repository-native removal | Inspect branch and dirtiness independently of tracker status |
 | Drafts / brainstorms | SQLite state | SQLite resolved/archived status | User decision (spark extraction first) |
 | Handoffs | `.agents/handoffs/` | delete | Delete after status is confirmed `deprecated` |
 | Reports | SQLite state + generated/authored report Markdown | `archive/` | `loaf report archive` after processing |
 
-## Cross-Branch Reconciliation
-
-If a stale branch reintroduces `.agents/{tasks,ideas,sparks,sessions,brainstorms,drafts}/`
-or `.agents/TASKS.json`, keep the deletion from the cutover branch and rerun
-`loaf check --hook ephemeral-provenance`. Use `loaf state restore-ephemerals
-<backup-id>` only for an intentional rollback, followed by a forward re-import.
-
 ## Mode-Aware Checks
 
-### Started worktrees
-
-For each row from `loaf issue list --started`:
-
-1. If `(missing)`, flag as **stale started workspace** — the row still records a path that is gone. Offer `loaf issue stop <ref>` after confirmation. Stop does not mark the issue `done`.
-2. If the path exists but the issue is `done` / `cancelled` / `duplicate`, flag as **worktree outlived the issue** — same offer.
-3. If the path exists and status is `active`, leave it unless the user asks to stop.
-
-Treat these as **warnings**, not auto-fixes.
-
-### Linear overlay
-
-When `integrations.linear.enabled` is `true` in `.agents/loaf.json`, follow the `linear` skill to select the configured MCP and read linked issues. Flag obvious tracker/Loaf mismatches as warnings only; resolve them through the documented Loaf issue reconciliation boundary, never by driving Loaf status from an MCP mutation.
-
-### Leftover board rows
-
-If `loaf housekeeping --dry-run` still reports `tasks` or leftover TASK/INTENT
-rows, or `loaf doctor` names leftover-absorb, migrate those rows — do not leave
-them as "readable, mint nothing."
-
-1. Preview: `loaf issue absorb --all --dry-run`
-2. For done/archived leftover rows: `loaf issue absorb --all --history --dry-run`
-3. Persist the previewed command without `--dry-run` after confirmation
-4. Change-local `docs/changes/**/tasks/` are never imported
-
-Do not invent a bulk import. Do not create new task or spec records.
+Read the configured provider manifest before using optional fields. Never emulate
+unsupported hierarchy, status, archive, or assignment behavior. Historical
+local rows are reported only as migration candidates for a separate, explicit,
+one-time migration; they are never compared with the tracker during routine
+housekeeping.
 
 ## Suggests Next
 
@@ -142,8 +101,8 @@ After housekeeping, suggest reflect if the session produced key decisions or lea
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Report Template | [templates/report.md](templates/report.md) | Creating cleanup reports |
-| Linear Workflows | `linear` skill | Selecting the configured MCP and checking the external tracker overlay |
-| Journal Continuity | `orchestration/references/journal.md` | Understanding the project journal model |
+| Tracker Workflows | [../project-management/SKILL.md](../project-management/SKILL.md) | Selecting a provider and reading canonical work |
+| Wrap Continuity | [../wrap/SKILL.md](../wrap/SKILL.md) | Preserving connective narrative before cleanup |
 
 ## Artifact Naming
 

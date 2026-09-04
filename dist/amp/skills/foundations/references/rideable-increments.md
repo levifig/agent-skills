@@ -11,11 +11,11 @@ Loaf treats a complete, useful operator journey as the unit of progress. A skate
 - Foundation work is legitimate when the current rideable increment needs it. It may span atomic commits, but it must name the immediate slice that consumes it and must not become a sequence of strategy milestones without integration.
 - Atomic commits are necessary; atomic value increments are the higher-order goal.
 
-This method sharpens existing briefs, issue bodies, criteria, reviews, and strategy. It does not create another lifecycle, tracker, score, status, storage schema, or approval gate.
+This method sharpens existing briefs, canonical tracker work contracts, criteria, reviews, and strategy. It does not create another lifecycle, tracker, score, status, storage schema, or approval gate.
 
 ## Increment Contract
 
-Every shaped milestone or work unit makes these concrete in its existing contract. Use natural prose and criteria; the labels below are a thinking aid, not mandatory headings.
+Every shaped milestone or work unit makes these concrete in its existing contract. Use natural prose and criteria; the labels below are a thinking aid, not mandatory native tracker headings.
 
 | Element | Concrete answer |
 |---------|-----------------|
@@ -54,7 +54,7 @@ Ask these during shaping, implementation checkpoints, review, shipping, and refl
 | Stage | Use the method to |
 |-------|-------------------|
 | **pitch** | Frame the first valuable operator journey without prematurely designing it |
-| **shape** | Make the increment contract concrete and decompose by complete slices |
+| **shape** | Make the increment contract concrete on the canonical tracker record and decompose by complete slices |
 | **implement** | Preserve the journey while landing atomic commits and reject unused machinery |
 | **ship** | Verify that the rider can complete the journey and that proof matches the claims |
 | **release** | Describe progress by the larger real journey now possible, not layers completed |

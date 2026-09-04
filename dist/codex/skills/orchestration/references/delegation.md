@@ -1,197 +1,27 @@
-# Agent Delegation
+# Delegation Contract
 
-## Contents
+Delegation is a bounded execution technique. It does not mint work, change the live definition, or transfer the orchestrator's responsibility to verify results.
 
-- Core Principle
-- What Orchestrator Does vs Delegates
-- Agent Capability Matrix
-- Delegation Decision Tree
-- Spawn Patterns
-- Anti-Patterns
-- Agent Access Hierarchy
+## Task Packet
 
-## Core Principle
+Every delegated task includes:
 
-**You are the orchestrator, not the implementer.** All code changes, documentation edits, and implementation work MUST be delegated to specialized agents.
+- the exact native tracker reference and destination;
+- the Rider, complete Journey, Entry point, observable Outcome, real Dogfood, Safety/integrity proof, Learning sought, and explicit Deferrals from the live contract when the task can affect them;
+- the completion criterion or review lens it serves;
+- relevant repository and skill instructions;
+- allowed reads, writes, external mutations, and explicit prohibitions;
+- owned files or subsystem boundary;
+- required tests and evidence;
+- whether commits are authorized;
+- the expected result format.
 
-## What Orchestrator Does vs Delegates
+Executor-sized partitioning changes who performs bounded mechanics, not what counts as value. A delegated task may produce one atomic commit or evidence packet, but the orchestrator accepts the aggregate only when the real rider's journey still works end to end. Do not mint local work units or treat component completion as product progress.
 
-### Orchestrator Does Directly
+## Writer Rule
 
-| Action | Tool |
-|--------|------|
-| Log journal entries | `loaf journal log` |
-| Create/edit council files | file write |
-| Track tasks | your harness's task/todo tracking surface (if it has one; not all do, and not all share it with subagents) |
-| Manage external issues | Linear, GitHub |
-| Read files for context | file read / search |
-| Ask clarifying questions | your harness's structured question tool if it has one |
-| Assign subagent work | your harness's agent-spawn mechanism; pass task context explicitly in the spawn prompt (tracking is not assignment — a todo surface does not spawn agents or carry the prompt) |
+Only one agent writes an overlapping change at a time. Parallel writers need disjoint ownership that can be verified from paths or subsystem boundaries. When ownership becomes ambiguous, stop one writer before continuing.
 
-### Orchestrator MUST Delegate
+## Acceptance Rule
 
-- Any code in `backend/`, `frontend/`, `src/`, `tests/`
-- Documentation in `docs/`
-- Configuration files (`.yaml`, `.json`, `.toml`)
-- Infrastructure files (`Dockerfile`, `docker-compose.yml`)
-- Database migrations
-- Test files
-
-**NO EXCEPTIONS** - even "trivial" 1-line fixes go through specialized agents.
-
-## Agent Capability Matrix
-
-### Implementation Profiles
-
-| Profile | Focus | Skills to Load |
-|---------|-------|---------------|
-| `implementer` | Backend code | Language skill (python, ruby, go, typescript) + domain skills |
-| `implementer` | Frontend code | typescript-development + interface-design |
-| `implementer` | Ruby on Rails | ruby-development |
-| `implementer` | Database | database-design + language skill |
-| `implementer` | Infrastructure | infrastructure-management |
-
-### Quality Assurance Profiles
-
-| Profile | Focus | Skills to Load |
-|---------|-------|---------------|
-| `implementer` | Tests | foundations + language skill |
-| `implementer` | Security | foundations + language skill |
-
-### Review & Advisory Profiles
-
-| Profile | Focus | Skills to Load |
-|---------|-------|---------------|
-| `reviewer` | Code review | relevant domain skills |
-| `reviewer` | UI/UX review | interface-design |
-| `researcher` | Research | relevant domain skills |
-
-## Delegation Decision Tree
-
-```
-What type of work is needed?
-
-|-- Code Implementation
-|   |-- Python/FastAPI/Backend --> implementer (language skill)
-|   |-- React/Next.js/Frontend --> implementer (typescript-development + interface-design)
-|   |-- Ruby on Rails --> implementer (ruby-development)
-|   +-- Database Schema/Migrations --> implementer (database-design)
-
-|-- Infrastructure & Operations
-|   |-- Docker/K8s/CI/CD --> implementer (infrastructure-management)
-|   +-- Database Performance --> implementer (database-design)
-
-|-- Quality Assurance
-|   |-- Test Implementation --> implementer (foundations + language skill)
-|   +-- Security Audit --> implementer (foundations)
-
-|-- Code Review
-|   |-- Backend Review --> reviewer (language skill)
-|   +-- Frontend Review --> reviewer (typescript-development)
-
-|-- Documentation & Design
-|   |-- Technical Documentation --> implementer (foundations)
-|   |-- UI/UX Design --> reviewer (interface-design)
-|   +-- Product Requirements --> researcher
-
-+-- Complex Decision?
-    +-- Council (5-7 subagents, odd number)
-```
-
-## Spawn Patterns
-
-Before drafting a plan or research strategy, interview the user — one question at a time, with a recommendation, using your harness's structured question tool if it has one. Paste-ready spawn APIs differ by product; see [background-agents.md](background-agents.md) for labeled harness sections when you need exact call sites.
-
-### Sequential (Dependencies)
-
-Use when output of one agent is input to another. Spawn one agent, wait for completion, then spawn the next:
-
-1. Schema first — implementer with database-design: "Create users table..."
-2. Implementation uses schema — implementer with language skill: "Implement user service..."
-3. Tests use implementation — implementer with foundations + language skill: "Write user tests..."
-
-**Common sequences:**
-- Schema -> Code -> Tests
-- Design -> Implementation -> Code review -> Testing -> Security
-- Implementation -> Tests -> Code review -> Security
-
-### Parallel (Independent)
-
-Use when work is truly independent. Spawn multiple agents in the same turn when your harness supports it:
-
-- implementer with language skill: "Implement API..."
-- implementer with typescript-development + interface-design: "Build UI..."
-
-**Requirements for parallel:**
-- No dependencies between tasks
-- Defined API contract (for API + UI)
-- Separate files/components
-
-### Spawning Best Practices
-
-1. **Be specific in prompts** - Include file paths, requirements, constraints
-2. **One concern per agent** - Don't ask a backend implementer to also write tests
-3. **Include context** - Issue refs (`LOAF-42` or opaque id), previous outcomes
-4. **Reference durable artifacts** - Issue aliases and report IDs; the subagent's journal entries are harness-id tagged automatically
-5. **Include skill hints** - Name the skills that should guide the agent's work
-
-### Skill Hints
-
-When delegating, explicitly name the skills that should guide the agent's work. This creates deterministic contracts instead of leaving skill selection to the model's discretion.
-
-- **Explicit:** "... Follow python-development skill for FastAPI conventions. Follow database-design skill for schema decisions."
-- **Implicit (weaker):** "... Build the API endpoint."
-
-**When to include skill hints:**
-- The task spans multiple skill domains (e.g., backend code + database schema)
-- You want a specific skill's conventions followed (e.g., "follow ruby-development, not python-development")
-- The agent has access to multiple language skills and the choice matters
-
-**When to skip:**
-- Single-domain tasks where the agent only has one relevant skill
-- The task description already clearly implies the domain
-
-### Example Spawn Prompt
-
-Spawn an implementer with a prompt that covers requirements, skills, files, and provenance:
-
-```
-Implement POST /api/v1/users endpoint.
-
-Requirements:
-- Validate email format
-- Hash password with bcrypt
-- Return 201 with user object
-- Handle duplicate email (409)
-
-Follow python-development skill for FastAPI conventions.
-Follow foundations skill for commit and security patterns.
-
-Files:
-- src/api/users.py
-- src/models/user.py
-
-Issue: LOAF-42
-```
-
-## Anti-Patterns
-
-| Anti-Pattern | Better Approach |
-|--------------|-----------------|
-| Orchestrator implementing code | Orchestrator delegates, always use specialized agents |
-| Asking backend implementer for React | Spawn implementer with frontend skills |
-| Single agent for database + backend + tests | Sequential: implementer (database-design), implementer (language skill), implementer (foundations) |
-| Parallel spawns with hidden dependencies | Make dependencies explicit, spawn sequentially |
-| Spawning without context | Reference issue aliases and report IDs in prompts |
-| Council for simple decisions | Single agent or orchestrator judgment |
-
-## Agent Access Hierarchy
-
-| Agent Type | External Issue Access | Reports To |
-|------------|----------------------|------------|
-| Orchestrator | Read/Write | User |
-| Implementation agents | None | Orchestrator (via return value + journal) |
-| Review agents (backend/frontend devs) | None | Orchestrator (via return value + journal) |
-| Product agent | Read-only | Orchestrator |
-
-**Key**: Only orchestrator writes to external issue trackers. All other agents report back through their return value and journal entries.
+The orchestrator inspects the actual diff, verifies signature and history requirements, reruns relevant tests, and compares the result with the live contract. A review round converges when independent lenses find no new defect class and all earlier findings have an evidence-backed disposition. Reviewers inform the decision; they do not decide by majority.

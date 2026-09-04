@@ -162,13 +162,20 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 			HookState:          hookState,
 		})
 	}
+	managedContentLock, err := acquireHarnessReconcileLock(managedContentLockDir(layoutHome), managedContentLockWait)
+	if err != nil {
+		return err
+	}
+	defer managedContentLock.release()
 	skillsErr := syncCanonicalManagedSkills(installOptions)
 	var skillConflicts *skillSyncConflictsError
 	hardSkillsErr := skillsErr
 	if errors.As(skillsErr, &skillConflicts) {
-		// Conflict-only: non-conflicted skills already installed. Continue
-		// target adapters (hooks/commands/plugins) then propagate at the end.
-		hardSkillsErr = nil
+		// A current marker means the complete managed-content cohort is current.
+		// Never stamp target adapters after a partial skills sync; leave every
+		// marker stale so startup reconciliation can retry after conflicts clear.
+		fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
+		return ExitError{Code: 1}
 	}
 	skillsErrReported := false
 	for _, opts := range installOptions {
@@ -181,10 +188,6 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 				codexBasicCommandsErr = fmt.Errorf("Codex basic command policy installation failed: %w", hardSkillsErr)
 			}
 			continue
-		}
-		if skillConflicts != nil && !skillsErrReported {
-			fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
-			skillsErrReported = true
 		}
 		var hookActions []hookAction
 		opts.HookActions = func(actions []hookAction) { hookActions = append(hookActions, actions...) }
@@ -216,10 +219,6 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 	}
 	if codexBasicCommandsErr != nil {
 		return codexBasicCommandsErr
-	}
-	if skillConflicts != nil {
-		// Already printed once above; ExitError is silent so main does not reprint.
-		return ExitError{Code: 1}
 	}
 	if hardSkillsErr != nil {
 		return hardSkillsErr

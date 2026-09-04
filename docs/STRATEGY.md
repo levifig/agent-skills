@@ -1,5 +1,7 @@
 # Strategy
 
+_Last updated: 2026-08-29_
+
 Loaf is an opinionated agentic framework for AI coding assistants. It ships portable skills, bounded agent profiles, target-native adapters, enforcement hooks, and a native CLI. This document states current strategy; detailed history and evidence remain in [Changes](changes/), [decision records](decisions/), [reports](reports/), and git history.
 
 ## Who This Serves
@@ -8,15 +10,30 @@ Loaf is an opinionated agentic framework for AI coding assistants. It ships port
 
 **Teams** need consistent agent behavior across developers and harnesses, with auditable decisions, trustworthy quality checks, and installation behavior that does not require everyone to understand Loaf internals.
 
+## vNext Reset
+
+Loaf vNext is being built as an isolated production boundary under `vnext/`. The current implementation remains operational until cutover, but it is input evidence rather than a reusable runtime layer: vNext may learn from its behavior and consume a versioned one-time export, but cannot import its command, state, issue, work-contract, crypto, sync, or scratchpad packages.
+
+The ownership contract is deliberately small and exclusive:
+
+| Authority | Canonical responsibilities |
+|-----------|----------------------------|
+| Loaf | Flow ceremonies, skills, templates, profiles, project identity, private continuity, derived context, and private sync |
+| Tracker | Work identity and definition, definition of done, workflow state, hierarchy, assignment, and collaboration |
+| Git | Code and deliberately promoted artifacts |
+| Harness | Execution, model selection, tool boundaries, service connections, and service credentials |
+
+The vNext schema line starts independently at `vnext/1`. Its bootstrap command surface contains only `version` and `ownership`; it has no state, tracker, sync, migration, build, or install command yet. New command families are added only with the slice that owns and proves their behavior.
+
 ## Proven Principles
 
 **Progress is a rideable operator journey.** Strategy milestones describe what a real operator can do after they land that was impossible before. Loaf prefers a narrow working vertical slice over broad unfinished infrastructure, dogfoods it before generalizing, and lets observed use earn complexity. Foundation work can span commits, but it counts as product progress only when the immediate [rideable increment](../content/skills/foundations/references/rideable-increments.md) consumes it without reducing integrity.
 
 **Skills are the portable knowledge layer.** Shared authoring should remain the default, while target-specific adapters translate that knowledge into the strongest trustworthy native surface each harness exposes.
 
-**The CLI is the protocol layer.** Skills describe judgment and workflow, the CLI performs deterministic state and filesystem operations, and hooks enforce or inject narrowly scoped behavior. Runtime behavior should not depend on prose reimplementing CLI logic.
+**The CLI is the protocol layer for Loaf-owned mechanics.** Skills describe judgment and workflow, the CLI performs deterministic continuity, identity, filesystem, and diagnostic operations, and hooks enforce or inject narrowly scoped behavior. Tracker operations use the harness's configured native connection; Loaf does not put a provider adapter between the agent and the tracker.
 
-**Continuity belongs to the project journal, not a session lifecycle.** Journal entries are project-scoped events correlated by an opaque harness identity. Context is derived at read time, and a wrap is an optional synthesis checkpoint rather than a transition.
+**Continuity belongs to the project journal, not a session lifecycle.** The journal remains the private timeline and resumption spine; vNext's operator-owned substrate also preserves wraps, sparks, ideas, decisions, explorations, findings, handoffs, and derived context. Tracker work remains outside it. Scratchpad is deferred from the immediate product boundary and may return later as a conversation-oriented surface; no current Flow or cutover milestone depends on it. Context is derived at read time, and a wrap is an optional synthesis checkpoint rather than a transition.
 
 **Managed installation requires ownership evidence.** Loaf should change installed content only when it can identify what it owns and verify the expected digest. Capability claims must be tied to exact client versions and installed runtime evidence rather than inferred from build output.
 
@@ -26,9 +43,7 @@ ADR-020 preserves that single-overlay result while making root `AGENTS.md` the c
 
 **Automation must fail within its evidence boundary.** Automatic completion remains disabled unless a target supplies trustworthy success evidence and a durable event identity. When a harness cannot distinguish the relevant traffic or lifecycle event reliably, an explicit fallback is preferable to a false guarantee.
 
-**The CLI is the correct protocol layer for Loaf-owned state.** Skills describe judgment and workflow, the CLI performs deterministic state and filesystem operations, and hooks enforce invariants. Loaf issue identity and state, provider mappings, retries, conflict resolution, and reconciliation remain CLI and state responsibilities regardless of which LLM or harness is running.
-
-General Loaf workflow skills do not improvise provider calls or duplicate provider-specific collaboration logic. They route user-scoped external collaboration through a dedicated provider skill, which may select an independently configured provider MCP, record its server name as project routing metadata, read before mutating, and report outcomes. That skill neither connects, configures, nor authenticates the MCP and does not replace the CLI boundary for Loaf-owned state.
+**The tracker is the protocol layer for shared work.** General workflow skills tell the agent what outcome and template to apply, then the agent uses its harness-native tracker tools. Provider-specific skills or a narrowly instructed project-management profile may encode interaction details, but Loaf neither configures credentials nor stores provider mappings, retry queues, reconciliation state, or mirrored issue fields.
 
 **Diagnosis and repair must share the same state taxonomy.** Sharing repair helpers is not enough; the detection branches in a diagnostic tool must consult the same classification logic as the repair path, or they will drift apart.
 
@@ -60,25 +75,28 @@ The implication for both personas: Loaf's value is the *framework* -- mechanical
 
 ## Current Priorities
 
-
 > **Revision 2026-08-31 (LOAF-101):** Reorders vNext around rideable operator activation. Architectural foundations remain valuable, but future-only protocol depth is not product progress until a real journey consumes it.
 
+> **Revision 2026-08-29 (LOAF-93):** vNext becomes the destination architecture. The shipped line stays stable and recoverable until verified cutover; its state, sync, and tracker machinery are evidence and migration input, not vNext dependencies.
+>
 > **Revision 2026-08-26 (LOAF-90):** Inserts substrate arc priorities. Supersedes: priorities listing only journal reliability and Loaf Flow without personal-substrate destination.
 >
 > **Revision 2026-08-26 (LOAF-90, schema 25):** LOAF-63/64/72 landed on main. Supersedes: "remaining mutable-core migration" and "LOAF-64 partial".
 >
 > **Revision 2026-08-26 (LOAF-62 closeout):** LOAF-68 children 84–86 shipped; sync refresh folds refs, worktrees, and verification. Grow-only union docs shipped with the LOAF-63 lock.
 
-The active `issue/loaf-93` vNext line has established a strong isolated kernel, tracker-ownership boundary, schema direction, and private-sync architecture, but its operator surface is still only bootstrap commands. It is architecturally deep and operator-thin. Activation now proceeds through these rideable increments:
+The active `issue/loaf-93` vNext line has established a strong isolated kernel, tracker-ownership boundary, provider-neutral Flow, schema direction, and private-sync architecture, but operator activation still needs real dogfood. Progress now proceeds through these rideable increments:
 
-1. **Local tracker-native Flow and continuity.** Rider: one local Loaf operator. Journey and entry: use tracker-native Flow through its ordinary skill and tracker surfaces, then journal, wrap, hand off, resume from derived context, and migrate existing work once. Outcome: the operator can complete and resume real Loaf work locally without legacy authority. Dogfood: use it on Loaf's own issues. Safety/integrity proof: deterministic context, fail-loud ownership, verified no-loss migration, rollback archive, and Flow checks. Learning sought: whether the local ceremony and migration seams hold in daily work. Deferrals: relay sync, cloud lifecycle, multiple realms, TUI, and team surfaces.
-2. **One project across two environments.** Rider: the same operator on two real environments. Journey and entry: configure one relay and one `LOAF_SYNC_TOKEN`, attach one project from both environments, then continue the first environment's journal and work context in the second. Outcome: private continuity converges across the pair. Dogfood: Loaf work from a daily-driver machine and one real remote environment. Safety/integrity proof: ciphertext-only relay storage, deterministic convergence, token refusal, recovery, and no loss under retry. Learning sought: whether one-token setup, attach, and recovery are operable. Deferrals: client lifecycle, multiple realms, TUI, and teams.
-3. **Cloud client lifecycle.** Rider: one operator using ephemeral or managed cloud agents. Journey and entry: provision, inspect, rotate, revoke, and recover a cloud client through the supported lifecycle surface. Outcome: cloud access is usable and controllable without manual database surgery. Dogfood: repeated real cloud-agent runs on Loaf. Safety/integrity proof: least privilege, fail-loud provisioning, effective revocation, rotation, and recovery rehearsal. Learning sought: which lifecycle operations and diagnostics cloud use actually needs. Deferrals: multiple realms, broad UI, and collaboration.
-4. **Multiple realms.** Rider: one operator with distinct continuity domains. Journey and entry: create or select a realm, attach clients and projects, and move between realms without authority or memory bleed. Outcome: separate domains remain operable and isolated. Dogfood: two real operator-owned realms with different projects or trust boundaries. Safety/integrity proof: authorization and tenant-isolation tests, deterministic selection, recovery, and cross-realm refusal. Learning sought: whether realm boundaries match actual operator mental models. Deferrals: team workspaces and speculative hierarchy.
-5. **Progressively useful TUI.** Rider: an operator managing the journeys already proven above. Journey and entry: open the TUI to inspect and perform the highest-friction proven operations, expanding only from observed CLI use. Outcome: each TUI increment replaces a real workflow step without becoming a second authority. Dogfood: daily Loaf operation. Safety/integrity proof: CLI parity, deterministic actions, accessible failure/recovery, and no hidden state. Learning sought: which interactions deserve a visual surface. Deferrals: screens without demonstrated use and team administration.
-6. **Teams and workspaces.** Rider: a real team coordinating through tracker and Git collaboration surfaces. Journey and entry: establish a workspace, bring members into the supported collaboration path, and complete shared work without exposing private operator continuity. Outcome: team use becomes coherent while authority boundaries remain explicit. Dogfood: a real multi-person workspace. Safety/integrity proof: authorization, isolation, auditability, revocation, and no private-memory bleed. Learning sought: which team boundaries survive real collaboration. Deferrals: enterprise breadth not demanded by that dogfood.
+1. **Local tracker-native Flow and continuity.** Rider: one local Loaf operator. Journey and entry: use tracker-native Flow through ordinary skills and harness-native tracker tools, then journal, wrap, hand off, resume from derived context, and migrate existing work once. Outcome: the operator can complete and resume real Loaf work locally without legacy authority. Dogfood: use it on Loaf's own issues, then DojoHQ through Amp. Safety/integrity proof: deterministic context, fail-loud ownership, verified no-loss migration, rollback archive, and Flow checks. Learning sought: whether the local ceremony and migration seams hold in daily work. Deferrals: relay sync, cloud lifecycle, multiple realms, TUI, teams, and Scratchpad.
+2. **One project across two environments.** Rider: the same operator on two real environments. Journey and entry: configure one relay and project-scoped sync token, attach one project from both environments, then continue the first environment's private continuity in the second. Outcome: continuity converges across the pair while the tracker remains canonical for work. Dogfood: Loaf work from a daily-driver machine and one real remote environment. Safety/integrity proof: ciphertext-only relay storage, deterministic convergence, token refusal, recovery, and no loss under retry. Learning sought: whether one-token setup, attach, and recovery are operable. Deferrals: client lifecycle, multiple realms, TUI, teams, and Scratchpad.
+3. **Cloud client lifecycle.** Rider: one operator using ephemeral or managed cloud agents. Journey and entry: provision, inspect, rotate, revoke, and recover a project-bound cloud client through the supported lifecycle surface. Outcome: cloud access is usable and controllable without manual database surgery. Dogfood: repeated real cloud-agent runs on Loaf. Safety/integrity proof: least privilege, fail-loud provisioning, effective revocation, rotation, and recovery rehearsal. Learning sought: which lifecycle operations and diagnostics cloud use actually needs. Deferrals: multiple realms, broad UI, teams, and Scratchpad.
+4. **Multiple realms.** Rider: one operator with distinct continuity domains. Journey and entry: create or select a realm, attach clients and projects, and move between realms without authority or memory bleed. Outcome: separate work and personal domains remain operable and isolated. Dogfood: two real operator-owned realms with different projects or trust boundaries. Safety/integrity proof: authorization and tenant-isolation tests, deterministic selection, recovery, and cross-realm refusal. Learning sought: whether realm boundaries match actual operator mental models. Deferrals: team workspaces, speculative hierarchy, and Scratchpad.
+5. **Progressively useful TUI.** Rider: an operator managing journeys already proven through CLI and harness use. Journey and entry: open the TUI to inspect and perform the highest-friction proven operations, expanding only from observed use. Outcome: each TUI increment replaces a real workflow step without becoming a second authority. Dogfood: daily Loaf operation. Safety/integrity proof: CLI parity, deterministic actions, accessible failure and recovery, and no hidden state. Learning sought: which interactions deserve a visual surface. Deferrals: screens without demonstrated use, team administration, and Scratchpad.
+6. **Teams and workspaces.** Rider: a real team coordinating through tracker and Git collaboration surfaces. Journey and entry: establish a workspace, bring members into the supported collaboration path, and complete shared work without exposing private operator continuity. Outcome: team use becomes coherent while authority boundaries remain explicit. Dogfood: a real multi-person workspace. Safety/integrity proof: authorization, isolation, auditability, revocation, and no private-memory bleed. Learning sought: which team boundaries survive real collaboration. Deferrals: enterprise breadth not demanded by that dogfood and any conversation surface not yet proven.
 
-Scratchpad is explicitly outside the immediate vNext product boundary and must not shape or sequence these milestones. Existing storage, migration, security, crypto, relay, and recovery foundations remain valuable; they earn further breadth only when one of the journeys above exercises them.
+No dual authority is permitted during transition. Existing local work migrates once through a versioned, verified archive; Loaf never introduces ongoing dual reads, writes, reconciliation, or tracker mirrors. Cutover requires real tracker-connected dogfood, migration rehearsal, installed harness evidence, and independent correctness and architecture/security review. Scratchpad remains explicitly outside the immediate vNext product boundary.
+
+### Legacy Line Closeout Context
 
 - **Personal memory substrate (LOAF-62).** Fact envelope, E2E crypto, sync server/client, attach-or-refuse, identity evidence, grow-only union, and mutable-core event facts shipped (LOAF-63–67, 71–72, 75–76). Writers append through the LOAF-71 chokepoint; the `events` table remains local archive (migration 0025). Sync refresh rebuilds spark/idea/handoff/release/ref/verification projections and worktree start bindings from facts (worktree paths may not exist on the receiving machine). Parent closeout is independent review and ship.
 - **Refs + contracts cutover (LOAF-68).** Contract machinery keys to refs (LOAF-82), render-out (LOAF-83), branch/PR bootstrap (LOAF-85), flow-skill ref cutover (LOAF-86), and decision re-home (LOAF-84) shipped.
@@ -96,15 +114,17 @@ Scratchpad is explicitly outside the immediate vNext product boundary and must n
 
 **Personal continuity vs collaboration surfaces.** The substrate is private and E2E; team coordination stays on trackers and git promote paths. Building a shared memory layer in the substrate is explicitly out of scope for v1.
 
-**Local-first vs cloud attach.** Local SQLite remains authoritative for reads; sync is convergent relay. Fail-loud attach prioritizes invariant trust over run availability.
+**Local-first versus multi-environment continuity.** A local replica must remain useful and trustworthy while private sync gives one operator continuity across environments. The vNext protocol is designed in its own slice; the current relay and schema are evidence, not a compatibility contract.
 
 **Portability versus native leverage.** A shared skill should express the common contract, but each native adapter expands the compatibility and test surface. Native behavior earns its place only when it is observable and maintainable.
 
 **Automation versus explainability.** Invisible automation is convenient until it fails. Ownership manifests, diagnostics, isolated smoke tests, and explicit degradation make failures inspectable without requiring hand-edited global configuration.
 
-**Convention versus compatibility.** Change-first is the current model for new work, while existing SQLite tasks, `SPEC-*` records, and their CLI commands remain real supported data. Compatibility should preserve access without keeping retired workflow assumptions in current guidance.
+**Clean authority versus migration safety.** Tracker-native issues are the destination for shared work, while existing Changes, SQLite issues/tasks, and `SPEC-*` records remain migration inputs. A one-time verified import preserves access without retaining dual-read behavior or retired workflow assumptions.
 
 **Durability versus noise.** The journal must retain information that changes future decisions, not duplicate lifecycle state or syntheses that can be derived from source, git, and pull requests.
+
+**Reports are temporary skill output, not a product subsystem.** A skill returns through the harness unless a result has a concrete reason to survive the response. When persistence is earned, the producing skill owns its template and writes `.agents/reports/YYYYMMDDHHMMSS-slug.md`; Loaf adds no universal report schema, state row, sync behavior, or lifecycle command. Housekeeping reads each report and recommends leaving it, extracting durable conclusions then deleting it, deleting it, or deliberately promoting the whole report to `docs/reports/`, with user approval before every destructive or durable move.
 
 ## Open Questions
 
@@ -115,4 +135,11 @@ Scratchpad is explicitly outside the immediate vNext product boundary and must n
 - Which target-native signals can provide durable event identity and trustworthy success evidence without coupling Loaf to unstable client internals?
 - How should scheduled client-version discovery produce reviewable candidate evidence without automatically changing capability classifications?
 - Where does target-native behavior materially improve the user experience enough to justify its maintenance and installed-test burden?
-- How well does Change-first workflow adoption hold outside Loaf itself, particularly for teams with existing trackers and conventions? First signal, 2026-07-30: a greenfield `/pitch` on a fresh external project produced a working BRIEF on the shared skeleton; the finding was seam friction in the ceremony's handoff, not model rejection.
+- How well does tracker-native Loaf Flow adoption hold outside Loaf itself, particularly across tracker products and harness-native connection surfaces?
+
+---
+
+## Changelog
+
+- 2026-08-31 - Make rideable operator journeys the strategic unit of progress and sequence vNext activation through real dogfood while explicitly deferring Scratchpad.
+- 2026-08-29 - Make the isolated tracker-native vNext reset the destination strategy, define private scratchpad scope, and reclassify the shipped line as evidence and migration input.

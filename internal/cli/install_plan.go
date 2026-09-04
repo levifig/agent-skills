@@ -83,8 +83,6 @@ type deprecationPlanEntry struct {
 	Since           string `json:"since,omitempty"`
 	Window          string `json:"window,omitempty"`
 	Signoff         string `json:"signoff,omitempty"`
-	Source          string `json:"source,omitempty"`
-	Command         string `json:"command,omitempty"`
 }
 
 type projectFilePlanEntry struct {
@@ -213,14 +211,22 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	}
 	sort.Slice(plan.Targets, func(i, j int) bool { return plan.Targets[i].Target < plan.Targets[j].Target })
 
-	// Skill conflicts are reported on plan.Skills. They do not set target
-	// Blocked: apply continues adapters after conflict-only skill errors, so
-	// marking targets blocked here would lie about what apply will do.
+	// A managed-skill conflict blocks the whole shared-content cohort. Apply
+	// leaves target adapters and markers stale so a later reconcile can retry.
 	skills, err := planCanonicalManagedSkills(plannedOptions)
 	if err != nil {
 		return installDryRunPlan{}, err
 	}
 	plan.Skills = skills
+	for _, skill := range skills {
+		if skill.Action != planActionConflict {
+			continue
+		}
+		for i := range plan.Targets {
+			plan.Targets[i].Blocked = true
+		}
+		break
+	}
 
 	// Project files mirror enforceInstallProjectFiles: symlinks first, then the
 	// managed fenced section for every target that carries a project file, then
@@ -341,8 +347,8 @@ func planOpenCodeCommandsGuard(options targetInstallOptions) ([]artifactPlanDeci
 // planCanonicalManagedSkills plans managed-skill actions once per resolved
 // destination across the selected targets. Divergent source trees fail loudly.
 // The planned source is selectCanonicalSkillsSource's pick, matching the write.
-// Conflicted skills are listed with action "conflict"; they do not block
-// target adapters (see buildInstallDryRunPlan).
+// Conflicted skills are listed with action "conflict"; the caller blocks the
+// target cohort so marker truth remains retryable.
 func planCanonicalManagedSkills(options []targetInstallOptions) ([]artifactPlanDecision, error) {
 	groups, err := groupSkillsInstallByDestination(options)
 	if err != nil {
@@ -808,12 +814,7 @@ func planInstallDeprecations(loafRoot string, explicitYes bool) ([]deprecationPl
 			Since:           action.Since,
 			Window:          action.Window,
 			Signoff:         action.Signoff,
-			Source:          action.Source,
-			Command:         action.Command,
 		})
-	}
-	for _, action := range result.Externalized {
-		appendEntry(action, "externalized", false)
 	}
 	for _, action := range result.Aliases {
 		appendEntry(action, "alias", false)

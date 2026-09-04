@@ -240,6 +240,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runConfig(args[1:], out, runtime.RootPath())
 	case "hooks":
 		dispatchErr = r.runHooks(args[1:], out, runtime.RootPath())
+	case "harness":
+		dispatchErr = r.runHarness(args[1:], out, runtime.RootPath())
 	case "migrate":
 		dispatchErr = r.runMigrate(args[1:], out, runtime)
 	case "release":
@@ -366,6 +368,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  upgrade       Refresh installed harnesses and Loaf project surfaces")
 	fmt.Fprintln(out, "  config        Validate and refresh project Loaf config")
 	fmt.Fprintln(out, "  hooks         Inspect and set Loaf hook enablement per target")
+	fmt.Fprintln(out, "  harness       Reconcile Loaf-owned harness content")
 	fmt.Fprintln(out, "  setup         Initialize, build, and install")
 	fmt.Fprintln(out, "  state         Manage native SQLite state")
 	fmt.Fprintln(out, "  project       Manage project identity")
@@ -390,7 +393,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  council       Manage councils")
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
 	fmt.Fprintln(out, "  check         Run hook checks")
-	fmt.Fprintln(out, "  doctor        Diagnose project alignment, leftover SQLite work, and leaked issue prefixes")
+	fmt.Fprintln(out, "  doctor        Diagnose project alignment, managed content, and leftover migration work")
 	fmt.Fprintln(out, "  release       Cut a retroactive release (suggest, cut)")
 	fmt.Fprintln(out, "  version       Show version and content counts")
 	fmt.Fprintln(out)
@@ -3465,6 +3468,8 @@ func writeMigrateHelp(out io.Writer) {
 	fmt.Fprintln(out, "  schema              Preview or apply pending SQLite schema upgrades")
 	fmt.Fprintln(out, "  lifecycle-statuses  Normalize legacy lifecycle statuses in SQLite")
 	fmt.Fprintln(out, "  journal-first       Transform the global database to the journal-first model")
+	fmt.Fprintln(out, "  tracker-export      Export open issues for harness-native tracker migration")
+	fmt.Fprintln(out, "  vnext-rehearsal     Import a verified backup into a new isolated vNext database")
 	fmt.Fprintln(out, "  worktree-storage    Move linked-worktree .agents content to the main checkout")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
@@ -3488,6 +3493,8 @@ func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) 
 		"schema":             writeMigrateSchemaHelp,
 		"markdown":           writeMigrateMarkdownHelp,
 		"storage-home":       writeMigrateStorageHomeHelp,
+		"tracker-export":     writeMigrateTrackerExportHelp,
+		"vnext-rehearsal":    writeMigrateVNextRehearsalHelp,
 		"worktree-storage":   writeWorktreeMigrationHelp,
 	}) {
 		return nil
@@ -3503,6 +3510,10 @@ func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) 
 		return r.runMarkdownMigration(args[1:], out, runtime, "loaf migrate markdown")
 	case "storage-home":
 		return r.runStorageHomeMigration(args[1:], out, runtime, "loaf migrate storage-home")
+	case "tracker-export":
+		return r.runMigrateTrackerExport(args[1:], out, runtime)
+	case "vnext-rehearsal":
+		return r.runMigrateVNextRehearsal(args[1:], out, runtime)
 	case "worktree-storage":
 		return r.runMigrateWorktreeStorage(args[1:], out, runtime.RootPath())
 	default:

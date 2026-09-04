@@ -98,21 +98,11 @@ func TestDestructiveMigrationPreservesUnowned(t *testing.T) {
     }
   ],
   "retired_agents": [],
-  "externalized_skills": [
-    {
-      "skill": "thermo-nuclear-code-quality-review",
-      "since": "v9.9.0",
-      "reason": "report-only externalized skill",
-      "source": "https://example.com/vendor-skill",
-      "install_command": "loaf skill add https://example.com/vendor-skill",
-      "skill_homes": ["${HOME}/.agents/skills"]
-    }
-  ],
   "relocations": [],
   "aliases": []
 }`)
 
-	// Externalized skill present — report only, never remove.
+	// Unclaimed vendor tree — upgrade must not delete it.
 	extPath := filepath.Join(canonical, "thermo-nuclear-code-quality-review", "SKILL.md")
 	writeInstallFile(t, extPath, "# Vendor externalized\n")
 
@@ -130,7 +120,7 @@ func TestDestructiveMigrationPreservesUnowned(t *testing.T) {
 	if info, err := os.Lstat(dangling); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("dangling symlink Lstat = %v info=%v, want preserved symlink", err, info)
 	}
-	// Externalized report-only: still present.
+	// Vendor tree must survive upgrade.
 	assertInstallFile(t, extPath, "# Vendor externalized\n")
 
 	// Every derived prior home: owned retired skill removed.
@@ -154,10 +144,6 @@ func TestDestructiveMigrationPreservesUnowned(t *testing.T) {
 	if !strings.Contains(out, "migration receipt") || !strings.Contains(out, "before=") || !strings.Contains(out, "after=") {
 		t.Fatalf("stdout missing before/after migration receipt:\n%s", out)
 	}
-	if !strings.Contains(out, "externalized skill thermo-nuclear-code-quality-review") {
-		t.Fatalf("stdout missing externalized report-only line:\n%s", out)
-	}
-
 	// Manifest no longer claims mismatched / dangling / retired entries.
 	state, err := readManagedSkillsState(canonical)
 	if err != nil {
@@ -1363,31 +1349,29 @@ func TestDestructiveMigrationInspectionIOErrorsSurface(t *testing.T) {
 			},
 		},
 		{
-			name: "externalized_skill_path",
+			name: "retired_skill_path",
 			prep: func(t *testing.T, root, home string) ([]string, string) {
 				skillHome := filepath.Join(home, ".agents", "skills")
-				skillPath := filepath.Join(skillHome, "thermo-nuclear-code-quality-review")
-				writeInstallFile(t, filepath.Join(skillPath, "SKILL.md"), "# Vendor\n")
+				skillPath := filepath.Join(skillHome, "old-skill")
+				writeInstallFile(t, filepath.Join(skillPath, "SKILL.md"), "# present\n")
 				writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [],
-  "retired_skills": [],
-  "retired_agents": [],
-  "externalized_skills": [{
-    "skill": "thermo-nuclear-code-quality-review",
+  "retired_skills": [{
+    "skill": "old-skill",
     "since": "v9.9.0",
-    "reason": "must surface EACCES on externalized inspect",
-    "source": "https://example.com/vendor-skill",
-    "install_command": "loaf skill add https://example.com/vendor-skill",
+    "reason": "must surface EACCES on retired skill inspect",
     "skill_homes": ["${HOME}/.agents/skills"]
   }],
+  "retired_agents": [],
   "relocations": [],
   "aliases": []
 }`)
 				// Deny traversal into the skill tree only — skill home stays readable so
-				// quarantine orphan scanning does not preempt this path.
+				// quarantine orphan scanning does not preempt this path. --yes so the
+				// destructive home-hash inspects the tree and surfaces EACCES.
 				chmodForTest(t, skillPath, 0o000)
-				return []string{"upgrade"}, skillPath
+				return []string{"upgrade", "--yes"}, skillPath
 			},
 		}}
 

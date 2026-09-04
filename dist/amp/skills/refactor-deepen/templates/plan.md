@@ -108,20 +108,6 @@ Rationale: a repository that never invokes refactor-deepen should never
 acquire an empty `.agents/plans/` directory. Lazy creation keeps tree noise
 proportional to actual usage, matching how `.agents/specs/` behaves.
 
-## Linear-Native Mode: Fail Fast
-
-PLAN files are **local-only storage**. Write commands must fail fast in Linear-native mode rather than silently degrade. The consuming skill (refactor-deepen) is responsible for:
-
-1. Reading `.agents/loaf.json` and checking `integrations.linear.enabled`.
-2. If true: aborting before `mkdir -p .agents/plans` and before any write,
-   with the verbatim error
-   `"Linear-native plan storage unavailable — continuing with a read-only report."`
-3. If false: proceeding with the write as documented above.
-
-This template intentionally does **not** wrap the write in a
-defensive shell guard — the gate belongs to the skill's invocation flow,
-not to the artifact format. See `../SKILL.md` for the canonical rule.
-
 ## Example
 
 Filename: `.agents/plans/20260502-013000-deepen-journal-append.md`

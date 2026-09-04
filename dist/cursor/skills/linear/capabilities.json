@@ -1,0 +1,239 @@
+{
+  "schema": "loaf-provider-capabilities/v1",
+  "provider": "linear",
+  "contract": "project-management/v1",
+  "connection": "harness-native",
+  "runtime_capability_discovery": "required",
+  "operations": [
+    {
+      "id": "connection.discover",
+      "native_semantic": "harness.exposed-linear-connection",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [],
+        "execute": [
+          "connection.list"
+        ],
+        "after": []
+      }
+    },
+    {
+      "id": "capability.discover",
+      "native_semantic": "harness.linear-capability-description",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "connection.select"
+        ],
+        "execute": [
+          "connection.describe"
+        ],
+        "after": []
+      }
+    },
+    {
+      "id": "work.read",
+      "native_semantic": "linear.issue",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "destination.scope"
+        ],
+        "execute": [
+          "issue.read"
+        ],
+        "after": []
+      }
+    },
+    {
+      "id": "work.create",
+      "native_semantic": "linear.issue",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.search",
+          "issue.read"
+        ],
+        "execute": [
+          "issue.create"
+        ],
+        "after": [
+          "issue.read"
+        ]
+      }
+    },
+    {
+      "id": "work.update",
+      "native_semantic": "linear.issue-fields",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.read"
+        ],
+        "execute": [
+          "issue.update"
+        ],
+        "after": [
+          "issue.read"
+        ]
+      }
+    },
+    {
+      "id": "definition.write",
+      "native_semantic": "linear.issue-description",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.read"
+        ],
+        "execute": [
+          "issue.description.write"
+        ],
+        "after": [
+          "issue.read"
+        ]
+      }
+    },
+    {
+      "id": "hierarchy.read",
+      "native_semantic": "linear.issue-parent-and-children",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "destination.scope"
+        ],
+        "execute": [
+          "issue.parent.read",
+          "issue.children.read"
+        ],
+        "after": []
+      }
+    },
+    {
+      "id": "hierarchy.change",
+      "native_semantic": "linear.issue-parent-and-children",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.parent.read",
+          "issue.children.read"
+        ],
+        "execute": [
+          "issue.parent.write"
+        ],
+        "after": [
+          "issue.parent.read",
+          "issue.children.read"
+        ]
+      }
+    },
+    {
+      "id": "dependency.read",
+      "native_semantic": "linear.issue-relations",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "destination.scope"
+        ],
+        "execute": [
+          "issue.relation.read"
+        ],
+        "after": []
+      }
+    },
+    {
+      "id": "dependency.change",
+      "native_semantic": "linear.issue-relations",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.relation.read"
+        ],
+        "execute": [
+          "issue.relation.write"
+        ],
+        "after": [
+          "issue.relation.read"
+        ]
+      }
+    },
+    {
+      "id": "status.read",
+      "native_semantic": "linear.issue-state",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "destination.scope"
+        ],
+        "execute": [
+          "issue.state.read",
+          "workflow.state.list"
+        ],
+        "after": []
+      }
+    },
+    {
+      "id": "status.transition",
+      "native_semantic": "linear.issue-state",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.state.read",
+          "workflow.state.list"
+        ],
+        "execute": [
+          "issue.state.write"
+        ],
+        "after": [
+          "issue.state.read"
+        ]
+      }
+    },
+    {
+      "id": "comment.list",
+      "native_semantic": "linear.issue-comments",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.read"
+        ],
+        "execute": [
+          "issue.comment.read"
+        ],
+        "after": []
+      }
+    },
+    {
+      "id": "comment.append",
+      "native_semantic": "linear.issue-comment",
+      "availability": "runtime",
+      "maximum_fidelity": "exact",
+      "requires": {
+        "before": [
+          "issue.read",
+          "issue.comment.read"
+        ],
+        "execute": [
+          "issue.comment.write"
+        ],
+        "after": [
+          "issue.read",
+          "issue.comment.read"
+        ]
+      }
+    }
+  ]
+}

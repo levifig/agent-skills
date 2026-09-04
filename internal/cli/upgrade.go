@@ -213,6 +213,12 @@ func installedUpgradeTargets(tools []detectedInstallTool) []string {
 // cost the others their refresh, so the failures are collected rather than
 // raised, and the caller decides the exit code once.
 func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, targets []string, tools []detectedInstallTool, loafRoot string, distRoot string, version string, projectRoot string) ([]string, error) {
+	managedContentLock, err := acquireHarnessReconcileLock(managedContentLockDir(installLayoutHome(projectRoot)), managedContentLockWait)
+	if err != nil {
+		return targets, err
+	}
+	defer managedContentLock.release()
+
 	if len(targets) == 0 {
 		fmt.Fprintf(out, "  %s\n", ansiGray("No installed targets to upgrade"))
 	} else {
@@ -261,7 +267,8 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 	var skillConflicts *skillSyncConflictsError
 	hardSkillsErr := skillsErr
 	if errors.As(skillsErr, &skillConflicts) {
-		hardSkillsErr = nil
+		fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
+		return targets, skillConflicts
 	}
 	skillsErrReported := false
 	for _, opts := range upgradeOptions {
@@ -272,10 +279,6 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 			}
 			failed = append(failed, opts.Target)
 			continue
-		}
-		if skillConflicts != nil && !skillsErrReported {
-			fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
-			skillsErrReported = true
 		}
 		var hookActions []hookAction
 		opts.HookActions = func(actions []hookAction) { hookActions = append(hookActions, actions...) }
@@ -289,9 +292,6 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 		writeHookActionLines(out, hookActions)
 	}
 	fmt.Fprintln(out)
-	if skillConflicts != nil {
-		return failed, skillConflicts
-	}
 	return failed, nil
 }
 
