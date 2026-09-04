@@ -42,6 +42,71 @@ type harnessDriftReading struct {
 	state     harnessDriftState
 }
 
+type harnessPlanDiagnosis struct {
+	details   []string
+	changes   int
+	conflicts int
+}
+
+// diagnoseHarnessPlan consumes the same target and skill plan that powers
+// upgrade --dry-run. It classifies only harness content: project files,
+// deprecations, and MCP recommendations remain owned by their existing doctor
+// checks and maintenance surfaces.
+func diagnoseHarnessPlan(ctx doctorContext) (harnessPlanDiagnosis, error) {
+	tools := detectInstallTools()
+	selectedTargets := installedUpgradeTargets(tools)
+	options := installOptions{upgrade: true, dryRun: true, command: upgradeCommandName}
+	runner := Runner{WorkingDir: ctx.projectRoot, StateHome: ctx.stateHome}
+	targets, skills, _, err := runner.buildHarnessDistributionPlan(options, ctx.cliVersion, filepath.Join(ctx.distributionRoot, "dist"), ctx.projectRoot, tools, selectedTargets)
+	if err != nil {
+		return harnessPlanDiagnosis{}, err
+	}
+
+	diagnosis := harnessPlanDiagnosis{details: []string{}}
+	for _, target := range targets {
+		name := installDisplayName(target.Target)
+		if target.Note != "" {
+			diagnosis.conflicts++
+			diagnosis.details = append(diagnosis.details, fmt.Sprintf("%s planner: blocked - %s", name, target.Note))
+		}
+		for _, decision := range target.Artifacts {
+			diagnosis.addDecision(name, decision)
+		}
+	}
+	for _, decision := range skills {
+		diagnosis.addDecision("Managed skills", decision)
+	}
+	return diagnosis, nil
+}
+
+func (diagnosis *harnessPlanDiagnosis) addDecision(scope string, decision artifactPlanDecision) {
+	if !harnessPlanDecisionNeedsAttention(decision.Action) {
+		return
+	}
+	if decision.Action == planActionConflict {
+		diagnosis.conflicts++
+	} else {
+		diagnosis.changes++
+	}
+	detail := fmt.Sprintf("%s planner: %s %s", scope, decision.Action, decision.ID)
+	if decision.Destination != "" {
+		detail += " at " + decision.Destination
+	}
+	if decision.Detail != "" {
+		detail += " - " + decision.Detail
+	}
+	diagnosis.details = append(diagnosis.details, detail)
+}
+
+func harnessPlanDecisionNeedsAttention(action string) bool {
+	switch action {
+	case planActionPreserve, planActionNone, "already-correct", "skipped":
+		return false
+	default:
+		return action != ""
+	}
+}
+
 // harnessDriftConfigDir maps one harness identity to the config directory its
 // `.loaf-version` marker lives in, through the same table install writes the
 // marker with.

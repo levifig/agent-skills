@@ -144,7 +144,6 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	if err != nil {
 		return installDryRunPlan{}, err
 	}
-
 	// Deprecation cleanup is always analyzed with allowDestructive=false, which
 	// is guaranteed non-mutating; the destructive branches only surface as
 	// "confirmation-required". Consent for destructive deprecation cleanup is
@@ -156,77 +155,12 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 		return installDryRunPlan{}, err
 	}
 	plan.Deprecations = deprecations
-
-	toolByKey := installToolsByKey(tools)
-	defaults, layoutHome := resolveInstallLayout(projectRoot)
-	// A plan reads hook enablement and never creates it: a dry run that brought
-	// a state database into existence would be a write, and the plan promises
-	// none.
-	hookState, releaseHookState := r.hookStateForPlan(projectRoot)
-	defer releaseHookState()
-	buildNeeded := false
-	var plannedOptions []targetInstallOptions
-	for _, target := range selectedTargets {
-		distDir := filepath.Join(distRoot, target)
-		configDir := defaults[target]
-		if tool, ok := toolByKey[target]; ok && tool.configDir != "" {
-			configDir = tool.configDir
-		}
-		targetPlan := targetDistributionPlan{
-			Target:    target,
-			ConfigDir: configDir,
-			Installed: containsInstallToolInstalled(tools, target),
-			Artifacts: []artifactPlanDecision{},
-		}
-		if !dirExistsForInstall(distDir) {
-			targetPlan.Note = "no build output found; run loaf build first"
-			buildNeeded = true
-			plan.Targets = append(plan.Targets, targetPlan)
-			continue
-		}
-		installOpts := targetInstallOptions{
-			Target:             target,
-			DistDir:            distDir,
-			ConfigDir:          configDir,
-			Upgrade:            options.upgrade,
-			CodexBasicCommands: options.codexBasicCommands,
-			Version:            version,
-			HomeDir:            layoutHome,
-			CodexHome:          resolveInstallCodexHome(configDir),
-			ProjectRoot:        projectRoot,
-			HookState:          hookState,
-		}
-		plannedOptions = append(plannedOptions, installOpts)
-		decisions, err := planTargetDistribution(installOpts)
-		if err != nil {
-			return installDryRunPlan{}, err
-		}
-		targetPlan.Artifacts = decisions
-		for _, decision := range decisions {
-			if decision.Action == planActionConflict {
-				targetPlan.Blocked = true
-			}
-		}
-		plan.Targets = append(plan.Targets, targetPlan)
-	}
-	sort.Slice(plan.Targets, func(i, j int) bool { return plan.Targets[i].Target < plan.Targets[j].Target })
-
-	// A managed-skill conflict blocks the whole shared-content cohort. Apply
-	// leaves target adapters and markers stale so a later reconcile can retry.
-	skills, err := planCanonicalManagedSkills(plannedOptions)
+	targets, skills, buildNeeded, err := r.buildHarnessDistributionPlan(options, version, distRoot, projectRoot, tools, selectedTargets)
 	if err != nil {
 		return installDryRunPlan{}, err
 	}
+	plan.Targets = targets
 	plan.Skills = skills
-	for _, skill := range skills {
-		if skill.Action != planActionConflict {
-			continue
-		}
-		for i := range plan.Targets {
-			plan.Targets[i].Blocked = true
-		}
-		break
-	}
 
 	// Project files mirror enforceInstallProjectFiles: symlinks first, then the
 	// managed fenced section for every target that carries a project file, then
@@ -257,6 +191,86 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	plan.ConsentRequired = installPlanConsentRequired(plan)
 	plan.FollowUpCommands = installPlanFollowUpCommands(options, plan, buildNeeded)
 	return plan, nil
+}
+
+// buildHarnessDistributionPlan is the shared read-only harness planner used by
+// upgrade --dry-run and doctor. It owns the desired/recorded/live comparison
+// for target adapters and managed skills so diagnostics cannot drift into a
+// second manifest walker.
+func (r Runner) buildHarnessDistributionPlan(options installOptions, version string, distRoot string, projectRoot string, tools []detectedInstallTool, selectedTargets []string) ([]targetDistributionPlan, []artifactPlanDecision, bool, error) {
+	toolByKey := installToolsByKey(tools)
+	defaults, layoutHome := resolveInstallLayout(projectRoot)
+	// A plan reads hook enablement and never creates it: a dry run that brought
+	// a state database into existence would be a write, and the plan promises
+	// none.
+	hookState, releaseHookState := r.hookStateForPlan(projectRoot)
+	defer releaseHookState()
+
+	targets := make([]targetDistributionPlan, 0, len(selectedTargets))
+	plannedOptions := make([]targetInstallOptions, 0, len(selectedTargets))
+	buildNeeded := false
+	for _, target := range selectedTargets {
+		distDir := filepath.Join(distRoot, target)
+		configDir := defaults[target]
+		if tool, ok := toolByKey[target]; ok && tool.configDir != "" {
+			configDir = tool.configDir
+		}
+		targetPlan := targetDistributionPlan{
+			Target:    target,
+			ConfigDir: configDir,
+			Installed: containsInstallToolInstalled(tools, target),
+			Artifacts: []artifactPlanDecision{},
+		}
+		if !dirExistsForInstall(distDir) {
+			targetPlan.Note = "no build output found; run loaf build first"
+			buildNeeded = true
+			targets = append(targets, targetPlan)
+			continue
+		}
+		installOpts := targetInstallOptions{
+			Target:             target,
+			DistDir:            distDir,
+			ConfigDir:          configDir,
+			Upgrade:            options.upgrade,
+			CodexBasicCommands: options.codexBasicCommands,
+			Version:            version,
+			HomeDir:            layoutHome,
+			CodexHome:          resolveInstallCodexHome(configDir),
+			ProjectRoot:        projectRoot,
+			HookState:          hookState,
+		}
+		plannedOptions = append(plannedOptions, installOpts)
+		decisions, err := planTargetDistribution(installOpts)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		targetPlan.Artifacts = decisions
+		for _, decision := range decisions {
+			if decision.Action == planActionConflict {
+				targetPlan.Blocked = true
+			}
+		}
+		targets = append(targets, targetPlan)
+	}
+	sort.Slice(targets, func(i, j int) bool { return targets[i].Target < targets[j].Target })
+
+	// A managed-skill conflict blocks the whole shared-content cohort. Apply
+	// leaves target adapters and markers stale so a later reconcile can retry.
+	skills, err := planCanonicalManagedSkills(plannedOptions)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	for _, skill := range skills {
+		if skill.Action != planActionConflict {
+			continue
+		}
+		for i := range targets {
+			targets[i].Blocked = true
+		}
+		break
+	}
+
+	return targets, skills, buildNeeded, nil
 }
 
 func containsInstallToolInstalled(tools []detectedInstallTool, target string) bool {

@@ -47,6 +47,7 @@ One operator's durable memory â€” journal, wraps, handoffs, refs, verification â
 
 ### Fixed
 
+- `loaf doctor` now reuses the upgrade dry-run planner to detect same-version byte, mode, ownership, and integrity drift in installed harness adapters; healthy preserve decisions stay quiet, repairable changes warn, and conflicts fail diagnosis with an actionable upgrade path ([#218](https://github.com/levifig/loaf/issues/218)).
 - `loaf upgrade` leaves vendor skills outside Loaf's ownership silent and untouched instead of reporting a recurring externalized-skill migration notice ([#220](https://github.com/levifig/loaf/issues/220)).
 - `loaf release cut` preserves operator-curated `[Unreleased]` changelog prose as the release body instead of replacing it with auto-drafted issue notes; drafted notes are used only when unreleased is empty or stub-only.
 - Sync refresh rebuilds ref, worktree, and verification projections from pulled facts so a receiving replica shows CLI-facing mappings, start bindings, and receipts ([#204](https://github.com/levifig/loaf/pull/204)).

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,6 +80,139 @@ func TestHarnessContentDriftDoctorReportsEachMarkerState(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHarnessContentDriftDoctorUsesUpgradePlanForSameVersionAdapterDrift(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		mutate func(t *testing.T, path string)
+	}{
+		{
+			name: "byte drift",
+			mutate: func(t *testing.T, path string) {
+				writeInstallFile(t, path, "// modified after install\n")
+			},
+		},
+		{
+			name: "mode drift",
+			mutate: func(t *testing.T, path string) {
+				if err := os.Chmod(path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			home, distributionRoot, pluginPath := harnessDriftAmpPlannerFixture(t)
+			testCase.mutate(t, pluginPath)
+			beforeBody := readFileBytes(t, pluginPath)
+			beforeMode := fileModeForTest(t, pluginPath)
+
+			result := checkHarnessContentDrift().Run(doctorContext{
+				projectRoot:      home,
+				distributionRoot: distributionRoot,
+				cliVersion:       harnessDriftBinaryFixtureVersion,
+				stateHome:        t.TempDir(),
+			})
+
+			if got := readFileBytes(t, pluginPath); !bytes.Equal(got, beforeBody) {
+				t.Fatal("harness-content-drift diagnosis changed installed adapter bytes")
+			}
+			if got := fileModeForTest(t, pluginPath); got != beforeMode {
+				t.Fatalf("harness-content-drift diagnosis changed installed adapter mode from %v to %v", beforeMode, got)
+			}
+			if result.Status != doctorFail {
+				t.Fatalf("harness-content-drift result = %#v, want fail for planner conflict", result)
+			}
+			for _, want := range []string{"Amp", "plugin:loaf", "conflict", "loaf upgrade --dry-run", "plugins/loaf.ts", "managed target artifact was modified"} {
+				if !strings.Contains(result.Detail, want) {
+					t.Fatalf("harness-content-drift detail = %q, want containing %q", result.Detail, want)
+				}
+			}
+		})
+	}
+}
+
+func TestHarnessContentDriftDoctorKeepsSameVersionExactAdapterQuiet(t *testing.T) {
+	home, distributionRoot, _ := harnessDriftAmpPlannerFixture(t)
+	result := checkHarnessContentDrift().Run(doctorContext{
+		projectRoot:      home,
+		distributionRoot: distributionRoot,
+		cliVersion:       harnessDriftBinaryFixtureVersion,
+		stateHome:        t.TempDir(),
+	})
+
+	if result.Status != doctorPass {
+		t.Fatalf("harness-content-drift result = %#v, want pass for exact adapter", result)
+	}
+	if strings.Contains(result.Detail, "planner:") {
+		t.Fatalf("healthy preserve decisions must stay quiet, detail = %q", result.Detail)
+	}
+}
+
+func TestHarnessContentDriftPlannerFindingMatchesHumanAndJSONDoctor(t *testing.T) {
+	home, distributionRoot, pluginPath := harnessDriftAmpPlannerFixture(t)
+	writeInstallFile(t, pluginPath, "// modified after install\n")
+	projectRoot := realpath(t, t.TempDir())
+
+	for _, testCase := range []struct {
+		name string
+		args []string
+	}{
+		{name: "human", args: []string{"doctor"}},
+		{name: "json", args: []string{"doctor", "--json"}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var output bytes.Buffer
+			err := Runner{
+				Stdout:     &output,
+				WorkingDir: projectRoot,
+				StateHome:  t.TempDir(),
+				Executable: distributionFixtureExecutable(distributionRoot),
+			}.Run(testCase.args)
+			if err == nil {
+				t.Fatal("doctor error = nil, want planner conflict to fail diagnosis")
+			}
+			for _, want := range []string{"harness-content-drift", "Amp", "plugin:loaf", "conflict", "loaf upgrade --dry-run"} {
+				if !strings.Contains(stripANSI(output.String()), want) {
+					t.Fatalf("doctor output = %q, want containing %q", output.String(), want)
+				}
+			}
+		})
+	}
+	_ = home
+}
+
+func harnessDriftAmpPlannerFixture(t *testing.T) (home string, distributionRoot string, pluginPath string) {
+	t.Helper()
+	home = harnessDriftHome(t)
+	distributionRoot = harnessDriftDistribution(t, harnessDriftBinaryFixtureVersion)
+	ampDist := filepath.Join(distributionRoot, "dist", "amp")
+	desiredPlugin := "export default function loaf() {}\n"
+	writeInstallFile(t, filepath.Join(ampDist, "plugins", "loaf.ts"), desiredPlugin)
+	writeTestTargetAdapterManifest(t, ampDist, "amp", []map[string]string{{
+		"id":          "plugin:loaf",
+		"kind":        "plugin",
+		"source_path": "plugins/loaf.ts",
+		"destination": "plugins/loaf.ts",
+		"sha256":      sha256Hex(desiredPlugin),
+	}})
+
+	ampConfig := filepath.Join(home, ".config", "amp")
+	harnessDriftInstalledHarness(t, ampConfig, harnessDriftBinaryFixtureVersion)
+	writeInstallFile(t, filepath.Join(ampConfig, targetInstallManifestFile), string(readFileBytes(t, filepath.Join(ampDist, targetBuildManifestFile))))
+	pluginPath = filepath.Join(ampConfig, "plugins", "loaf.ts")
+	writeInstallFile(t, pluginPath, desiredPlugin)
+	return home, distributionRoot, pluginPath
+}
+
+func fileModeForTest(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
 }
 
 func TestHarnessContentDriftDoctorSkipsWithoutSubject(t *testing.T) {
