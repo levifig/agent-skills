@@ -326,6 +326,7 @@ declare module 'child_process' {
     env?: Record<string, string | undefined>;
     encoding?: string;
     timeout?: number;
+    maxBuffer?: number;
   }
 
   export interface WritableStreamLike {
@@ -349,12 +350,34 @@ declare module 'child_process' {
 }
 
 declare module 'util' {
-  export function promisify(fn: (...args: any[]) => any): (...args: any[]) => Promise<any>;
+  export function promisify(fn: typeof import('child_process').execFile):
+    (file: string, args: string[], options?: import('child_process').ExecFileOptions) => Promise<{ stdout: string; stderr: string }>;
 }
 
 declare module 'path' {
   export function dirname(path: string): string;
   export function join(...paths: string[]): string;
+  export function isAbsolute(path: string): boolean;
+  export function relative(from: string, to: string): string;
+  export function resolve(...paths: string[]): string;
+  export const sep: string;
+}
+
+declare module 'node:child_process' { export * from 'child_process'; }
+declare module 'node:util' { export * from 'util'; }
+declare module 'node:path' { export * from 'path'; }
+
+declare module 'node:crypto' {
+  export interface Hash {
+    update(data: string): Hash;
+    digest(encoding: 'hex'): string;
+  }
+  export function createHash(algorithm: string): Hash;
+}
+
+declare module 'node:fs/promises' {
+  export function realpath(path: string): Promise<string>;
+  export function lstat(path: string): Promise<{ isSymbolicLink(): boolean }>;
 }
 
 declare module 'url' {
@@ -362,6 +385,65 @@ declare module 'url' {
 }
 
 declare module '@ampcode/plugin' {
+  export interface URI { readonly scheme: string; readonly path: string; }
+  export interface Subscription { unsubscribe(): void; }
+  export type BuiltinAgentMode = 'low' | 'medium' | 'high' | 'ultra' | 'smart' | 'deep' | 'rush';
+  export type ThreadState = 'idle' | 'running' | 'awaiting-approval' | 'error';
+  export interface Observable<T> {
+    subscribe(onNext: (value: T) => void): Subscription;
+  }
+  export interface CreateAgentConfig {
+    extends?: BuiltinAgentMode;
+    model?: string;
+    instructions?: string;
+    tools?: readonly string[] | 'all' | { include?: readonly string[] | 'all'; add?: readonly string[]; exclude?: readonly string[] };
+  }
+  export type AgentDefinition =
+    | { readonly kind: 'builtin-agent'; mode: BuiltinAgentMode }
+    | (CreateAgentConfig & { readonly kind: 'agent-definition'; model: string; instructions: string });
+  export interface Agent {
+    readonly definition: AgentDefinition;
+    createThread(options?: {
+      parentThreadID?: string;
+      executor?: 'local' | 'orb' | { type: 'runner'; id: string };
+      visibility?: 'private' | 'workspace';
+    }): Promise<PluginThread>;
+  }
+  export interface ThreadAssistantMessage {
+    role: 'assistant';
+    id: string | number;
+    content: (
+      | { type: 'text'; text: string }
+      | { type: 'thinking'; thinking: string }
+      | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+    )[];
+  }
+  export interface PluginThread {
+    id: string;
+    agent(): Promise<Agent>;
+    readonly state: Observable<ThreadState> & { get(): Promise<ThreadState> };
+    waitForResponse(options?: { timeoutMs?: number }): Promise<ThreadAssistantMessage>;
+    appendUserMessage(message: { type: 'user-message'; content: string }, options?: { steer?: boolean }): Promise<void>;
+    cancel(): Promise<void>;
+  }
+  export interface PluginToolContext { thread: PluginThread; }
+  export interface PluginToolDefinition {
+    name: string;
+    description: string;
+    inputSchema: {
+      type: 'object';
+      properties?: Record<string, object>;
+      required?: string[];
+      [key: string]: unknown;
+    };
+    execute(input: Record<string, unknown>, ctx: PluginToolContext): Promise<string | void>;
+  }
+  export interface AgentStartEvent {
+    thread: { id: string };
+    message: string;
+    id: string | number;
+  }
+  export interface AgentStartResult { message?: { content: string; display?: boolean }; }
   export interface ToolCallEvent {
     toolUseID: string;
     tool: string;
@@ -385,12 +467,20 @@ declare module '@ampcode/plugin' {
     | { action: 'reject-and-continue'; message: string };
 
   export interface PluginAPI {
+    system: {
+      readonly workspaceRoot: URI | null;
+      readonly executor: { readonly kind: 'local' | 'remote' | 'unknown' };
+    };
     helpers: {
       shellCommandFromToolCall(event: ToolCallEvent): ShellCommand | null;
+      filesModifiedByToolCall(event: Pick<ToolCallEvent, 'toolUseID' | 'tool' | 'input'>): URI[] | null;
+      filePathFromURI(uri: URI): string;
     };
-    on(event: 'agent.start', handler: () => void | Promise<void>): void;
-    on(event: 'tool.call', handler: (event: ToolCallEvent) => ToolCallResult | Promise<ToolCallResult>): void;
-    on(event: 'tool.result', handler: (event: ToolResultEvent) => void | Promise<void>): void;
+    createAgent(config: CreateAgentConfig): Agent;
+    registerTool(definition: PluginToolDefinition): Subscription;
+    on(event: 'agent.start', handler: (event: AgentStartEvent) => AgentStartResult | Promise<AgentStartResult>): Subscription;
+    on(event: 'tool.call', handler: (event: ToolCallEvent) => ToolCallResult | Promise<ToolCallResult>): Subscription;
+    on(event: 'tool.result', handler: (event: ToolResultEvent) => void | Promise<void>): Subscription;
   }
 }
 `

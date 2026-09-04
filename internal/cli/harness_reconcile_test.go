@@ -34,6 +34,7 @@ func TestHarnessReconcileUpgradesProjectBoundAmpContentFromRunningDistribution(t
 		t.Fatal(err)
 	}
 	writeInstallFile(t, filepath.Join(configDir, "plugins", "loaf.ts"), "plugin 0.3.1\n")
+	writeInstallFile(t, filepath.Join(configDir, "plugins", "user.ts"), "user-owned plugin\n")
 	oldMode := uint32(0o644)
 	oldManifest := targetAdapterManifest{
 		Version: 1, Target: "amp", PackageVersion: "0.3.1", CapabilityContractVersion: 3,
@@ -66,6 +67,7 @@ func TestHarnessReconcileUpgradesProjectBoundAmpContentFromRunningDistribution(t
 	}
 	assertInstallFile(t, filepath.Join(configDir, loafInstallMarkerFile), "0.5.0\n")
 	assertInstallFile(t, filepath.Join(configDir, "plugins", "loaf.ts"), "plugin 0.5.0\n")
+	assertInstallFile(t, filepath.Join(configDir, "plugins", "user.ts"), "user-owned plugin\n")
 	assertInstallFile(t, filepath.Join(sharedSkills, "linear", "SKILL.md"), "linear 0.5.0\n")
 	assertInstallFile(t, filepath.Join(root, "AGENTS.md"), "user-owned project instructions\n")
 	if !installFileExists(filepath.Join(root, ".agents", "skills", "linear", "SKILL.md")) {
@@ -86,6 +88,7 @@ func TestHarnessReconcileUpgradesProjectBoundAmpContentFromRunningDistribution(t
 	if err := json.Unmarshal(stdout.Bytes(), &receipt); err != nil || receipt.Outcome != "current" {
 		t.Fatalf("second receipt = %#v, err=%v", receipt, err)
 	}
+	assertInstallFile(t, filepath.Join(configDir, "plugins", "user.ts"), "user-owned plugin\n")
 }
 
 func TestHarnessReconcileNeverDowngradesOrClaimsUnknownContent(t *testing.T) {
