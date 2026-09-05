@@ -22,19 +22,6 @@ var (
 	buildDate   string
 )
 
-// Dev identity linked by build-go.mjs via
-//
-//	-ldflags "-X main.devCommit=<sha> -X main.devModified=<true|false>"
-//
-// from `git rev-parse HEAD` and `git status --porcelain`. It duplicates the
-// -buildvcs stamp for toolchains that do not write one inside a linked
-// worktree (observed with go1.26.6; go1.27.1 does). The stamp wins when
-// present; these fill in when it is absent.
-var (
-	devCommit   string
-	devModified string
-)
-
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		var silent interface {
@@ -54,7 +41,7 @@ func run(args []string) error {
 }
 
 func newRunner(stdout, stderr io.Writer) cli.Runner {
-	identityCommit, identityModified := devBuildIdentity(readBuildInfo(), buildCommit, buildDate, devCommit, devModified)
+	identityCommit, identityModified := devBuildIdentity(readBuildInfo(), buildCommit, buildDate)
 	return cli.Runner{
 		Stdout:           stdout,
 		Stderr:           stderr,
@@ -75,37 +62,30 @@ func readBuildInfo() *debug.BuildInfo {
 	return info
 }
 
-// devBuildIdentity reads the source commit and working-tree state of a dev
-// build. The primary source is the stamp `go build -buildvcs=true` writes
-// (build-go.mjs passes the flag); when the toolchain wrote none — a linked
-// worktree under go1.26.6, or no Git checkout at all — the values build-go.mjs
-// linked from git stand in. Either way the identity is part of the compiled
-// bytes, so it cannot drift from them the way a commit recorded in a separate
-// file could. Release builds carry explicit metadata and never report dev
-// identity. Without any commit, no provenance is invented.
-func devBuildIdentity(info *debug.BuildInfo, releaseCommit, releaseDate, linkedCommit, linkedModified string) (commit string, modified bool) {
-	if strings.TrimSpace(releaseCommit) != "" || strings.TrimSpace(releaseDate) != "" {
+// devBuildIdentity reads the source commit and working-tree state that
+// `go build -buildvcs=true` stamps into the binary (build-go.mjs passes the
+// flag; go.mod pins a toolchain that stamps linked worktrees). The identity is
+// mechanical: it describes the bytes that were compiled, so it cannot drift
+// from them the way a commit recorded in a separate file could. Release builds
+// carry explicit metadata and never report dev identity. A binary compiled
+// without VCS information, or with a malformed stamp, reports no provenance
+// rather than inventing one.
+func devBuildIdentity(info *debug.BuildInfo, releaseCommit, releaseDate string) (commit string, modified bool) {
+	if strings.TrimSpace(releaseCommit) != "" || strings.TrimSpace(releaseDate) != "" || info == nil {
 		return "", false
 	}
-	if info != nil {
-		for _, setting := range info.Settings {
-			switch setting.Key {
-			case "vcs.revision":
-				commit = strings.TrimSpace(setting.Value)
-			case "vcs.modified":
-				modified = setting.Value == "true"
-			}
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			commit = strings.TrimSpace(setting.Value)
+		case "vcs.modified":
+			modified = setting.Value == "true"
 		}
 	}
-	if isCommitHash(commit) {
-		return commit, modified
+	if !isCommitHash(commit) {
+		return "", false
 	}
-	// A missing or malformed stamp never shadows the linked identity: both
-	// describe the same tree at the same instant, so the valid one is the truth.
-	if linked := strings.TrimSpace(linkedCommit); isCommitHash(linked) {
-		return linked, strings.TrimSpace(linkedModified) == "true"
-	}
-	return "", false
+	return commit, modified
 }
 
 // isCommitHash accepts an abbreviated or full lowercase Git object name. The

@@ -47,7 +47,7 @@ func TestDevBuildIdentityReadsTheVCSStamp(t *testing.T) {
 		{Key: "vcs.revision", Value: "abc1234def5678"},
 		{Key: "vcs.modified", Value: "true"},
 	}}
-	if commit, modified := devBuildIdentity(stamped, "", "", "", ""); commit != "abc1234def5678" || !modified {
+	if commit, modified := devBuildIdentity(stamped, "", ""); commit != "abc1234def5678" || !modified {
 		t.Fatalf("devBuildIdentity(stamped) = (%q, %t), want (abc1234def5678, true)", commit, modified)
 	}
 
@@ -55,58 +55,38 @@ func TestDevBuildIdentityReadsTheVCSStamp(t *testing.T) {
 		{Key: "vcs.revision", Value: "abc1234def5678"},
 		{Key: "vcs.modified", Value: "false"},
 	}}
-	if commit, modified := devBuildIdentity(clean, "", "", "", ""); commit != "abc1234def5678" || modified {
+	if commit, modified := devBuildIdentity(clean, "", ""); commit != "abc1234def5678" || modified {
 		t.Fatalf("devBuildIdentity(clean) = (%q, %t), want (abc1234def5678, false)", commit, modified)
 	}
 
 	// Release metadata wins: a release binary keeps its VCS stamp but never
 	// reports dev identity.
-	if commit, modified := devBuildIdentity(stamped, "release1", "", "fedcba9876543", "true"); commit != "" || modified {
+	if commit, modified := devBuildIdentity(stamped, "release1", ""); commit != "" || modified {
 		t.Fatalf("devBuildIdentity(release commit) = (%q, %t), want empty", commit, modified)
 	}
-	if commit, modified := devBuildIdentity(stamped, "", "2026-06-27T12:00:00Z", "", ""); commit != "" || modified {
+	if commit, modified := devBuildIdentity(stamped, "", "2026-06-27T12:00:00Z"); commit != "" || modified {
 		t.Fatalf("devBuildIdentity(release date) = (%q, %t), want empty", commit, modified)
 	}
 
 	// No revision — built outside Git or with -buildvcs=false — reports no
 	// provenance rather than inventing one, even if a modified flag is present.
 	unstamped := &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.modified", Value: "true"}}}
-	if commit, modified := devBuildIdentity(unstamped, "", "", "", ""); commit != "" || modified {
+	if commit, modified := devBuildIdentity(unstamped, "", ""); commit != "" || modified {
 		t.Fatalf("devBuildIdentity(unstamped) = (%q, %t), want empty", commit, modified)
 	}
-	if commit, modified := devBuildIdentity(nil, "", "", "", ""); commit != "" || modified {
+	if commit, modified := devBuildIdentity(nil, "", ""); commit != "" || modified {
 		t.Fatalf("devBuildIdentity(nil) = (%q, %t), want empty", commit, modified)
 	}
 
-	// Without a toolchain stamp the values build-go.mjs linked from git stand
-	// in — the path a linked worktree takes under go1.26.6.
-	if commit, modified := devBuildIdentity(unstamped, "", "", "fedcba9876543", "true"); commit != "fedcba9876543" || !modified {
-		t.Fatalf("devBuildIdentity(linked dirty) = (%q, %t), want (fedcba9876543, true)", commit, modified)
-	}
-	if commit, modified := devBuildIdentity(nil, "", "", "fedcba9876543", "false"); commit != "fedcba9876543" || modified {
-		t.Fatalf("devBuildIdentity(linked clean) = (%q, %t), want (fedcba9876543, false)", commit, modified)
-	}
-	// When both exist the toolchain stamp is authoritative.
-	if commit, modified := devBuildIdentity(clean, "", "", "fedcba9876543", "true"); commit != "abc1234def5678" || modified {
-		t.Fatalf("devBuildIdentity(stamp + linked) = (%q, %t), want the stamp (abc1234def5678, false)", commit, modified)
-	}
-
-	// A malformed stamp is treated as absent: it never shadows a valid linked
-	// identity, and on its own it yields no provenance rather than garbage.
+	// A malformed stamp yields no provenance instead of an unrenderable value.
 	for _, malformed := range []string{"not-a-sha", "abc12", "ABC1234DEF5678", "abc1234def5678abc1234def5678abc1234def5678x"} {
 		stamped := &debug.BuildInfo{Settings: []debug.BuildSetting{
 			{Key: "vcs.revision", Value: malformed},
 			{Key: "vcs.modified", Value: "false"},
 		}}
-		if commit, modified := devBuildIdentity(stamped, "", "", "fedcba9876543", "true"); commit != "fedcba9876543" || !modified {
-			t.Fatalf("devBuildIdentity(malformed stamp %q + linked) = (%q, %t), want the linked identity (fedcba9876543, true)", malformed, commit, modified)
+		if commit, modified := devBuildIdentity(stamped, "", ""); commit != "" || modified {
+			t.Fatalf("devBuildIdentity(malformed stamp %q) = (%q, %t), want empty", malformed, commit, modified)
 		}
-		if commit, modified := devBuildIdentity(stamped, "", "", "", ""); commit != "" || modified {
-			t.Fatalf("devBuildIdentity(malformed stamp %q alone) = (%q, %t), want empty", malformed, commit, modified)
-		}
-	}
-	if commit, modified := devBuildIdentity(nil, "", "", "not-a-sha", "true"); commit != "" || modified {
-		t.Fatalf("devBuildIdentity(malformed linked) = (%q, %t), want empty", commit, modified)
 	}
 }
 

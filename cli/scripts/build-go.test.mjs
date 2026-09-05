@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -129,112 +128,6 @@ test("activation failure does not fail a successful native build", (t) => {
   assert.ok(warnings.some((message) => /failed to link latest dev build/.test(message)));
 });
 
-test("dev identity from git is linked into every compile", (t) => {
-  const repo = gitRepo(t);
-  const fixture = nativeFixture(t, { root: repo });
-  // Generated output is ignored, as in the real repository, so a build's own
-  // writes to bin/ never mark the next build dirty.
-  writeFileSync(join(repo, ".gitignore"), "bin/\n");
-  writeFileSync(join(repo, "tracked.txt"), "clean\n");
-  git(repo, "add", "-A");
-  git(repo, "commit", "-m", "fixture");
-
-  // Returns the LOAF_DEV_MODIFIED flag the compile saw, after checking that the
-  // commit it saw is the current HEAD (which moves when a phase commits).
-  const identity = (label) => {
-    const head = git(repo, "rev-parse", "HEAD").stdout.trim();
-    const seen = [];
-    const result = runNativeBuild({
-      rootDir: fixture.root,
-      env: fixture.env,
-      refreshLink: () => ({ status: "skipped" }),
-      buildTarget: capturingTargets(seen),
-    });
-    assert.equal(result.status, 0, label);
-    assert.equal(seen.length, 2, label);
-    for (const env of seen) {
-      assert.equal(env.LOAF_DEV_COMMIT, head, label);
-    }
-    return seen[0].LOAF_DEV_MODIFIED;
-  };
-
-  assert.equal(identity("clean checkout"), "0");
-  assert.equal(identity("after a build wrote ignored bin/ output"), "0");
-
-  writeFileSync(join(repo, "untracked.txt"), "new\n");
-  assert.equal(identity("untracked file present"), "1");
-  git(repo, "add", "untracked.txt");
-  git(repo, "commit", "-m", "track it");
-  assert.equal(identity("untracked file committed"), "0");
-
-  writeFileSync(join(repo, "tracked.txt"), "modified\n");
-  assert.equal(identity("tracked file modified"), "1");
-});
-
-test("git status failure compiles without a dev identity and warns", (t) => {
-  const repo = gitRepo(t);
-  const fixture = nativeFixture(t, { root: repo });
-  git(repo, "add", "-A");
-  git(repo, "commit", "-m", "fixture");
-  const warnings = [];
-  const seen = [];
-  const result = runNativeBuild({
-    rootDir: fixture.root,
-    env: fixture.env,
-    spawnSync(command, args, options) {
-      if (command === "git" && args[0] === "status") {
-        return { status: 128, stdout: "", stderr: "fatal: simulated index lock\n" };
-      }
-      return spawnSync(command, args, options);
-    },
-    warn: (message) => warnings.push(message),
-    refreshLink: () => ({ status: "skipped" }),
-    buildTarget: capturingTargets(seen),
-  });
-
-  assert.equal(result.status, 0);
-  assert.equal(readFileSync(fixture.linux, "utf8"), "new-linux-x64");
-  assert.equal(seen[0].LOAF_DEV_COMMIT, undefined);
-  assert.equal(seen[0].LOAF_DEV_MODIFIED, undefined);
-  assert.ok(warnings.some((message) => /could not resolve a Git identity/.test(message)));
-});
-
-test("non-Git root compiles without a dev identity and warns", (t) => {
-  const fixture = nativeFixture(t);
-  const warnings = [];
-  const seen = [];
-  const result = runNativeBuild({
-    rootDir: fixture.root,
-    env: fixture.env,
-    warn: (message) => warnings.push(message),
-    refreshLink: () => ({ status: "skipped" }),
-    buildTarget: capturingTargets(seen),
-  });
-
-  assert.equal(result.status, 0);
-  assert.equal(readFileSync(fixture.linux, "utf8"), "new-linux-x64");
-  assert.equal(seen[0].LOAF_DEV_COMMIT, undefined);
-  assert.ok(warnings.some((message) => /could not resolve a Git identity/.test(message)));
-});
-
-test("release env never resolves a dev identity", (t) => {
-  const fixture = nativeFixture(t);
-  const seen = [];
-  const result = runNativeBuild({
-    rootDir: fixture.root,
-    env: { ...fixture.env, LOAF_BUILD_COMMIT: "abc1234" },
-    resolveDevIdentity: () => {
-      throw new Error("resolveDevIdentity must not run for a release build");
-    },
-    refreshLink: () => ({ status: "skipped" }),
-    buildTarget: capturingTargets(seen),
-  });
-
-  assert.equal(result.status, 0);
-  assert.equal(seen[0].LOAF_DEV_COMMIT, undefined);
-  assert.equal(seen[0].LOAF_BUILD_COMMIT, "abc1234");
-});
-
 function nativeFixture(t, options = {}) {
   const root = options.root || mkdtempSync(join(tmpdir(), "loaf-native-build-"));
   if (!options.root) {
@@ -268,31 +161,6 @@ function succeedingTargets() {
     writeFileSync(dest, dest.includes("win32") ? "new-win32-x64" : "new-linux-x64");
     return { status: 0 };
   };
-}
-
-function capturingTargets(seen) {
-  return (dest, _target, env) => {
-    seen.push(env);
-    mkdirSync(dirname(dest), { recursive: true });
-    writeFileSync(dest, dest.includes("win32") ? "new-win32-x64" : "new-linux-x64");
-    return { status: 0 };
-  };
-}
-
-function gitRepo(t) {
-  const root = mkdtempSync(join(tmpdir(), "loaf-git-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  git(root, "init", "-q");
-  git(root, "config", "user.email", "dev@example.com");
-  git(root, "config", "user.name", "Dev");
-  git(root, "config", "commit.gpgsign", "false");
-  return root;
-}
-
-function git(cwd, ...args) {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
-  assert.equal(result.status, 0, result.stderr);
-  return result;
 }
 
 function failingSecondTarget() {

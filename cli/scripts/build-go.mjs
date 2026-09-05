@@ -45,7 +45,6 @@ export function runNativeBuild(options = {}) {
   const warn = options.warn || console.warn;
   const platform = options.platform || process.platform;
   const refreshLink = options.refreshLink || refreshDevBuildLink;
-  const resolveDevIdentity = options.resolveDevIdentity || ((cwd, buildEnv) => defaultResolveDevIdentity(cwd, buildEnv, spawn));
   const buildTarget = options.buildTarget || ((dest, target, buildEnv) => defaultBuildTarget(dest, target, buildEnv, rootDir, spawn));
 
   const launcherSource = join(rootDir, "cli", "runtime", "loaf-launcher.cjs");
@@ -60,7 +59,6 @@ export function runNativeBuild(options = {}) {
   const targets = readBuildTargets(baseEnv, rootDir, spawn);
   const dryRun = baseEnv.LOAF_NATIVE_ARTIFACT_DRY_RUN === "1";
   const releaseBuild = isReleaseBuild(baseEnv);
-  const compileEnv = releaseBuild ? baseEnv : withDevIdentity(baseEnv, resolveDevIdentity(rootDir, baseEnv), { log, warn });
 
   fs.mkdirSync(dirname(launcherOutput), { recursive: true });
   if (dryRun) {
@@ -89,7 +87,7 @@ export function runNativeBuild(options = {}) {
 
       fs.mkdirSync(dirname(stagedOutput), { recursive: true });
       const result = buildTarget(stagedOutput, target, {
-        ...compileEnv,
+        ...baseEnv,
         GOOS: target.goos,
         GOARCH: target.goarch,
       });
@@ -123,8 +121,8 @@ export function runNativeBuild(options = {}) {
   }
 
   // The last successful non-release build owns the user-local launcher pointer
-  // (ADR-026). Provenance travels inside the binary via -buildvcs, so no
-  // separately recorded commit gates activation.
+  // (ADR-026). Provenance travels inside the binary via -buildvcs, so nothing
+  // else gates activation.
   if (platform !== "win32" && !releaseBuild && baseEnv.LOAF_DEV_LINK !== "0") {
     try {
       const result = refreshLink(launcherOutput);
@@ -145,41 +143,6 @@ function defaultBuildTarget(dest, target, buildEnv, rootDir, spawn) {
     env: buildEnv,
     stdio: "inherit",
   });
-}
-
-// withDevIdentity threads the resolved Git identity into the compile
-// environment so goLdflags links it. It complements -buildvcs, which the pinned
-// go1.26.6 toolchain does not apply inside a linked worktree; the runtime
-// prefers the toolchain stamp and reads these only when it is absent.
-function withDevIdentity(buildEnv, identity, { log, warn }) {
-  if (!identity) {
-    warn("WARN: could not resolve a Git identity for this dev build; the binary reports the package version only");
-    return buildEnv;
-  }
-  log(`✓ Dev identity: g${identity.commit.slice(0, 7)}${identity.modified ? ".dirty" : ""}`);
-  return {
-    ...buildEnv,
-    LOAF_DEV_COMMIT: identity.commit,
-    LOAF_DEV_MODIFIED: identity.modified ? "1" : "0",
-  };
-}
-
-// defaultResolveDevIdentity mirrors what `go build -buildvcs=true` records:
-// the checked-out commit and whether `git status --porcelain` reports anything.
-function defaultResolveDevIdentity(rootDir, buildEnv, spawn) {
-  const head = spawn("git", ["rev-parse", "HEAD"], { cwd: rootDir, env: buildEnv, encoding: "utf8" });
-  if (head.status !== 0) {
-    return null;
-  }
-  const commit = head.stdout.trim().toLowerCase();
-  if (!/^[0-9a-f]{7,40}$/.test(commit)) {
-    return null;
-  }
-  const status = spawn("git", ["status", "--porcelain"], { cwd: rootDir, env: buildEnv, encoding: "utf8" });
-  if (status.status !== 0) {
-    return null;
-  }
-  return { commit, modified: status.stdout.trim() !== "" };
 }
 
 function isReleaseBuild(buildEnv) {

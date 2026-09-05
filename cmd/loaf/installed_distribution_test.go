@@ -17,10 +17,6 @@ import (
 const (
 	installedTestVersion = "9.9.9-current"
 	staleTestVersion     = "1.1.1-stale"
-	// fixtureDevCommit is linked into the shared test binary the way
-	// build-go.mjs links a dev build's identity, with -buildvcs=false so the
-	// expectation does not depend on the toolchain or the tree's real state.
-	fixtureDevCommit = "abc1234def5678"
 )
 
 func TestInstalledDistributionVersionAuthorityFromStaleCheckout(t *testing.T) {
@@ -111,12 +107,51 @@ func TestInstalledDistributionCheckoutOwnBinaryReportsCheckoutVersion(t *testing
 	}
 	// A checkout's own binary is a dev build by definition, so it reports the
 	// dev identity built from its owning checkout's package version and the
-	// commit and tree state compiled into the binary, not the package version
-	// alone.
-	want := "loaf\x1b[0m 3.3.3-dev+g" + fixtureDevCommit[:7] + ".dirty (dev build)"
+	// commit and tree state the toolchain stamped into the binary, not the
+	// package version alone.
+	want := "loaf\x1b[0m 3.3.3-dev" + fixtureBinaryDevIdentity(t, repo, filepath.Join(nativeDir, "loaf")) + " (dev build)"
 	if !strings.Contains(string(output), want) {
 		t.Fatalf("version output = %q, want the owning checkout's dev identity %q", output, want)
 	}
+}
+
+// fixtureBinaryDevIdentity derives the dev identity the fixture binary must
+// report from the VCS stamp the toolchain embedded in it, read back with
+// `go version -m`, so the expectation follows the real commit and tree state
+// at compile time. A binary compiled without VCS information carries no stamp
+// and reports the bare package version.
+func fixtureBinaryDevIdentity(t *testing.T, repo string, binary string) string {
+	t.Helper()
+	output, err := runCommand(repo, "go", "version", "-m", binary)
+	if err != nil {
+		t.Fatalf("go version -m error = %v\n%s", err, output)
+	}
+	revision := ""
+	modified := false
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[0] != "build" {
+			continue
+		}
+		key, value, ok := strings.Cut(fields[1], "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "vcs.revision":
+			revision = value
+		case "vcs.modified":
+			modified = value == "true"
+		}
+	}
+	if len(revision) < 7 {
+		return ""
+	}
+	identity := "+g" + revision[:7]
+	if modified {
+		identity += ".dirty"
+	}
+	return identity
 }
 
 // A bare binary with no adjacent distribution invoked from inside a stale
@@ -300,7 +335,7 @@ func sharedTestLoafBinary(t *testing.T, repo string) string {
 		t.Fatalf("MkdirTemp error = %v", err)
 	}
 	binary := filepath.Join(dir, "loaf")
-	if output, err := runCommand(repo, "go", "build", "-buildvcs=false", "-ldflags", "-X main.devCommit="+fixtureDevCommit+" -X main.devModified=true", "-o", binary, "./cmd/loaf"); err != nil {
+	if output, err := runCommand(repo, "go", "build", "-buildvcs=true", "-o", binary, "./cmd/loaf"); err != nil {
 		os.RemoveAll(dir)
 		t.Fatalf("go build ./cmd/loaf error = %v\n%s", err, output)
 	}

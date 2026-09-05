@@ -20,13 +20,9 @@
  * inside a checkout whose Git cannot be queried, `true` (unlike `auto`) fails
  * the build instead of silently dropping provenance.
  *
- * Linked worktrees (a `.git` file, not a directory) are not stamped by every
- * toolchain: go1.26.6, the version go.mod pins, writes nothing there, while
- * go1.27.1 does. build-go.mjs therefore resolves the same two facts with git
- * and passes them as LOAF_DEV_COMMIT / LOAF_DEV_MODIFIED, which link in as
- * `-X main.devCommit/devModified`. The runtime prefers the toolchain stamp and
- * falls back to the linked values, so both paths report one identity. Once the
- * pinned toolchain stamps worktrees, the fallback can go.
+ * The toolchain pinned in go.mod is go1.27.1 or later on purpose: go1.26.6 wrote no
+ * stamp inside a linked worktree (a `.git` file, not a directory), which is where
+ * Loaf's issue branches live.
  */
 
 export function goLdflags(env = process.env) {
@@ -38,11 +34,6 @@ export function goLdflags(env = process.env) {
   }
   if (date) {
     parts.push(`-X main.buildDate=${date}`);
-  }
-  const devCommit = (env.LOAF_DEV_COMMIT || "").trim();
-  if (devCommit) {
-    parts.push(`-X main.devCommit=${devCommit}`);
-    parts.push(`-X main.devModified=${env.LOAF_DEV_MODIFIED === "1" ? "true" : "false"}`);
   }
   return parts.join(" ");
 }
