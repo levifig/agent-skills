@@ -150,19 +150,19 @@ func (r Runner) reportedVersion(root string) string {
 // release pipeline built this binary; a resolved distribution that is the
 // source checkout says it is running out of the tree that did.
 //
-// Absence alone would be wrong, because this repository ships its own locally
-// built binaries: the Claude Code plugin marketplace serves the committed
-// plugins/loaf/bin/native/<platform>/loaf at a release tag, and `npx
-// github:levifig/loaf` builds one at install time. Both are releases carrying
-// no metadata, and reading that absence as proof would tell a user on 0.2.20
-// they were running a dev build.
+// Absence alone would be wrong, because Loaf ships binaries that never pass
+// through the release workflow: `npx github:levifig/loaf` compiles one at
+// install time, and any prebuilt binary copied into a distribution layout
+// carries no metadata. Reading that absence as proof would tell a user on
+// 0.2.20 they were running a dev build. (The Claude Code plugin ships no
+// binary at all since 2026-09-06; its shim runs whichever loaf is installed.)
 func (r Runner) isDevBuild(root string) bool {
 	return isSourceCheckout(root) && strings.TrimSpace(r.BuildCommit) == "" && strings.TrimSpace(r.BuildDate) == ""
 }
 
 // isSourceCheckout reports whether a resolved distribution root is the Loaf
 // checkout that builds this binary. Every shipped distribution — release
-// archive, Homebrew keg, npm package, plugin payload — is content plus a
+// archive, Homebrew keg, npm package — is content plus a
 // prebuilt binary; only a checkout carries the Go module beside them. An
 // unresolved root is never a checkout: probing it would read go.mod relative to
 // wherever the caller happened to be standing.

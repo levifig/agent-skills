@@ -1,31 +1,32 @@
-#!/usr/bin/env node
-"use strict";
-
-const { existsSync } = require("node:fs");
-const { join } = require("node:path");
-const { spawnSync } = require("node:child_process");
-
-const binDir = __dirname;
-const target = `${process.platform}-${process.arch}`;
-const nativeName = process.platform === "win32" ? "loaf.exe" : "loaf";
-const nativePath = join(binDir, "native", target, nativeName);
-const args = process.argv.slice(2);
-
-if (existsSync(nativePath)) {
-  const result = spawnSync(nativePath, args, { stdio: "inherit" });
-  if (result.error) {
-    console.error(`error: failed to start native Loaf runtime at ${nativePath}: ${result.error.message}`);
-    process.exit(1);
-  }
-  if (result.signal) {
-    console.error(`error: native Loaf runtime exited from signal ${result.signal}`);
-    process.exit(1);
-  }
-  process.exit(result.status ?? 1);
+#!/bin/sh
+# Loaf Claude Code plugin shim.
+#
+# The marketplace plugin ships content and hooks only; the loaf CLI is
+# installed separately (Homebrew, a release archive, or a checkout build).
+# Hooks invoke this file as "${CLAUDE_PLUGIN_ROOT}/bin/loaf", and it execs the
+# installed CLI: $LOAF_BIN when set, then loaf on PATH, then the usual install
+# locations. When nothing resolves it exits 1, which Claude Code reports as a
+# non-blocking hook error, so a missing CLI is visible without locking tools.
+resolve_loaf() {
+  if [ -n "${LOAF_BIN:-}" ] && [ -x "${LOAF_BIN}" ]; then
+    printf '%s\n' "${LOAF_BIN}"
+    return 0
+  fi
+  if found=$(command -v loaf 2>/dev/null) && [ -n "${found}" ]; then
+    printf '%s\n' "${found}"
+    return 0
+  fi
+  for candidate in "${HOME:-}/.local/bin/loaf" /opt/homebrew/bin/loaf /usr/local/bin/loaf "${HOME:-}/.local/bin/loaf.exe"; do
+    if [ -x "${candidate}" ]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  return 1
 }
 
-console.error(
-  `error: native Loaf runtime not found for ${target} at ${nativePath}; ` +
-    "reinstall Loaf or run `npm run build:go` in a checkout."
-);
-process.exit(1);
+if loaf_bin=$(resolve_loaf); then
+  exec "${loaf_bin}" "$@"
+fi
+printf '%s\n' "loaf: the Loaf plugin needs the loaf CLI. Install it (brew install levifig/tap/loaf) or set LOAF_BIN to a loaf binary." >&2
+exit 1

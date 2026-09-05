@@ -128,13 +128,12 @@ func TestNativeCutoverPackageAndSourceGuards(t *testing.T) {
 	}
 
 	// Root bin/ is an ignored build output: a checkout carries no launcher or
-	// native binary there until `npm run build:go` runs, and a local build only
-	// produces the current platform. The committed marketplace copy under
-	// plugins/loaf/bin is the artifact set this guard can hold to; verify:go-
-	// artifacts checks that a build's bin/ agrees with it.
+	// native binary there until `npm run build:go` runs. The committed Claude
+	// Code plugin ships a shim at bin/loaf that resolves an installed loaf and
+	// no native runtime of its own.
 	assertExecutableFile(t, filepath.Join(root, "plugins", "loaf", "bin", "loaf"))
-	for _, artifact := range releaseNativeArtifacts() {
-		assertExecutableFile(t, filepath.Join(root, "plugins", "loaf", "bin", "native", artifact.runtimeID, artifact.binaryName))
+	for _, rel := range []string{"plugins/loaf/bin/native", "plugins/loaf/bin/package.json"} {
+		assertPathMissing(t, root, rel)
 	}
 	for _, rel := range []string{"dist-cli", "bin/dist-cli", "plugins/loaf/dist-cli"} {
 		assertPathMissing(t, root, rel)
@@ -175,10 +174,17 @@ func TestNativeGoArtifactScriptsSupportExplicitReleaseTargets(t *testing.T) {
 	}
 	for _, want := range []string{
 		filepath.ToSlash(filepath.Join("bin", "native", "darwin-arm64", "loaf")),
-		filepath.ToSlash(filepath.Join("plugins", "loaf", "bin", "native", "darwin-arm64", "loaf")),
 		filepath.ToSlash(filepath.Join("bin", "native", "win32-x64", "loaf.exe")),
-		filepath.ToSlash(filepath.Join("plugins", "loaf", "bin", "native", "win32-x64", "loaf.exe")),
+		filepath.ToSlash(filepath.Join("plugins", "loaf", "bin", "loaf")),
 	} {
+		if !strings.Contains(filepath.ToSlash(verifyOutput), want) {
+			t.Fatalf("verify-go-artifacts dry run output = %q, want %q", verifyOutput, want)
+		}
+	}
+	if strings.Contains(filepath.ToSlash(verifyOutput), "plugins/loaf/bin/native") {
+		t.Fatalf("verify-go-artifacts dry run output = %q, must not expect a plugin native runtime", verifyOutput)
+	}
+	for _, want := range []string{} {
 		if !strings.Contains(filepath.ToSlash(verifyOutput), want) {
 			t.Fatalf("verify-go-artifacts dry run output = %q, want %q", verifyOutput, want)
 		}

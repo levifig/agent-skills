@@ -92,7 +92,9 @@ function main(argv = process.argv.slice(2)) {
   mkdirSync(dbDir, { recursive: true });
   const dbPath = join(dbDir, "loaf.sqlite");
   const candidatePlugin = join(repoRoot, candidatePluginPath);
-  const candidateBinary = join(candidatePlugin, "bin", "loaf");
+  const candidateShim = join(candidatePlugin, "bin", "loaf");
+  const candidateBinaryPath = join("bin", "native", platform, "loaf");
+  const candidateBinary = join(repoRoot, candidateBinaryPath);
   let smoke;
   let failure;
   let cleanupSucceeded = false;
@@ -101,11 +103,14 @@ function main(argv = process.argv.slice(2)) {
     if (buildGo.status !== 0) throw new Error("candidate Go build failed");
     const buildClaude = run("bin/loaf", ["build", "--target", "claude-code"], repoRoot);
     if (buildClaude.status !== 0) throw new Error("candidate Claude build failed");
-    if (!existsSync(candidateBinary)) throw new Error("candidate plugin binary is missing");
+    if (!existsSync(candidateShim)) throw new Error("candidate plugin shim is missing");
+    if (!existsSync(candidateBinary)) throw new Error("candidate native binary is missing");
     const version = run(client, ["--version"], repoRoot);
     if (version.status !== 0 || !claudeVersionMatches(version.stdout, expectedVersion)) throw new Error(`installed Claude Code version does not match ${expectedVersion}`);
     if (run("git", ["init", "-q"], disposableRepo).status !== 0) throw new Error("disposable Git initialization failed");
-    const candidateEnv = { LOAF_DB: dbPath };
+    // The plugin shim resolves the CLI through LOAF_BIN first, so the smoke
+    // exercises the candidate binary rather than whatever loaf is on PATH.
+    const candidateEnv = { LOAF_DB: dbPath, LOAF_BIN: candidateBinary };
     if (run(candidateBinary, ["state", "init", "--json"], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated Loaf state initialization failed");
     if (run(candidateBinary, ["journal", "log", `discover(smoke): ${marker}`], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated journal marker write failed");
     const claudeArgs = [
@@ -122,7 +127,7 @@ function main(argv = process.argv.slice(2)) {
     ], disposableRepo, candidateEnv);
     const parsed = parseClaudeStreamOutput(claude.stdout, marker);
     smoke = {
-      evidence_version: 2,
+      evidence_version: 3,
       timestamp,
       target: "claude-code",
       surface: "cli",
@@ -133,7 +138,7 @@ function main(argv = process.argv.slice(2)) {
       adapter: "claude-session-start-v1",
       mode: "explicit-plugin-dir",
       invocation: { command: "claude", args: claudeArgs, cwd: "<disposable-repo>" },
-      setup: ["build candidate Go binary and Claude plugin", "create disposable Git repository", "initialize absolute disposable LOAF_DB", "write random marker to isolated journal"],
+      setup: ["build candidate Go binary and Claude plugin", "point LOAF_BIN at the candidate binary for the plugin shim", "create disposable Git repository", "initialize absolute disposable LOAF_DB", "write random marker to isolated journal"],
       candidate_plugin_path: candidatePluginPath,
       exit_code: claude.status,
       stderr_empty: claude.stderr.length === 0,
@@ -144,8 +149,10 @@ function main(argv = process.argv.slice(2)) {
       candidate_artifacts: {
         hooks_path: "plugins/loaf/hooks/hooks.json",
         hooks_sha256: sha256(join(repoRoot, "plugins/loaf/hooks/hooks.json")),
-        native_binary_path: relative(repoRoot, join(candidatePlugin, "bin", "native", platform, "loaf")),
-        native_binary_sha256: sha256(join(candidatePlugin, "bin", "native", platform, "loaf")),
+        shim_path: relative(repoRoot, candidateShim).split(sep).join("/"),
+        shim_sha256: sha256(candidateShim),
+        native_binary_path: candidateBinaryPath.split(sep).join("/"),
+        native_binary_sha256: sha256(candidateBinary),
       },
     };
     if (claude.status !== 0 || claude.stderr.length !== 0 || !parsed.hookObservation.additional_context_marker || !parsed.assistantMarkerMatch) throw new Error("model-visible marker smoke did not pass");

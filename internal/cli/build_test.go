@@ -1084,10 +1084,19 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 	if readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "SETUP.md")) != "# Setup\n" {
 		t.Fatalf("SETUP.md copy mismatch")
 	}
+	if got := readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "bin", "loaf")); got != claudePluginShim {
+		t.Fatalf("plugin bin/loaf = %q, want the embedded shim", got)
+	}
+	if info, err := os.Stat(filepath.Join(root, "plugins", "loaf", "bin", "loaf")); err != nil || info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("plugin bin/loaf must be executable: info=%v err=%v", info, err)
+	}
+	for _, rel := range []string{filepath.Join("bin", "native"), filepath.Join("bin", "package.json")} {
+		if _, err := os.Stat(filepath.Join(root, "plugins", "loaf", rel)); !os.IsNotExist(err) {
+			t.Fatalf("plugins/loaf/%s must not exist; the plugin ships no native runtime (err=%v)", filepath.ToSlash(rel), err)
+		}
+	}
 	for _, path := range []string{
 		filepath.Join(root, "plugins", "loaf", "bin", "loaf"),
-		filepath.Join(root, "plugins", "loaf", "bin", "package.json"),
-		filepath.Join(root, "plugins", "loaf", "bin", "native", "darwin-arm64", "loaf"),
 		filepath.Join(root, "plugins", "loaf", "package.json"),
 		filepath.Join(root, "plugins", "loaf", ".lsp.json"),
 	} {
@@ -1162,9 +1171,9 @@ func TestRunnerBuildReportsNativeAllTargetFailure(t *testing.T) {
 	seedNativeCursorBuildFixture(t, root)
 	seedNativeOpenCodeBuildFixture(t, root)
 	seedNativeClaudeCodeBuildFixture(t, root)
-	if err := os.Remove(filepath.Join(root, "bin", "loaf")); err != nil {
-		t.Fatalf("Remove(bin/loaf) error = %v", err)
-	}
+	// Every target reads config/hooks.yaml, so corrupting it makes the first
+	// target fail and exercises the all-target failure report.
+	writeFile(t, filepath.Join(root, "config", "hooks.yaml"), "hooks: [\n")
 	var stdout bytes.Buffer
 
 	err := Runner{
@@ -1177,8 +1186,8 @@ func TestRunnerBuildReportsNativeAllTargetFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), "Build failed") {
 		t.Fatalf("error = %v, want native build failure", err)
 	}
-	if !strings.Contains(stdout.String(), "Loaf launcher not found at bin/loaf") {
-		t.Fatalf("stdout = %q, want target failure detail", stdout.String())
+	if !strings.Contains(stdout.String(), "✗") {
+		t.Fatalf("stdout = %q, want a failed target marker", stdout.String())
 	}
 }
 
@@ -3250,42 +3259,4 @@ func nativeAmpModesNamedBlock(t *testing.T, plugin string, startName string, end
 		t.Fatalf("amp modes plugin %s block is unclosed before %s", startName, endName)
 	}
 	return rest[:end]
-}
-
-// TestRunnerBuildClaudeCodePreservesMarketplaceBinariesForUnbuiltPlatforms pins
-// the contract that lets root bin/ be an ignored, single-platform build output
-// while plugins/loaf/bin stays committed for every release platform: the
-// plugin rebuild takes the freshly built platform from bin/native and keeps the
-// committed binary for every platform the build did not produce.
-func TestRunnerBuildClaudeCodePreservesMarketplaceBinariesForUnbuiltPlatforms(t *testing.T) {
-	root := setupBuildCommandLoafRoot(t)
-	seedNativeCodexBuildFixture(t, root)
-	seedNativeCursorBuildFixture(t, root)
-	seedNativeClaudeCodeBuildFixture(t, root)
-	pluginNative := filepath.Join(root, "plugins", "loaf", "bin", "native")
-	mkdirAll(t, filepath.Join(pluginNative, "linux-x64"))
-	mkdirAll(t, filepath.Join(pluginNative, "darwin-arm64"))
-	mkdirAll(t, filepath.Join(pluginNative, ".staging", "linux-x64"))
-	writeFile(t, filepath.Join(pluginNative, "linux-x64", "loaf"), "committed linux\n")
-	writeFile(t, filepath.Join(pluginNative, "darwin-arm64", "loaf"), "stale darwin\n")
-	writeFile(t, filepath.Join(pluginNative, ".staging", "linux-x64", "loaf"), "half-written\n")
-	var stdout bytes.Buffer
-
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: root,
-	}.Run([]string{"build", "--target", "claude-code"})
-	if err != nil {
-		t.Fatalf("build --target claude-code error = %v\n%s", err, stdout.String())
-	}
-
-	if got := readBuildFileString(t, filepath.Join(pluginNative, "darwin-arm64", "loaf")); got != "native loaf\n" {
-		t.Fatalf("built platform = %q, want the fresh bin/native binary", got)
-	}
-	if got := readBuildFileString(t, filepath.Join(pluginNative, "linux-x64", "loaf")); got != "committed linux\n" {
-		t.Fatalf("unbuilt platform = %q, want the committed marketplace binary preserved", got)
-	}
-	if _, err := os.Stat(filepath.Join(pluginNative, ".staging")); !os.IsNotExist(err) {
-		t.Fatalf("hidden staging directory was restored into the plugin: err = %v", err)
-	}
 }
