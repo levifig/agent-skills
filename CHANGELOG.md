@@ -35,6 +35,7 @@ One operator's durable memory â€” journal, wraps, handoffs, refs, verification â
 - Tracker-steering issue bootstrap mints branch and PR refs as authority ([#193](https://github.com/levifig/loaf/pull/193)).
 - First-class Linear workflows.
 - Development builds report a distinct dev identity (`<version>+g<short-sha>`) and stage native targets before activation; release tags that are not strict SemVer fail resolve instead of being skipped as dev identities.
+- Amp builds, install, and upgrades now distribute Loaf Medium/Ultra and their pinned delegate tools as a separate digest-managed plugin. Medium/Ultra and the oracle delegate pin `openai/gpt-6-astra` at medium, xhigh, and high; review stays on `openai/gpt-5.6-luna` at max for independent model diversity; the implementation agent stays on `xai/grok-4.6` with Fast and does not set a reasoning effort. Unrecorded exact-digest predecessor copies of `loaf-modes.ts` are adopted once; any other byte remains foreign.
 
 ### Removed
 

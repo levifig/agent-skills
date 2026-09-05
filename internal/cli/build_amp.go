@@ -88,7 +88,10 @@ func buildNativeAmpTarget(root string) error {
 	}); err != nil {
 		return err
 	}
-	return generateNativeAmpPlugin(filepath.Join(root, "config", "hooks.yaml"), dist, version)
+	if err := generateNativeAmpPlugin(filepath.Join(root, "config", "hooks.yaml"), dist, version); err != nil {
+		return err
+	}
+	return copyNativeAmpModesPlugin(root, filepath.Join(dist, ".amp", "plugins"))
 }
 
 func generateNativeAmpPlugin(hooksPath string, dist string, version string) error {
@@ -101,6 +104,17 @@ func generateNativeAmpPlugin(hooksPath string, dist string, version string) erro
 		return err
 	}
 	return os.WriteFile(filepath.Join(pluginDir, "loaf.ts"), []byte(renderNativeAmpPlugin(hooks, version)), 0o644)
+}
+
+func copyNativeAmpModesPlugin(root string, pluginDir string) error {
+	src := filepath.Join(root, "content", "amp", "plugins", "loaf-modes.ts")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		return err
+	}
+	if err := copyNativeBuildFile(src, filepath.Join(pluginDir, "loaf-modes.ts")); err != nil {
+		return fmt.Errorf("copy amp modes plugin: %w", err)
+	}
+	return nil
 }
 
 func renderNativeAmpPlugin(hooks []nativeBuildHook, version string) string {

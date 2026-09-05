@@ -252,16 +252,193 @@ func TestInstallTargetAdapterManifestMigratesAndRetiresAmpPlugin(t *testing.T) {
 	assertInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
 }
 
+func TestInstallTargetAdapterManifestAdoptsExactAmpModesPredecessor(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
+	dist := filepath.Join(root, "dist", "amp")
+	config := filepath.Join(root, "amp")
+	hookSource := filepath.Join(dist, ".amp", "plugins", "loaf.ts")
+	modesSource := filepath.Join(dist, ".amp", "plugins", "loaf-modes.ts")
+	hookDest := filepath.Join(config, "plugins", "loaf.ts")
+	modesDest := filepath.Join(config, "plugins", "loaf-modes.ts")
+	foreign := filepath.Join(config, "plugins", "company.ts")
+	hookBody := "export const loafHooks = 1;\n"
+	desiredModes := "export const loafModes = desired;\n"
+	predecessor := testAmpModesPredecessor(t)
+	if digest := sha256Hex(predecessor); digest != ampModesPluginPredecessorSHA256 {
+		t.Fatalf("predecessor digest = %s, want %s", digest, ampModesPluginPredecessorSHA256)
+	}
+	writeInstallFile(t, hookSource, hookBody)
+	writeInstallFile(t, modesSource, desiredModes)
+	writeInstallFile(t, modesDest, predecessor)
+	writeInstallFile(t, foreign, "export const company = true;\n")
+	writeTestTargetAdapterManifest(t, dist, "amp", []map[string]string{
+		{"id": ampModesPluginArtifactID, "kind": "plugin", "source_path": ampModesPluginSourcePath, "destination": ampModesPluginDestination, "sha256": sha256Hex(desiredModes)},
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex(hookBody)},
+	})
+	options := targetInstallOptions{Target: "amp", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home}
+
+	decisions, err := planTargetAdapterArtifacts(options)
+	if err != nil {
+		t.Fatalf("planTargetAdapterArtifacts error = %v", err)
+	}
+	modesDecision := findArtifactPlanDecision(t, decisions, ampModesPluginArtifactID)
+	if modesDecision.Action != planActionUpdate {
+		t.Fatalf("predecessor plan action = %#v, want update", modesDecision)
+	}
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("Amp predecessor adopt error = %v", err)
+	}
+	assertInstallFile(t, modesDest, desiredModes)
+	assertInstallFile(t, hookDest, hookBody)
+	assertInstallFile(t, foreign, "export const company = true;\n")
+	installed, err := readTargetAdapterManifest(filepath.Join(config, targetInstallManifestFile))
+	if err != nil {
+		t.Fatalf("read installed Amp ownership error = %v", err)
+	}
+	owned, ok := targetAdapterArtifactsByID(installed.Artifacts)[ampModesPluginArtifactID]
+	if !ok || owned.SHA256 != sha256Hex(desiredModes) {
+		t.Fatalf("installed Amp modes ownership = %#v, want current desired digest", owned)
+	}
+}
+
+func TestInstallTargetAdapterManifestRefusesOneByteAmpModesPredecessor(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
+	dist := filepath.Join(root, "dist", "amp")
+	config := filepath.Join(root, "amp")
+	hookSource := filepath.Join(dist, ".amp", "plugins", "loaf.ts")
+	modesSource := filepath.Join(dist, ".amp", "plugins", "loaf-modes.ts")
+	hookDest := filepath.Join(config, "plugins", "loaf.ts")
+	modesDest := filepath.Join(config, "plugins", "loaf-modes.ts")
+	foreign := filepath.Join(config, "plugins", "company.ts")
+	hookBody := "export const loafHooks = 1;\n"
+	desiredModes := "export const loafModes = desired;\n"
+	modified := testAmpModesPredecessor(t) + " "
+	if digest := sha256Hex(modified); digest == ampModesPluginPredecessorSHA256 {
+		t.Fatal("one-byte modification still matched the closed predecessor digest")
+	}
+	writeInstallFile(t, hookSource, hookBody)
+	writeInstallFile(t, modesSource, desiredModes)
+	writeInstallFile(t, modesDest, modified)
+	writeInstallFile(t, foreign, "export const company = true;\n")
+	writeTestTargetAdapterManifest(t, dist, "amp", []map[string]string{
+		{"id": ampModesPluginArtifactID, "kind": "plugin", "source_path": ampModesPluginSourcePath, "destination": ampModesPluginDestination, "sha256": sha256Hex(desiredModes)},
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex(hookBody)},
+	})
+	options := targetInstallOptions{Target: "amp", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home}
+
+	decisions, err := planTargetAdapterArtifacts(options)
+	if err != nil {
+		t.Fatalf("planTargetAdapterArtifacts error = %v", err)
+	}
+	modesDecision := findArtifactPlanDecision(t, decisions, ampModesPluginArtifactID)
+	if modesDecision.Action != planActionConflict {
+		t.Fatalf("modified predecessor plan action = %#v, want conflict", modesDecision)
+	}
+	if err := installTargetDistribution(options); err == nil || !strings.Contains(err.Error(), "not managed by Loaf") {
+		t.Fatalf("modified predecessor install error = %v, want unmanaged collision refusal", err)
+	}
+	assertInstallFile(t, modesDest, modified)
+	assertInstallPathMissing(t, hookDest)
+	assertInstallFile(t, foreign, "export const company = true;\n")
+	assertInstallPathMissing(t, filepath.Join(config, targetInstallManifestFile))
+}
+
+func TestInstallTargetAdapterManifestManagesIndependentAmpPlugins(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
+	dist := filepath.Join(root, "dist", "amp")
+	config := filepath.Join(root, "amp")
+	hookSource := filepath.Join(dist, ".amp", "plugins", "loaf.ts")
+	modesSource := filepath.Join(dist, ".amp", "plugins", "loaf-modes.ts")
+	hookDest := filepath.Join(config, "plugins", "loaf.ts")
+	modesDest := filepath.Join(config, "plugins", "loaf-modes.ts")
+	foreign := filepath.Join(config, "plugins", "company.ts")
+	hookBody := "export const loafHooks = 1;\n"
+	modesBody := "export const loafModes = 1;\n"
+	writeInstallFile(t, hookSource, hookBody)
+	writeInstallFile(t, modesSource, modesBody)
+	writeInstallFile(t, foreign, "export const company = true;\n")
+	writeTestTargetAdapterManifest(t, dist, "amp", []map[string]string{
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex(hookBody)},
+		{"id": "plugin:.amp/plugins/loaf-modes.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf-modes.ts", "destination": "plugins/loaf-modes.ts", "sha256": sha256Hex(modesBody)},
+	})
+	options := targetInstallOptions{Target: "amp", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home}
+
+	writeInstallFile(t, modesDest, "export const loafModes = local;\n")
+	if err := installTargetDistribution(options); err == nil || !strings.Contains(err.Error(), "not managed by Loaf") {
+		t.Fatalf("Amp modes collision error = %v, want unmanaged collision refusal", err)
+	}
+	assertInstallPathMissing(t, hookDest)
+	assertInstallFile(t, modesDest, "export const loafModes = local;\n")
+	assertInstallFile(t, foreign, "export const company = true;\n")
+
+	writeInstallFile(t, modesDest, modesBody)
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("Amp two-plugin install with exact-digest adoption error = %v", err)
+	}
+	assertInstallFile(t, hookDest, hookBody)
+	assertInstallFile(t, modesDest, modesBody)
+	assertInstallFile(t, foreign, "export const company = true;\n")
+
+	writeInstallFile(t, modesDest, "export const loafModes = edited;\n")
+	if err := installTargetDistribution(options); err == nil || !strings.Contains(err.Error(), "modified") {
+		t.Fatalf("Amp modes modified-content error = %v, want modified-content conflict", err)
+	}
+	assertInstallFile(t, modesDest, "export const loafModes = edited;\n")
+	assertInstallFile(t, hookDest, hookBody)
+	assertInstallFile(t, foreign, "export const company = true;\n")
+}
+
+func TestInstallTargetAdapterManifestRollsBackPartialAmpPublication(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	dist := filepath.Join(root, "dist", "amp")
+	config := filepath.Join(root, "config", "amp")
+	writeInstallFile(t, filepath.Join(dist, ".amp", "plugins", "loaf.ts"), "hooks\n")
+	writeInstallFile(t, filepath.Join(dist, ".amp", "plugins", "loaf-modes.ts"), "modes\n")
+	writeInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
+	writeTestTargetAdapterManifest(t, dist, "amp", []map[string]string{
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex("hooks\n")},
+		{"id": "plugin:.amp/plugins/loaf-modes.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf-modes.ts", "destination": "plugins/loaf-modes.ts", "sha256": sha256Hex("modes\n")},
+	})
+	modesDest := filepath.Join(config, "plugins", "loaf-modes.ts")
+	publishedModes := 0
+	options := targetInstallOptions{
+		Target: "amp", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home"),
+		TargetAdapterOps: &targetAdapterInstallOperations{beforeArtifact: func(id string) error {
+			if id == "plugin:.amp/plugins/loaf.ts" {
+				assertInstallFile(t, modesDest, "modes\n")
+				publishedModes++
+				return os.ErrPermission
+			}
+			return nil
+		}},
+	}
+	if err := installTargetDistribution(options); !os.IsPermission(err) {
+		t.Fatalf("Amp partial publication error = %v, want permission injection", err)
+	}
+	if publishedModes != 1 {
+		t.Fatalf("published loaf-modes.ts observations = %d, want 1 before loaf.ts failed", publishedModes)
+	}
+	assertInstallPathMissing(t, filepath.Join(config, "plugins", "loaf.ts"))
+	assertInstallPathMissing(t, filepath.Join(config, "plugins", "loaf-modes.ts"))
+	assertInstallPathMissing(t, filepath.Join(config, targetInstallManifestFile))
+	assertInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
+}
+
 func TestInstallTargetAdapterManifestRejectsUnrecordedPluginCollisions(t *testing.T) {
 	for _, tc := range []struct {
+		name        string
 		target      string
 		sourcePath  string
 		destination string
 	}{
-		{target: "opencode", sourcePath: "plugins/hooks.ts", destination: "plugins/hooks.ts"},
-		{target: "amp", sourcePath: ".amp/plugins/loaf.ts", destination: "plugins/loaf.ts"},
+		{name: "opencode", target: "opencode", sourcePath: "plugins/hooks.ts", destination: "plugins/hooks.ts"},
+		{name: "amp", target: "amp", sourcePath: ".amp/plugins/loaf.ts", destination: "plugins/loaf.ts"},
+		{name: "amp-modes", target: "amp", sourcePath: ".amp/plugins/loaf-modes.ts", destination: "plugins/loaf-modes.ts"},
 	} {
-		t.Run(tc.target, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			root := realpath(t, t.TempDir())
 			dist := filepath.Join(root, "dist", tc.target)
 			config := filepath.Join(root, "config", tc.target)
@@ -273,7 +450,7 @@ func TestInstallTargetAdapterManifestRejectsUnrecordedPluginCollisions(t *testin
 			}})
 			err := installTargetDistribution(targetInstallOptions{Target: tc.target, DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")})
 			if err == nil || !strings.Contains(err.Error(), "not managed by Loaf") {
-				t.Fatalf("%s collision error = %v", tc.target, err)
+				t.Fatalf("%s collision error = %v", tc.name, err)
 			}
 			assertInstallFile(t, filepath.Join(config, filepath.FromSlash(tc.destination)), "user plugin\n")
 		})
@@ -1287,6 +1464,11 @@ func TestInstallTargetAmpUsesSharedAndCustomHomes(t *testing.T) {
 	ampPlugins := filepath.Join(root, "amp-plugins")
 	writeInstallFile(t, filepath.Join(ampDist, "skills", "implement", "SKILL.md"), "# Implement\n")
 	writeInstallFile(t, filepath.Join(ampDist, ".amp", "plugins", "loaf.ts"), "export default function () {}\n")
+	writeInstallFile(t, filepath.Join(ampDist, ".amp", "plugins", "loaf-modes.ts"), "export const modes = true;\n")
+	writeTestTargetAdapterManifest(t, ampDist, "amp", []map[string]string{
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex("export default function () {}\n")},
+		{"id": "plugin:.amp/plugins/loaf-modes.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf-modes.ts", "destination": "plugins/loaf-modes.ts", "sha256": sha256Hex("export const modes = true;\n")},
+	})
 
 	if err := installTargetDistribution(targetInstallOptions{
 		Target:        "amp",
@@ -1301,6 +1483,7 @@ func TestInstallTargetAmpUsesSharedAndCustomHomes(t *testing.T) {
 	}
 	assertInstallFile(t, filepath.Join(ampSkills, "implement", "SKILL.md"), "# Implement\n")
 	assertInstallFile(t, filepath.Join(ampPlugins, "loaf.ts"), "export default function () {}\n")
+	assertInstallFile(t, filepath.Join(ampPlugins, "loaf-modes.ts"), "export const modes = true;\n")
 	assertInstallFile(t, filepath.Join(ampConfig, loafInstallMarkerFile), "9.8.7-test.1\n")
 }
 
@@ -1311,6 +1494,11 @@ func TestInstallTargetAmpDefaultsPluginToConfigPluginsDir(t *testing.T) {
 	ampConfig := filepath.Join(root, "xdg", "amp")
 	legacyPlugins := filepath.Join(home, ".amp", "plugins")
 	writeInstallFile(t, filepath.Join(ampDist, ".amp", "plugins", "loaf.ts"), "export default function () {}\n")
+	writeInstallFile(t, filepath.Join(ampDist, ".amp", "plugins", "loaf-modes.ts"), "export const modes = true;\n")
+	writeTestTargetAdapterManifest(t, ampDist, "amp", []map[string]string{
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex("export default function () {}\n")},
+		{"id": "plugin:.amp/plugins/loaf-modes.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf-modes.ts", "destination": "plugins/loaf-modes.ts", "sha256": sha256Hex("export const modes = true;\n")},
+	})
 
 	if err := installTargetDistribution(targetInstallOptions{
 		Target:    "amp",
@@ -1322,7 +1510,9 @@ func TestInstallTargetAmpDefaultsPluginToConfigPluginsDir(t *testing.T) {
 		t.Fatalf("install amp error = %v", err)
 	}
 	assertInstallFile(t, filepath.Join(ampConfig, "plugins", "loaf.ts"), "export default function () {}\n")
+	assertInstallFile(t, filepath.Join(ampConfig, "plugins", "loaf-modes.ts"), "export const modes = true;\n")
 	assertInstallPathMissing(t, filepath.Join(legacyPlugins, "loaf.ts"))
+	assertInstallPathMissing(t, filepath.Join(legacyPlugins, "loaf-modes.ts"))
 	assertInstallFile(t, filepath.Join(ampConfig, loafInstallMarkerFile), "9.8.7-test.1\n")
 	assertInstallFile(t, filepath.Join(home, ".agents", "loaf", "install-targets", "amp.json"), strings.Join([]string{
 		"{",
@@ -1350,6 +1540,26 @@ func writeInstallFile(t *testing.T, path string, body string) {
 	t.Helper()
 	mkdirAll(t, filepath.Dir(path))
 	writeFile(t, path, body)
+}
+
+func testAmpModesPredecessor(t *testing.T) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), "internal", "cli", "testdata", "amp", "loaf-modes-predecessor.ts"))
+	if err != nil {
+		t.Fatalf("ReadFile(amp modes predecessor) error = %v", err)
+	}
+	return string(body)
+}
+
+func findArtifactPlanDecision(t *testing.T, decisions []artifactPlanDecision, id string) artifactPlanDecision {
+	t.Helper()
+	for _, decision := range decisions {
+		if decision.ID == id {
+			return decision
+		}
+	}
+	t.Fatalf("plan decisions = %#v, want %s", decisions, id)
+	return artifactPlanDecision{}
 }
 
 func writeTestTargetAdapterManifest(t *testing.T, dist string, target string, artifacts []map[string]string) {
