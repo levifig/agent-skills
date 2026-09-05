@@ -195,7 +195,7 @@ The shipped runtime introduced `loaf scratchpad append|read|list|claim|release`,
 | cursor | dist/cursor/ | Yes | Yes | Yes | hooks.json |
 | opencode | dist/opencode/ | Yes | Yes | Yes | hooks.ts |
 | codex | dist/codex/ | No | Yes | Yes | hooks.json |
-| amp | dist/amp/ | No | Yes | No | .amp/plugins/loaf.ts |
+| amp | dist/amp/ | Modes | Yes | No | .amp/plugins/loaf.ts, .amp/plugins/loaf-modes.ts |
 
 ### Amp Plugin API Constraints
 
@@ -206,7 +206,7 @@ Amp's plugin API is intentionally minimal. Plugin handlers are dispatched via `h
 - `agent.start` — when an agent begins a turn
 - `agent.end` — when an agent finishes a turn
 
-There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent("session.start", ...)` for telemetry purposes, but this is not exposed to plugins. Features that require a true SessionStart hook (the journal continuity digest, SOUL.md self-healing) or PreCompact flushes are not viable on Amp without upstream support. Loaf does use `agent.start` for one bounded global action: reconcile Loaf-owned installed skills and the Amp adapter to the already-installed CLI distribution. The handler never downloads a CLI, installs a connector, touches project files, or blocks the turn on failure. If bytes change after Amp has loaded them, the durable receipt and diagnostic require a new session; Loaf does not claim hot reload.
+There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent("session.start", ...)` for telemetry purposes, but this is not exposed to plugins. Features that require a true SessionStart hook (the journal continuity digest, SOUL.md self-healing) or PreCompact flushes are not viable on Amp without upstream support. Loaf does use `agent.start` for one bounded global action: reconcile Loaf-owned installed skills and the Amp adapter to the already-installed CLI distribution. The handler never downloads a CLI, installs a connector, touches project files, or blocks the turn on failure. If bytes change after Amp has loaded them, the durable receipt and diagnostic require a new session; Loaf does not claim hot reload. Agent/mode support is provided by a second managed plugin, `.amp/plugins/loaf-modes.ts`, which registers `Loaf Medium`, `Loaf Ultra`, and the pinned delegation tools. The orchestrator and oracle agents are `openai/gpt-6-astra` at medium/xhigh and high; review stays on `openai/gpt-5.6-luna` at max; the implementation agent is `xai/grok-4.6` with Fast and no explicit reasoning effort.
 
 `agent.end` is turn-end, not session-end, so Loaf does not map session lifecycle behavior onto it.
 

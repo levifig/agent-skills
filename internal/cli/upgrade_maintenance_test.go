@@ -85,6 +85,11 @@ func TestRunnerUpgradeDetectsLegacyAmpWithoutMutatingLegacyPath(t *testing.T) {
 	writeInstallFile(t, filepath.Join(legacyAmp, loafInstallMarkerFile), "legacy\n")
 	writeInstallFile(t, legacyPlugin, "legacy plugin\n")
 	writeInstallFile(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"), "current plugin\n")
+	writeInstallFile(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf-modes.ts"), "current modes\n")
+	writeTestTargetAdapterManifest(t, filepath.Join(root, "dist", "amp"), "amp", []map[string]string{
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex("current plugin\n")},
+		{"id": "plugin:.amp/plugins/loaf-modes.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf-modes.ts", "destination": "plugins/loaf-modes.ts", "sha256": sha256Hex("current modes\n")},
+	})
 
 	var stdout bytes.Buffer
 	if err := (Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}).Run([]string{"upgrade", "--yes"}); err != nil {
@@ -96,12 +101,38 @@ func TestRunnerUpgradeDetectsLegacyAmpWithoutMutatingLegacyPath(t *testing.T) {
 	currentConfig := filepath.Join(home, ".config", "amp")
 	assertInstallFile(t, filepath.Join(currentConfig, loafInstallMarkerFile), "9.8.7-test.1\n")
 	assertInstallFile(t, filepath.Join(currentConfig, "plugins", "loaf.ts"), "current plugin\n")
+	assertInstallFile(t, filepath.Join(currentConfig, "plugins", "loaf-modes.ts"), "current modes\n")
 	assertInstallFile(t, filepath.Join(legacyAmp, loafInstallMarkerFile), "legacy\n")
 	assertInstallFile(t, legacyPlugin, "legacy plugin\n")
 	record := readInstallCommandJSON(t, installRecordPath(home, "amp"))
 	if record["config_dir"] != currentConfig {
 		t.Fatalf("amp install record = %#v, want current config dir %q", record, currentConfig)
 	}
+}
+
+func TestRunnerUpgradeInstallsAmpModesPluginWithoutOwningDirectory(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	config := filepath.Join(home, ".config", "amp")
+	writeInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
+	writeInstallFile(t, filepath.Join(config, "plugins", "loaf-modes.ts"), "current modes\n")
+	writeInstallFile(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"), "current plugin\n")
+	writeInstallFile(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf-modes.ts"), "current modes\n")
+	writeTestTargetAdapterManifest(t, filepath.Join(root, "dist", "amp"), "amp", []map[string]string{
+		{"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex("current plugin\n")},
+		{"id": "plugin:.amp/plugins/loaf-modes.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf-modes.ts", "destination": "plugins/loaf-modes.ts", "sha256": sha256Hex("current modes\n")},
+	})
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}).Run([]string{"upgrade", "--yes"}); err != nil {
+		t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "amp") || !strings.Contains(stdout.String(), "Amp refreshed") {
+		t.Fatalf("stdout = %q, want Amp upgrade", stdout.String())
+	}
+	assertInstallFile(t, filepath.Join(config, "plugins", "loaf.ts"), "current plugin\n")
+	assertInstallFile(t, filepath.Join(config, "plugins", "loaf-modes.ts"), "current modes\n")
+	assertInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
 }
 
 func TestRunnerUpgradeRelocatesOpenCodeAndAmpSkillHomes(t *testing.T) {

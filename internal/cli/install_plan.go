@@ -558,7 +558,7 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 		switch {
 		case matchesDesired:
 			decision.Action = planActionPreserve
-		case targetAdapterLegacyOwnership(options.Target, artifact, snapshot.body):
+		case targetAdapterLegacyOwnership(options.Target, artifact, snapshot.body), ampModesPluginExactPredecessor(options.Target, artifact, snapshot.body):
 			decision.Action = planActionUpdate
 			decision.Detail = "adopting legacy Loaf-owned content"
 		default:

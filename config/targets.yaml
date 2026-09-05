@@ -40,4 +40,5 @@ targets:
     output: dist/amp/
     # First-class Amp target
     # Skills (standard SKILL.md, no sidecar merge) + auto-generated runtime
-    # plugin at .amp/plugins/loaf.ts
+    # plugins at .amp/plugins/loaf.ts (hooks) and .amp/plugins/loaf-modes.ts
+    # (Loaf Medium, Loaf Ultra, and pinned delegation tools)

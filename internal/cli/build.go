@@ -384,6 +384,19 @@ declare module 'url' {
   export function fileURLToPath(url: string | { href: string }): string;
 }
 
+declare module 'node:fs' {
+  export interface Stats {
+    isDirectory(): boolean;
+  }
+
+  export function realpathSync(path: string): string;
+  export function statSync(path: string): Stats;
+}
+
+declare module 'node:path' {
+  export function isAbsolute(path: string): boolean;
+}
+
 declare module '@ampcode/plugin' {
   export interface URI { readonly scheme: string; readonly path: string; }
   export interface Subscription { unsubscribe(): void; }
@@ -402,7 +415,8 @@ declare module '@ampcode/plugin' {
     | { readonly kind: 'builtin-agent'; mode: BuiltinAgentMode }
     | (CreateAgentConfig & { readonly kind: 'agent-definition'; model: string; instructions: string });
   export interface Agent {
-    readonly definition: AgentDefinition;
+    readonly definition: AgentDefinition | AgentConfig;
+    createThread(options: { parentThreadID: string; executor?: string }): Promise<AgentThread>;
     createThread(options?: {
       parentThreadID?: string;
       executor?: 'local' | 'orb' | { type: 'runner'; id: string };
@@ -466,6 +480,65 @@ declare module '@ampcode/plugin' {
     | { action: 'allow' }
     | { action: 'reject-and-continue'; message: string };
 
+  export interface AgentDisplay {
+    label: string;
+    color: string;
+  }
+
+  export interface AgentConfig {
+    name: string;
+    model: string;
+    features?: string[];
+    reasoningEffort?: string;
+    instructions: string;
+    tools: readonly string[];
+    display?: AgentDisplay;
+    readonly kind?: 'builtin-agent' | 'agent-definition';
+    mode?: BuiltinAgentMode;
+  }
+
+  export interface AgentThreadMessage {
+    type: 'user-message';
+    content: string;
+  }
+
+  export interface AgentThreadResponse {
+    content?: string | ThreadAssistantMessage['content'];
+  }
+
+  export interface AgentThread {
+    id: string;
+    appendUserMessage(message: AgentThreadMessage): Promise<void>;
+    waitForResponse(options: { timeoutMs: number }): Promise<AgentThreadResponse>;
+  }
+
+  export interface AgentModeDefinition {
+    key: string;
+    label: string;
+    description: string;
+    color: string;
+    agent: AgentConfig | AgentDefinition;
+  }
+
+  export interface JsonSchema {
+    type?: string;
+    description?: string;
+    properties?: Record<string, JsonSchema>;
+    required?: string[];
+  }
+
+  export interface ToolExecuteContext {
+    thread: { id: string };
+  }
+
+  export interface ToolDefinition {
+    name: string;
+    title?: string;
+    description: string;
+    inputSchema: JsonSchema;
+    execute(input: Record<string, unknown>, ctx: ToolExecuteContext): string | Promise<string>;
+  }
+
   export interface PluginAPI {
     system: {
       readonly workspaceRoot: URI | null;
@@ -477,7 +550,10 @@ declare module '@ampcode/plugin' {
       filePathFromURI(uri: URI): string;
     };
     createAgent(config: CreateAgentConfig): Agent;
+    createAgent(config: AgentConfig): Agent;
+    registerAgentMode(definition: AgentModeDefinition): void;
     registerTool(definition: PluginToolDefinition): Subscription;
+    registerTool(definition: ToolDefinition): void;
     on(event: 'agent.start', handler: (event: AgentStartEvent) => AgentStartResult | Promise<AgentStartResult>): Subscription;
     on(event: 'tool.call', handler: (event: ToolCallEvent) => ToolCallResult | Promise<ToolCallResult>): Subscription;
     on(event: 'tool.result', handler: (event: ToolResultEvent) => void | Promise<void>): Subscription;

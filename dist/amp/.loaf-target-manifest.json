@@ -14,6 +14,14 @@
       "sha256": "dd1528fbcd47b62e9cf4e5943d2deb78e5118e60a0111608eed79b07cca4d873"
     },
     {
+      "id": "plugin:.amp/plugins/loaf-modes.ts",
+      "kind": "plugin",
+      "source_path": ".amp/plugins/loaf-modes.ts",
+      "destination": "plugins/loaf-modes.ts",
+      "sha256": "19836ad3669ffc3b1ec7a2cde05dc914848a4148235e1bfa312bee38ee5b5efc",
+      "mode": 420
+    },
+    {
       "id": "plugin:.amp/plugins/loaf.ts",
       "kind": "plugin",
       "source_path": ".amp/plugins/loaf.ts",

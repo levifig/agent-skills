@@ -331,3 +331,61 @@ func TestCollectTargetAdapterArtifactsRejectsSymlinks(t *testing.T) {
 		t.Fatalf("collectTargetAdapterArtifacts error = %v, want symlink refusal", err)
 	}
 }
+
+func TestCollectTargetAdapterArtifactsCollectsIndependentAmpPlugins(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	writeInstallFile(t, filepath.Join(root, ".amp", "plugins", "loaf.ts"), "hooks\n")
+	writeInstallFile(t, filepath.Join(root, ".amp", "plugins", "loaf-modes.ts"), "modes\n")
+	writeInstallFile(t, filepath.Join(root, ".amp", "plugins", "company.ts"), "company\n")
+	artifacts, err := collectTargetAdapterArtifacts("amp", root)
+	if err != nil {
+		t.Fatalf("collectTargetAdapterArtifacts error = %v", err)
+	}
+	got := map[string]string{}
+	for _, artifact := range artifacts {
+		if artifact.Kind != "plugin" {
+			t.Fatalf("artifact = %#v, want plugin kind", artifact)
+		}
+		got[artifact.Destination] = artifact.ID
+	}
+	if got["plugins/loaf.ts"] != "plugin:.amp/plugins/loaf.ts" || got["plugins/loaf-modes.ts"] != "plugin:.amp/plugins/loaf-modes.ts" {
+		t.Fatalf("artifacts = %#v, want independent loaf.ts and loaf-modes.ts plugins", artifacts)
+	}
+	if _, ok := got["plugins/company.ts"]; ok {
+		t.Fatalf("artifacts = %#v, want Loaf-owned plugin files only", artifacts)
+	}
+	if len(got) != 2 {
+		t.Fatalf("artifacts = %#v, want exactly two Amp plugins", artifacts)
+	}
+}
+
+func TestAmpModesPluginExactPredecessorIsClosed(t *testing.T) {
+	body := []byte(testAmpModesPredecessor(t))
+	artifact := targetAdapterArtifact{
+		ID:          ampModesPluginArtifactID,
+		Kind:        "plugin",
+		SourcePath:  ampModesPluginSourcePath,
+		Destination: ampModesPluginDestination,
+	}
+	if !ampModesPluginExactPredecessor("amp", artifact, body) {
+		t.Fatal("exact predecessor digest was refused")
+	}
+	if ampModesPluginExactPredecessor("opencode", artifact, body) {
+		t.Fatal("non-amp target adopted the predecessor digest")
+	}
+	wrongID := artifact
+	wrongID.ID = "plugin:.amp/plugins/loaf.ts"
+	if ampModesPluginExactPredecessor("amp", wrongID, body) {
+		t.Fatal("hook plugin identity adopted the modes predecessor digest")
+	}
+	modified := append(append([]byte{}, body...), ' ')
+	if ampModesPluginExactPredecessor("amp", artifact, modified) {
+		t.Fatal("one-byte modification adopted the predecessor digest")
+	}
+	if targetAdapterLegacyOwnership("amp", artifact, body) {
+		t.Fatal("predecessor matched the generated-header heuristic")
+	}
+	if !strings.Contains(string(body), "name: 'grok-implementation-agent'") || !strings.Contains(string(body), "reasoningEffort: 'high'") {
+		t.Fatal("predecessor fixture lost the known old high-effort Grok configuration")
+	}
+}

@@ -26,6 +26,13 @@ const (
 // them so the next write is rid of them.
 const obsoleteHookProjectionKind = "hook-projection"
 
+const (
+	ampModesPluginArtifactID        = "plugin:.amp/plugins/loaf-modes.ts"
+	ampModesPluginSourcePath        = ".amp/plugins/loaf-modes.ts"
+	ampModesPluginDestination       = "plugins/loaf-modes.ts"
+	ampModesPluginPredecessorSHA256 = "27ff4c82dbb0cd21b6f9ff694e20017fe62653521d23d5b586ba8f3457b64c5f"
+)
+
 type targetAdapterManifest struct {
 	Version                   int                     `json:"version"`
 	Target                    string                  `json:"target"`
@@ -136,7 +143,7 @@ func collectTargetAdapterArtifacts(target string, outputDir string) ([]targetAda
 	case "codex":
 		paths = nil
 	case "amp":
-		paths = []string{".amp/plugins/loaf.ts"}
+		paths = []string{".amp/plugins"}
 	default:
 		return nil, fmt.Errorf("unsupported target manifest target %q", target)
 	}
@@ -179,7 +186,11 @@ func collectTargetAdapterArtifacts(target string, outputDir string) ([]targetAda
 				if err != nil {
 					return err
 				}
-				return appendTargetAdapterArtifact(&artifacts, seen, target, outputDir, filepath.ToSlash(rel))
+				relSlash := filepath.ToSlash(rel)
+				if target == "amp" && !managedAmpPluginSource(relSlash) {
+					return nil
+				}
+				return appendTargetAdapterArtifact(&artifacts, seen, target, outputDir, relSlash)
 			})
 			if err != nil {
 				return nil, err
@@ -197,6 +208,15 @@ func collectTargetAdapterArtifacts(target string, outputDir string) ([]targetAda
 	return artifacts, nil
 }
 
+func managedAmpPluginSource(sourcePath string) bool {
+	switch sourcePath {
+	case ".amp/plugins/loaf.ts", ".amp/plugins/loaf-modes.ts":
+		return true
+	default:
+		return false
+	}
+}
+
 func appendTargetAdapterArtifact(artifacts *[]targetAdapterArtifact, seen map[string]bool, target string, outputDir string, sourcePath string) error {
 	if seen[sourcePath] {
 		return nil
@@ -211,7 +231,7 @@ func appendTargetAdapterArtifact(artifacts *[]targetAdapterArtifact, seen map[st
 	switch target {
 	case "amp":
 		kind = "plugin"
-		destination = "plugins/loaf.ts"
+		destination = "plugins/" + filepath.Base(filepath.FromSlash(sourcePath))
 	case "opencode":
 		if sourcePath == "plugins/hooks.ts" {
 			kind = "plugin"
@@ -605,7 +625,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		if _, owned := installedByID[artifact.ID]; owned || !states[path].exists {
 			continue
 		}
-		if targetAdapterSnapshotMatchesArtifact(artifact, states[path]) || targetAdapterLegacyOwnership(options.Target, artifact, states[path].body) {
+		if targetAdapterSnapshotMatchesArtifact(artifact, states[path]) || targetAdapterLegacyOwnership(options.Target, artifact, states[path].body) || ampModesPluginExactPredecessor(options.Target, artifact, states[path].body) {
 			continue
 		}
 		return fmt.Errorf("target artifact destination %q exists and is not managed by Loaf", artifact.Destination)
@@ -801,12 +821,15 @@ func targetAdapterDestination(options targetInstallOptions, artifact targetAdapt
 	}
 	if options.Target == "amp" && artifact.Kind == "plugin" && options.AmpPluginsDir != "" {
 		root = options.AmpPluginsDir
-		if artifact.Destination == "plugins/loaf.ts" {
-			destination := filepath.Join(root, "loaf.ts")
-			if err := validateTargetAdapterDestinationParents(root, destination); err != nil {
-				return "", err
+		if strings.HasPrefix(artifact.Destination, "plugins/") {
+			name := strings.TrimPrefix(artifact.Destination, "plugins/")
+			if name != "" && !strings.Contains(name, "/") && validTargetAdapterPath(name) {
+				destination := filepath.Join(root, filepath.FromSlash(name))
+				if err := validateTargetAdapterDestinationParents(root, destination); err != nil {
+					return "", err
+				}
+				return destination, nil
 			}
-			return destination, nil
 		}
 	}
 	if root == "" || !validTargetAdapterPath(artifact.Destination) {
@@ -917,6 +940,21 @@ func targetAdapterLegacyOwnership(target string, artifact targetAdapterArtifact,
 				(target == "opencode" && strings.Contains(text, "OpenCode Plugin - Agent Skills Hooks")))
 	}
 	return false
+}
+
+// ampModesPluginExactPredecessor is a one-time closed digest migration for the
+// recovered private Amp modes plugin that predates packaged ownership. Loaf
+// may adopt only an unrecorded destination when the target is amp, the artifact
+// identity/source/destination are exactly the Loaf modes plugin, and the body
+// SHA-256 is the known predecessor. Any other byte, identity, or target stays
+// foreign. This does not broaden the generated-header heuristic.
+func ampModesPluginExactPredecessor(target string, artifact targetAdapterArtifact, body []byte) bool {
+	return target == "amp" &&
+		artifact.Kind == "plugin" &&
+		artifact.ID == ampModesPluginArtifactID &&
+		artifact.SourcePath == ampModesPluginSourcePath &&
+		artifact.Destination == ampModesPluginDestination &&
+		sha256Bytes(body) == ampModesPluginPredecessorSHA256
 }
 
 func publishTargetAdapterArtifact(options targetInstallOptions, artifact targetAdapterArtifact) error {
