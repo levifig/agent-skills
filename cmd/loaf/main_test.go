@@ -90,6 +90,24 @@ func TestDevBuildIdentityReadsTheVCSStamp(t *testing.T) {
 	if commit, modified := devBuildIdentity(clean, "", "", "fedcba9876543", "true"); commit != "abc1234def5678" || modified {
 		t.Fatalf("devBuildIdentity(stamp + linked) = (%q, %t), want the stamp (abc1234def5678, false)", commit, modified)
 	}
+
+	// A malformed stamp is treated as absent: it never shadows a valid linked
+	// identity, and on its own it yields no provenance rather than garbage.
+	for _, malformed := range []string{"not-a-sha", "abc12", "ABC1234DEF5678", "abc1234def5678abc1234def5678abc1234def5678x"} {
+		stamped := &debug.BuildInfo{Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: malformed},
+			{Key: "vcs.modified", Value: "false"},
+		}}
+		if commit, modified := devBuildIdentity(stamped, "", "", "fedcba9876543", "true"); commit != "fedcba9876543" || !modified {
+			t.Fatalf("devBuildIdentity(malformed stamp %q + linked) = (%q, %t), want the linked identity (fedcba9876543, true)", malformed, commit, modified)
+		}
+		if commit, modified := devBuildIdentity(stamped, "", "", "", ""); commit != "" || modified {
+			t.Fatalf("devBuildIdentity(malformed stamp %q alone) = (%q, %t), want empty", malformed, commit, modified)
+		}
+	}
+	if commit, modified := devBuildIdentity(nil, "", "", "not-a-sha", "true"); commit != "" || modified {
+		t.Fatalf("devBuildIdentity(malformed linked) = (%q, %t), want empty", commit, modified)
+	}
 }
 
 func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {

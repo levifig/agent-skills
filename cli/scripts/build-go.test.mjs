@@ -171,6 +171,34 @@ test("dev identity from git is linked into every compile", (t) => {
   assert.equal(identity("tracked file modified"), "1");
 });
 
+test("git status failure compiles without a dev identity and warns", (t) => {
+  const repo = gitRepo(t);
+  const fixture = nativeFixture(t, { root: repo });
+  git(repo, "add", "-A");
+  git(repo, "commit", "-m", "fixture");
+  const warnings = [];
+  const seen = [];
+  const result = runNativeBuild({
+    rootDir: fixture.root,
+    env: fixture.env,
+    spawnSync(command, args, options) {
+      if (command === "git" && args[0] === "status") {
+        return { status: 128, stdout: "", stderr: "fatal: simulated index lock\n" };
+      }
+      return spawnSync(command, args, options);
+    },
+    warn: (message) => warnings.push(message),
+    refreshLink: () => ({ status: "skipped" }),
+    buildTarget: capturingTargets(seen),
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(readFileSync(fixture.linux, "utf8"), "new-linux-x64");
+  assert.equal(seen[0].LOAF_DEV_COMMIT, undefined);
+  assert.equal(seen[0].LOAF_DEV_MODIFIED, undefined);
+  assert.ok(warnings.some((message) => /could not resolve a Git identity/.test(message)));
+});
+
 test("non-Git root compiles without a dev identity and warns", (t) => {
   const fixture = nativeFixture(t);
   const warnings = [];

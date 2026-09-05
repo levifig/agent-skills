@@ -97,11 +97,27 @@ func devBuildIdentity(info *debug.BuildInfo, releaseCommit, releaseDate, linkedC
 			}
 		}
 	}
-	if commit != "" {
+	if isCommitHash(commit) {
 		return commit, modified
 	}
-	if commit = strings.TrimSpace(linkedCommit); commit != "" {
-		return commit, strings.TrimSpace(linkedModified) == "true"
+	// A missing or malformed stamp never shadows the linked identity: both
+	// describe the same tree at the same instant, so the valid one is the truth.
+	if linked := strings.TrimSpace(linkedCommit); isCommitHash(linked) {
+		return linked, strings.TrimSpace(linkedModified) == "true"
 	}
 	return "", false
+}
+
+// isCommitHash accepts an abbreviated or full lowercase Git object name. The
+// version renderer needs at least seven hex digits to mint `+g<short-sha>`.
+func isCommitHash(value string) bool {
+	if len(value) < 7 || len(value) > 40 {
+		return false
+	}
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }
