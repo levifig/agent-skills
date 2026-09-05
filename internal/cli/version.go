@@ -67,8 +67,8 @@ func (r Runner) runVersion(out io.Writer) error {
 // existing dev content as a newer release.
 const legacyDevVersionPatchFloor = 1_000_000_000
 
-// isDevVersion recognizes the current +g<short-sha> convention and the legacy
-// timestamp-in-patch convention. Build metadata does not affect SemVer
+// isDevVersion recognizes the current +g<short-sha> convention (optionally
+// followed by .dirty) and the legacy timestamp-in-patch convention. Build metadata does not affect SemVer
 // precedence, but it remains an explicit and machine-readable channel marker.
 func isDevVersion(version string) bool {
 	parsed, ok := parseUpgradeSemver(version)
@@ -105,11 +105,15 @@ func isDevCommitIdentifier(identifier string) bool {
 	return true
 }
 
-// devVersion appends the commit a local build recorded as SemVer build
-// metadata. This keeps the package version and its precedence intact while
-// making the exact source commit immediately comparable with git. The commit
-// stays outside the native binary so tracked binaries remain reproducible.
-func devVersion(releaseVersion string, commit string) string {
+// devVersion appends the commit a local build was compiled from as SemVer
+// build metadata, followed by `.dirty` when the working tree carried
+// uncommitted changes at compile time. This keeps the package version and its
+// precedence intact while making the exact source commit immediately
+// comparable with git. Both facts come from the VCS stamp `go build
+// -buildvcs=true` writes into the binary (see cmd/loaf/main.go), so the
+// identity describes the compiled bytes rather than whatever HEAD said when a
+// separate provenance file was written.
+func devVersion(releaseVersion string, commit string, modified bool) string {
 	if _, ok := parseUpgradeSemver(releaseVersion); !ok || releaseVersion == packageVersionUnknown {
 		return releaseVersion
 	}
@@ -122,7 +126,11 @@ func devVersion(releaseVersion string, commit string) string {
 	if strings.Contains(releaseVersion, "+") {
 		separator = "."
 	}
-	return releaseVersion + separator + "g" + commit
+	identity := "g" + commit
+	if modified {
+		identity += ".dirty"
+	}
+	return releaseVersion + separator + identity
 }
 
 // reportedVersion is the version this binary answers with: a release build
@@ -135,7 +143,7 @@ func (r Runner) reportedVersion(root string) string {
 	if !r.isDevBuild(root) {
 		return packageVersion(root)
 	}
-	return devVersion(packageVersion(root), r.DevBuildCommit)
+	return devVersion(packageVersion(root), r.DevBuildCommit, r.DevBuildModified)
 }
 
 // isDevBuild takes two facts rather than one. Absent release metadata says no

@@ -3,7 +3,7 @@ id: ADR-026
 title: "Major-zero versioning — arc-boundary releases, liberal X epochs, and commit-addressed dev identity"
 status: Accepted
 date: 2026-08-06
-revised: 2026-08-18
+revised: 2026-09-05
 supersedes: null
 superseded_by: null
 related:
@@ -17,6 +17,8 @@ related:
 2026-08-15: bump semantics restate as `loaf release suggest` evidence.
 
 2026-08-18: dev identity changes from an executable-mtime timestamp to SemVer commit metadata.
+
+2026-09-05: the toolchain stamps the commit into the binary (`-buildvcs=true`), uncommitted source reports `.dirty`, and root `bin/` leaves version control.
 
 ## Context
 
@@ -40,9 +42,9 @@ The initial reset (2026-08-06) fixed the number but framed the minor as a "stabi
 
 **The bump suggestion derives from arc evidence.** `suggestReleaseBump` historically read commit types — any `feat` suggested minor, a breaking marker suggested major. Under this record it derives from the same evidence the cohort gate reads: a completed arc in the unreleased range suggests X, otherwise Y, capped at minor while major is 0. Until that realignment lands, cuts state the bump explicitly per this policy. The explicit override remains the valve for the documented edge: a hotfix cut while a standalone executed Change sits unreleased in range takes `--bump patch` deliberately, and the X-worthy work waits for its own cut.
 
-**A dev build's identity is `<package-version>+g<short-sha>`.** For example, a local build of package version `0.3.1` from commit `5a784cde…` reports `0.3.1+g5a784cd (dev build)`. The commit is immediately comparable with `git rev-parse --short=7 HEAD`, and SemVer build metadata deliberately leaves release precedence unchanged.
+**A dev build's identity is `<package-version>+g<short-sha>`.** For example, a local build of package version `0.3.1` from commit `5a784cde…` reports `0.3.1+g5a784cd (dev build)`. The commit is immediately comparable with `git rev-parse --short=7 HEAD`, and SemVer build metadata deliberately leaves release precedence unchanged. A build from a working tree with uncommitted changes appends `.dirty` (`0.3.1+g5a784cd.dirty`), so the identity never claims a commit's source when it compiled something else.
 
-**The commit is recorded beside the binary, not linked into it.** The committed native binaries are asserted byte-for-byte reproducible (`cli/scripts/verify-go-artifacts.mjs`), so a build-varying `-X` ldflag would fail that assertion on every build. `build-go.mjs` compiles requested targets into `bin/native/.staging/` and replaces `bin/native/<target>/` plus `bin/.loaf-dev-commit` only after every requested target compiles. A compile failure leaves the previous successful published set and its marker. Publication removes the marker before replacing binaries so a crash mid-replace cannot keep an old sha on mixed files; the multi-file replace itself is not crash-atomic. `cmd/loaf/main.go` reads `bin/.loaf-dev-commit` for executables under `bin/native/<target>/`. The file is neither tracked nor packaged. If it is absent or invalid, the source-checkout build still says `(dev build)` but does not invent provenance. The recorded sha is `git rev-parse --short=7 HEAD` — a dirty tree still reports HEAD.
+**The commit is stamped into the binary by the toolchain.** `build-go.mjs` passes `-buildvcs=true`, so `go build` records `vcs.revision` and `vcs.modified` in the binary's build info and `cmd/loaf/main.go` reads them through `runtime/debug.ReadBuildInfo`. The identity is mechanical — it describes the bytes that were compiled — and needs no file beside the binary that could be written from one HEAD while the source on disk said another, which is exactly how `bin/.loaf-dev-commit` produced a stale label on 2026-09-05. That file is gone, and so is the byte-for-byte rebuild assertion in `verify-go-artifacts.mjs`, whose only purpose was keeping tracked binaries identical across commits: root `bin/` is no longer tracked, so nothing needs that property. `plugins/loaf/bin/` remains committed for the Claude Code marketplace until a shim that resolves an installed `loaf` replaces it. One gap needs a bridge: the pinned `go1.26.6` toolchain writes no stamp inside a linked worktree (a `.git` file), while `go1.27.1` does, and worktrees are where Loaf's issue branches live. `build-go.mjs` therefore resolves the same two facts with `git rev-parse HEAD` and `git status --porcelain` and links them as `-X main.devCommit/devModified`; the runtime prefers the toolchain stamp and falls back to the linked values, so both paths report one identity, and the fallback can be deleted once the pinned toolchain stamps worktrees. Staging still applies: `build-go.mjs` compiles requested targets into `bin/native/.staging/` and publishes the set only after every requested target compiles. A binary compiled outside any checkout reports the package version with the dev-channel suffix and no commit.
 
 **The last successful dev build owns Loaf's user-local launcher pointer.** After recording valid Git provenance, `build-go.mjs` retargets `$XDG_DATA_HOME/loaf/current-dev-launcher` at the checkout's launcher. `~/.local/bin/loaf` is created only when that name is absent, as a symlink to the pointer. Release-metadata builds never claim it, `LOAF_DEV_LINK=0` is the explicit opt-out, and the build never overwrites, unlinks, or renames a real file, directory, or any other symlink at the PATH name — including a leftover checkout symlink from the previous scheme. Activation is best-effort: I/O or permission failures warn and leave the native build successful. This makes the active CLI follow whichever worktree was most recently built once the PATH name points at the pointer, without making the main checkout a privileged indirection point.
 
@@ -74,7 +76,7 @@ The initial reset (2026-08-06) fixed the number but framed the minor as a "stabi
 
 The version carries information again: X counts significant arcs, Y counts maintenance within them, and reading `0.7.3` says seven significant things have shipped with the third round of polish on the latest. Releases stop being merge echoes and become deliberate arc-boundary events — fewer, and each one meaning something. Release and dev identities stay unmistakable on sight — `0.3.1` versus `0.3.1+g5a784cd` — without changing their SemVer precedence.
 
-Costs accepted. A Y release cut mid-arc ships arc code the number does not announce; the changelog carries the honesty, and the safety rests on the ship ceremony keeping every merged Change individually complete. Retargeting becomes recurring low-stakes maintenance instead of a rare event, which is what pin-late discipline exists to minimize. `suggestReleaseBump` disagrees with policy until its realignment lands, so the interim leans on explicit `--bump` — the one window where the trigger is not yet decision-free in the tooling. A dev commit names the checked-out HEAD at build time, not uncommitted working-tree changes, and a build outside a Git checkout falls back to the package version with the dev-channel suffix rather than claiming provenance it cannot resolve. Renumbered history exists only in `CHANGELOG.md`; no tag or artifact carries the new numbers for anything before `0.2.20`.
+Costs accepted. A Y release cut mid-arc ships arc code the number does not announce; the changelog carries the honesty, and the safety rests on the ship ceremony keeping every merged Change individually complete. Retargeting becomes recurring low-stakes maintenance instead of a rare event, which is what pin-late discipline exists to minimize. `suggestReleaseBump` disagrees with policy until its realignment lands, so the interim leans on explicit `--bump` — the one window where the trigger is not yet decision-free in the tooling. A dev commit names the source that was compiled, with `.dirty` marking uncommitted working-tree changes; a build outside any checkout carries no stamp and falls back to the package version with the dev-channel suffix rather than claiming provenance it cannot resolve. Every local build now differs from the last, which is only acceptable because root `bin/` is untracked; `plugins/loaf/bin/` still churns on each build until the marketplace shim lands. Renumbered history exists only in `CHANGELOG.md`; no tag or artifact carries the new numbers for anything before `0.2.20`.
 
 The revision realigns the native version path (`cmd/loaf/main.go`, `internal/cli/version.go`), local and release build scripts, the user-local dev link, the release workflow guard, version and copied-distribution tests, and this architecture overview. Legacy timestamp recognition remains deliberately isolated to compatibility readers.
 
@@ -95,6 +97,7 @@ Not valid SemVer, and npm rejects it. The patch slot is the only place a monoton
 ### Injecting the commit with `-ldflags -X`
 
 The committed native binaries must rebuild byte-for-byte identical for the reproducibility gate; a build-varying linker flag fails that assertion whenever HEAD changes. An ignored provenance file supplies local identity without changing tracked bytes.
+Adopted in spirit on 2026-09-05 once root `bin/` left version control: with no tracked binaries to keep identical, build-varying bytes cost nothing, and `-buildvcs=true` supplies the commit plus a dirty flag without a custom linker flag.
 
 ### Keeping the user-local link pinned to the main checkout
 
@@ -147,3 +150,4 @@ The unexamined premise under the initial "releases become boring" framing. It ma
 - 2026-08-18 — Commit-addressed SemVer build metadata replaces executable-mtime timestamp identity; an ignored local provenance file preserves tracked-binary reproducibility.
 - 2026-08-18 — Successful Git-backed dev builds atomically retarget the guarded user-local Loaf symlink, making the last built worktree active.
 - 2026-08-18 — Activation moves to a Loaf-owned launcher pointer and create-exclusive PATH claim; native publication stages binaries before replacing the published set; release tags are SemVer-validated before any dev-identity skip.
+- 2026-09-05 — The toolchain stamps the commit into the binary (`-buildvcs=true`) and uncommitted source reports `.dirty`; the ignored provenance file and the byte-for-byte rebuild assertion are removed, and root `bin/` is no longer tracked.

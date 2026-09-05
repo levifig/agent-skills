@@ -6,10 +6,10 @@ node_modules/
 # plugins/ - tracked (for Claude Code marketplace)
 # .claude-plugin/ - tracked (for Claude Code marketplace)
 
-# CLI build output
+# CLI build output. The launcher and native binaries under bin/ are generated
+# by `npm run build:go`; plugins/loaf/bin/ stays tracked for the marketplace.
 dist-cli/
-bin/.loaf-dev-commit
-bin/native/.staging/
+/bin/
 !plugins/loaf/dist-cli/
 !plugins/loaf/dist-cli/**
 

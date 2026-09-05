@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/levifig/loaf/internal/cli"
@@ -20,6 +20,19 @@ import (
 var (
 	buildCommit string
 	buildDate   string
+)
+
+// Dev identity linked by build-go.mjs via
+//
+//	-ldflags "-X main.devCommit=<sha> -X main.devModified=<true|false>"
+//
+// from `git rev-parse HEAD` and `git status --porcelain`. It duplicates the
+// -buildvcs stamp for toolchains that do not write one inside a linked
+// worktree (observed with go1.26.6; go1.27.1 does). The stamp wins when
+// present; these fill in when it is absent.
+var (
+	devCommit   string
+	devModified string
 )
 
 func main() {
@@ -41,38 +54,54 @@ func run(args []string) error {
 }
 
 func newRunner(stdout, stderr io.Writer) cli.Runner {
+	identityCommit, identityModified := devBuildIdentity(readBuildInfo(), buildCommit, buildDate, devCommit, devModified)
 	return cli.Runner{
-		Stdout:         stdout,
-		Stderr:         stderr,
-		BuildCommit:    buildCommit,
-		BuildDate:      buildDate,
-		DevBuildCommit: devBuildCommit(),
+		Stdout:           stdout,
+		Stderr:           stderr,
+		BuildCommit:      buildCommit,
+		BuildDate:        buildDate,
+		DevBuildCommit:   identityCommit,
+		DevBuildModified: identityModified,
 	}
 }
 
-// devBuildCommit reads the source commit recorded beside locally built native
-// binaries. The ignored provenance file keeps build-varying identity outside
-// the reproducible binary and is not present in shipped distributions.
-func devBuildCommit() string {
-	if buildCommit != "" || buildDate != "" {
-		return ""
+// readBuildInfo returns the build information the Go toolchain embedded in
+// this binary, or nil when none is available.
+func readBuildInfo() *debug.BuildInfo {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return nil
 	}
-	path, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	return readDevBuildCommit(path)
+	return info
 }
 
-func readDevBuildCommit(executable string) string {
-	targetDir := filepath.Dir(executable)
-	nativeDir := filepath.Dir(targetDir)
-	if filepath.Base(nativeDir) != "native" {
-		return ""
+// devBuildIdentity reads the source commit and working-tree state of a dev
+// build. The primary source is the stamp `go build -buildvcs=true` writes
+// (build-go.mjs passes the flag); when the toolchain wrote none — a linked
+// worktree under go1.26.6, or no Git checkout at all — the values build-go.mjs
+// linked from git stand in. Either way the identity is part of the compiled
+// bytes, so it cannot drift from them the way a commit recorded in a separate
+// file could. Release builds carry explicit metadata and never report dev
+// identity. Without any commit, no provenance is invented.
+func devBuildIdentity(info *debug.BuildInfo, releaseCommit, releaseDate, linkedCommit, linkedModified string) (commit string, modified bool) {
+	if strings.TrimSpace(releaseCommit) != "" || strings.TrimSpace(releaseDate) != "" {
+		return "", false
 	}
-	body, err := os.ReadFile(filepath.Join(filepath.Dir(nativeDir), ".loaf-dev-commit"))
-	if err != nil {
-		return ""
+	if info != nil {
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				commit = strings.TrimSpace(setting.Value)
+			case "vcs.modified":
+				modified = setting.Value == "true"
+			}
+		}
 	}
-	return strings.TrimSpace(string(body))
+	if commit != "" {
+		return commit, modified
+	}
+	if commit = strings.TrimSpace(linkedCommit); commit != "" {
+		return commit, strings.TrimSpace(linkedModified) == "true"
+	}
+	return "", false
 }

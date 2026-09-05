@@ -17,6 +17,10 @@ import (
 const (
 	installedTestVersion = "9.9.9-current"
 	staleTestVersion     = "1.1.1-stale"
+	// fixtureDevCommit is linked into the shared test binary the way
+	// build-go.mjs links a dev build's identity, with -buildvcs=false so the
+	// expectation does not depend on the toolchain or the tree's real state.
+	fixtureDevCommit = "abc1234def5678"
 )
 
 func TestInstalledDistributionVersionAuthorityFromStaleCheckout(t *testing.T) {
@@ -95,7 +99,6 @@ func TestInstalledDistributionCheckoutOwnBinaryReportsCheckoutVersion(t *testing
 	nativeDir := filepath.Join(checkout, "bin", "native", "test-target")
 	copyFixtureBinary(t, sharedTestLoafBinary(t, repo), filepath.Join(nativeDir, "loaf"))
 	writeFixtureFile(t, filepath.Join(checkout, "bin", "package.json"), "{\n  \"type\": \"commonjs\"\n}\n")
-	writeFixtureFile(t, filepath.Join(checkout, "bin", ".loaf-dev-commit"), "abc1234\n")
 	elsewhere := realpath(t, t.TempDir())
 	env := isolatedInstallEnv(t)
 
@@ -107,10 +110,12 @@ func TestInstalledDistributionCheckoutOwnBinaryReportsCheckoutVersion(t *testing
 		t.Fatalf("checkout-owned loaf version error = %v\n%s", err, output)
 	}
 	// A checkout's own binary is a dev build by definition, so it reports the
-	// dev identity built from its owning checkout's package version and recorded
-	// commit rather than the package version alone.
-	if !strings.Contains(string(output), "loaf\x1b[0m 3.3.3-dev+gabc1234 (dev build)") {
-		t.Fatalf("version output = %q, want the owning checkout's dev identity", output)
+	// dev identity built from its owning checkout's package version and the
+	// commit and tree state compiled into the binary, not the package version
+	// alone.
+	want := "loaf\x1b[0m 3.3.3-dev+g" + fixtureDevCommit[:7] + ".dirty (dev build)"
+	if !strings.Contains(string(output), want) {
+		t.Fatalf("version output = %q, want the owning checkout's dev identity %q", output, want)
 	}
 }
 
@@ -295,7 +300,7 @@ func sharedTestLoafBinary(t *testing.T, repo string) string {
 		t.Fatalf("MkdirTemp error = %v", err)
 	}
 	binary := filepath.Join(dir, "loaf")
-	if output, err := runCommand(repo, "go", "build", "-o", binary, "./cmd/loaf"); err != nil {
+	if output, err := runCommand(repo, "go", "build", "-buildvcs=false", "-ldflags", "-X main.devCommit="+fixtureDevCommit+" -X main.devModified=true", "-o", binary, "./cmd/loaf"); err != nil {
 		os.RemoveAll(dir)
 		t.Fatalf("go build ./cmd/loaf error = %v\n%s", err, output)
 	}

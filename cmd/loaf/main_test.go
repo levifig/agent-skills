@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,30 +41,54 @@ func TestNewRunnerWiresBuildInfo(t *testing.T) {
 	}
 }
 
-func TestDevBuildCommitReadsOnlyLocalNativeProvenance(t *testing.T) {
-	originalCommit, originalDate := buildCommit, buildDate
-	t.Cleanup(func() {
-		buildCommit, buildDate = originalCommit, originalDate
-	})
-
-	root := t.TempDir()
-	executable := filepath.Join(root, "bin", "native", "test-target", "loaf")
-	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "bin", ".loaf-dev-commit"), []byte("abc1234\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	if got := readDevBuildCommit(executable); got != "abc1234" {
-		t.Fatalf("readDevBuildCommit() = %q, want abc1234", got)
-	}
-	if got := readDevBuildCommit(filepath.Join(root, "bin", "loaf")); got != "" {
-		t.Fatalf("readDevBuildCommit(non-native path) = %q, want empty", got)
+func TestDevBuildIdentityReadsTheVCSStamp(t *testing.T) {
+	stamped := &debug.BuildInfo{Settings: []debug.BuildSetting{
+		{Key: "vcs", Value: "git"},
+		{Key: "vcs.revision", Value: "abc1234def5678"},
+		{Key: "vcs.modified", Value: "true"},
+	}}
+	if commit, modified := devBuildIdentity(stamped, "", "", "", ""); commit != "abc1234def5678" || !modified {
+		t.Fatalf("devBuildIdentity(stamped) = (%q, %t), want (abc1234def5678, true)", commit, modified)
 	}
 
-	buildCommit, buildDate = "release1", ""
-	if got := devBuildCommit(); got != "" {
-		t.Fatalf("devBuildCommit() = %q, want empty for a release build", got)
+	clean := &debug.BuildInfo{Settings: []debug.BuildSetting{
+		{Key: "vcs.revision", Value: "abc1234def5678"},
+		{Key: "vcs.modified", Value: "false"},
+	}}
+	if commit, modified := devBuildIdentity(clean, "", "", "", ""); commit != "abc1234def5678" || modified {
+		t.Fatalf("devBuildIdentity(clean) = (%q, %t), want (abc1234def5678, false)", commit, modified)
+	}
+
+	// Release metadata wins: a release binary keeps its VCS stamp but never
+	// reports dev identity.
+	if commit, modified := devBuildIdentity(stamped, "release1", "", "fedcba9876543", "true"); commit != "" || modified {
+		t.Fatalf("devBuildIdentity(release commit) = (%q, %t), want empty", commit, modified)
+	}
+	if commit, modified := devBuildIdentity(stamped, "", "2026-06-27T12:00:00Z", "", ""); commit != "" || modified {
+		t.Fatalf("devBuildIdentity(release date) = (%q, %t), want empty", commit, modified)
+	}
+
+	// No revision — built outside Git or with -buildvcs=false — reports no
+	// provenance rather than inventing one, even if a modified flag is present.
+	unstamped := &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.modified", Value: "true"}}}
+	if commit, modified := devBuildIdentity(unstamped, "", "", "", ""); commit != "" || modified {
+		t.Fatalf("devBuildIdentity(unstamped) = (%q, %t), want empty", commit, modified)
+	}
+	if commit, modified := devBuildIdentity(nil, "", "", "", ""); commit != "" || modified {
+		t.Fatalf("devBuildIdentity(nil) = (%q, %t), want empty", commit, modified)
+	}
+
+	// Without a toolchain stamp the values build-go.mjs linked from git stand
+	// in — the path a linked worktree takes under go1.26.6.
+	if commit, modified := devBuildIdentity(unstamped, "", "", "fedcba9876543", "true"); commit != "fedcba9876543" || !modified {
+		t.Fatalf("devBuildIdentity(linked dirty) = (%q, %t), want (fedcba9876543, true)", commit, modified)
+	}
+	if commit, modified := devBuildIdentity(nil, "", "", "fedcba9876543", "false"); commit != "fedcba9876543" || modified {
+		t.Fatalf("devBuildIdentity(linked clean) = (%q, %t), want (fedcba9876543, false)", commit, modified)
+	}
+	// When both exist the toolchain stamp is authoritative.
+	if commit, modified := devBuildIdentity(clean, "", "", "fedcba9876543", "true"); commit != "abc1234def5678" || modified {
+		t.Fatalf("devBuildIdentity(stamp + linked) = (%q, %t), want the stamp (abc1234def5678, false)", commit, modified)
 	}
 }
 
