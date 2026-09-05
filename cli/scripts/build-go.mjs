@@ -45,14 +45,12 @@ export function runNativeBuild(options = {}) {
   const warn = options.warn || console.warn;
   const platform = options.platform || process.platform;
   const refreshLink = options.refreshLink || refreshDevBuildLink;
-  const resolveCommit = options.resolveCommit || ((cwd, buildEnv) => defaultResolveCommit(cwd, buildEnv, spawn));
   const buildTarget = options.buildTarget || ((dest, target, buildEnv) => defaultBuildTarget(dest, target, buildEnv, rootDir, spawn));
 
   const launcherSource = join(rootDir, "cli", "runtime", "loaf-launcher.cjs");
   const launcherOutput = join(rootDir, "bin", "loaf");
   const nativeRoot = join(rootDir, "bin", "native");
   const stagingRoot = join(nativeRoot, ".staging");
-  const devCommitOutput = join(rootDir, "bin", ".loaf-dev-commit");
   const baseEnv = {
     ...env,
     CGO_ENABLED: "0",
@@ -60,6 +58,7 @@ export function runNativeBuild(options = {}) {
   };
   const targets = readBuildTargets(baseEnv, rootDir, spawn);
   const dryRun = baseEnv.LOAF_NATIVE_ARTIFACT_DRY_RUN === "1";
+  const releaseBuild = isReleaseBuild(baseEnv);
 
   fs.mkdirSync(dirname(launcherOutput), { recursive: true });
   if (dryRun) {
@@ -106,7 +105,6 @@ export function runNativeBuild(options = {}) {
       return { status: 0 };
     }
 
-    fs.rmSync(devCommitOutput, { force: true });
     for (const artifact of staged) {
       fs.mkdirSync(dirname(artifact.nativeOutput), { recursive: true });
       try {
@@ -122,16 +120,10 @@ export function runNativeBuild(options = {}) {
     }
   }
 
-  const devCommit = recordDevBuildCommit({
-    outputPath: devCommitOutput,
-    env: baseEnv,
-    rootDir,
-    resolveCommit,
-    fs,
-    warn,
-    log,
-  });
-  if (devCommit && platform !== "win32" && !isReleaseBuild(baseEnv) && baseEnv.LOAF_DEV_LINK !== "0") {
+  // The last successful non-release build owns the user-local launcher pointer
+  // (ADR-026). Provenance travels inside the binary via -buildvcs, so nothing
+  // else gates activation.
+  if (platform !== "win32" && !releaseBuild && baseEnv.LOAF_DEV_LINK !== "0") {
     try {
       const result = refreshLink(launcherOutput);
       if (result.status === "linked") {
@@ -142,28 +134,7 @@ export function runNativeBuild(options = {}) {
     }
   }
   log(`✓ Built Loaf launcher: ${launcherOutput}`);
-  return { status: 0, commit: devCommit };
-}
-
-function recordDevBuildCommit({ outputPath, env, rootDir, resolveCommit, fs, warn, log }) {
-  const commit = resolveCommit(rootDir, env);
-  if (!/^[0-9a-f]{7}$/.test(commit)) {
-    fs.rmSync(outputPath, { force: true });
-    warn("WARN: could not record the source commit for this dev build");
-    return "";
-  }
-  fs.writeFileSync(outputPath, commit + "\n");
-  log(`✓ Recorded dev build commit: ${commit}`);
-  return commit;
-}
-
-function defaultResolveCommit(rootDir, buildEnv, spawn) {
-  const result = spawn("git", ["rev-parse", "--short=7", "HEAD"], {
-    cwd: rootDir,
-    env: buildEnv,
-    encoding: "utf8",
-  });
-  return result.status === 0 ? result.stdout.trim().toLowerCase() : "";
+  return { status: 0 };
 }
 
 function defaultBuildTarget(dest, target, buildEnv, rootDir, spawn) {

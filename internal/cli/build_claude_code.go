@@ -159,6 +159,11 @@ func buildNativeClaudeCodeTarget(root string) error {
 	}
 	pluginsDir := filepath.Join(root, "plugins")
 	marketplaceDir := filepath.Join(root, ".claude-plugin")
+	preservedNative, releasePreserved, err := preserveMarketplaceNativeBinaries(filepath.Join(pluginsDir, nativeClaudePluginName))
+	if err != nil {
+		return err
+	}
+	defer releasePreserved()
 	if err := os.RemoveAll(pluginsDir); err != nil {
 		return err
 	}
@@ -213,6 +218,9 @@ func buildNativeClaudeCodeTarget(root string) error {
 		}
 	}
 	if err := copyNativeClaudeRuntimeFiles(root, pluginDir, version); err != nil {
+		return err
+	}
+	if err := restoreMissingMarketplaceNativeBinaries(preservedNative, filepath.Join(pluginDir, "bin", "native")); err != nil {
 		return err
 	}
 	return nil
@@ -509,6 +517,55 @@ func copyNativeClaudeHooks(hooks []nativeBuildHook, srcDir string, pluginDir str
 		}
 	}
 	return copyNativeBuildDir(filepath.Join(srcDir, "hooks", "instructions"), filepath.Join(hooksDir, "instructions"), nil, false)
+}
+
+// preserveMarketplaceNativeBinaries snapshots the committed plugins/loaf/bin/native
+// tree before the plugin directory is recreated. Root bin/ is an ignored build
+// output holding only the platforms this machine built, while the marketplace
+// copy must keep every release platform, so platforms the build did not produce
+// are restored from this snapshot instead of being dropped. The returned func
+// removes the snapshot; it is safe to call when nothing was preserved.
+func preserveMarketplaceNativeBinaries(pluginDir string) (string, func(), error) {
+	src := filepath.Join(pluginDir, "bin", "native")
+	if !pathExistsNative(src) {
+		return "", func() {}, nil
+	}
+	snapshot, err := os.MkdirTemp("", "loaf-marketplace-native-")
+	if err != nil {
+		return "", nil, err
+	}
+	release := func() { os.RemoveAll(snapshot) }
+	if err := copyNativeBuildDir(src, snapshot, nil, false); err != nil {
+		release()
+		return "", nil, err
+	}
+	return snapshot, release, nil
+}
+
+// restoreMissingMarketplaceNativeBinaries copies each platform directory from
+// the snapshot that the fresh build did not produce. Platforms the build did
+// produce keep the new binary.
+func restoreMissingMarketplaceNativeBinaries(snapshot string, dest string) error {
+	if snapshot == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(snapshot)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		target := filepath.Join(dest, entry.Name())
+		if pathExistsNative(target) {
+			continue
+		}
+		if err := copyNativeBuildDir(filepath.Join(snapshot, entry.Name()), target, nil, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func copyNativeClaudeRuntimeFiles(root string, pluginDir string, version string) error {

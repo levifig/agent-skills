@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/levifig/loaf/internal/cli"
@@ -41,38 +41,63 @@ func run(args []string) error {
 }
 
 func newRunner(stdout, stderr io.Writer) cli.Runner {
+	identityCommit, identityModified := devBuildIdentity(readBuildInfo(), buildCommit, buildDate)
 	return cli.Runner{
-		Stdout:         stdout,
-		Stderr:         stderr,
-		BuildCommit:    buildCommit,
-		BuildDate:      buildDate,
-		DevBuildCommit: devBuildCommit(),
+		Stdout:           stdout,
+		Stderr:           stderr,
+		BuildCommit:      buildCommit,
+		BuildDate:        buildDate,
+		DevBuildCommit:   identityCommit,
+		DevBuildModified: identityModified,
 	}
 }
 
-// devBuildCommit reads the source commit recorded beside locally built native
-// binaries. The ignored provenance file keeps build-varying identity outside
-// the reproducible binary and is not present in shipped distributions.
-func devBuildCommit() string {
-	if buildCommit != "" || buildDate != "" {
-		return ""
+// readBuildInfo returns the build information the Go toolchain embedded in
+// this binary, or nil when none is available.
+func readBuildInfo() *debug.BuildInfo {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return nil
 	}
-	path, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	return readDevBuildCommit(path)
+	return info
 }
 
-func readDevBuildCommit(executable string) string {
-	targetDir := filepath.Dir(executable)
-	nativeDir := filepath.Dir(targetDir)
-	if filepath.Base(nativeDir) != "native" {
-		return ""
+// devBuildIdentity reads the source commit and working-tree state that
+// `go build -buildvcs=true` stamps into the binary (build-go.mjs passes the
+// flag; go.mod pins a toolchain that stamps linked worktrees). The identity is
+// mechanical: it describes the bytes that were compiled, so it cannot drift
+// from them the way a commit recorded in a separate file could. Release builds
+// carry explicit metadata and never report dev identity. A binary compiled
+// without VCS information, or with a malformed stamp, reports no provenance
+// rather than inventing one.
+func devBuildIdentity(info *debug.BuildInfo, releaseCommit, releaseDate string) (commit string, modified bool) {
+	if strings.TrimSpace(releaseCommit) != "" || strings.TrimSpace(releaseDate) != "" || info == nil {
+		return "", false
 	}
-	body, err := os.ReadFile(filepath.Join(filepath.Dir(nativeDir), ".loaf-dev-commit"))
-	if err != nil {
-		return ""
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			commit = strings.TrimSpace(setting.Value)
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
 	}
-	return strings.TrimSpace(string(body))
+	if !isCommitHash(commit) {
+		return "", false
+	}
+	return commit, modified
+}
+
+// isCommitHash accepts an abbreviated or full lowercase Git object name. The
+// version renderer needs at least seven hex digits to mint `+g<short-sha>`.
+func isCommitHash(value string) bool {
+	if len(value) < 7 || len(value) > 40 {
+		return false
+	}
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }

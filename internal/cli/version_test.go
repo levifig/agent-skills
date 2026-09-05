@@ -173,6 +173,7 @@ func TestIsDevVersionRecognizesCommitMetadataAndLegacyTimestamps(t *testing.T) {
 		{version: "0.3+gabcdef0"},
 		{version: devBuildFixtureVersion, want: true},
 		{version: "0.2.20+build.9.gabc1234", want: true},
+		{version: "0.2.20+gabc1234.dirty", want: true},
 		{version: "v0.2.20+gabcdef0", want: true},
 		{version: "0.2.20+gabc123"},
 		{version: "0.2.20+gABCDEFG"},
@@ -194,7 +195,7 @@ func TestIsDevVersionRecognizesCommitMetadataAndLegacyTimestamps(t *testing.T) {
 }
 
 func TestDevVersionAppendsTheShortCommitAsBuildMetadata(t *testing.T) {
-	got := devVersion("9.8.7-test.1", "ABC1234def5678")
+	got := devVersion("9.8.7-test.1", "ABC1234def5678", false)
 	if got != devBuildFixtureVersion {
 		t.Fatalf("devVersion = %q, want %q", got, devBuildFixtureVersion)
 	}
@@ -203,8 +204,34 @@ func TestDevVersionAppendsTheShortCommitAsBuildMetadata(t *testing.T) {
 	}
 }
 
+func TestDevVersionMarksUncommittedSourceDirty(t *testing.T) {
+	got := devVersion("9.8.7-test.1", devBuildFixtureCommit, true)
+	if want := devBuildFixtureVersion + ".dirty"; got != want {
+		t.Fatalf("devVersion(dirty) = %q, want %q", got, want)
+	}
+	if !isDevVersion(got) {
+		t.Fatalf("isDevVersion(%q) = false, want the dirty identity to satisfy the predicate", got)
+	}
+	dirty, ok := parseUpgradeSemver(got)
+	if !ok {
+		t.Fatalf("devVersion(dirty) did not mint a parseable semver: %q", got)
+	}
+	release, ok := parseUpgradeSemver("9.8.7-test.1")
+	if !ok {
+		t.Fatal("parseUpgradeSemver(release) failed")
+	}
+	if got := compareUpgradeSemver(dirty, release); got != 0 {
+		t.Fatalf("dirty dev build precedence = %d, want equality with its package version", got)
+	}
+	// A dirty tree without a resolvable commit has nothing to be dirty relative
+	// to, so the flag alone never mints an identity.
+	if got := devVersion("9.8.7-test.1", "", true); got != "9.8.7-test.1" {
+		t.Fatalf("devVersion(no commit, dirty) = %q, want the bare release version", got)
+	}
+}
+
 func TestDevVersionPreservesReleasePrecedence(t *testing.T) {
-	dev, ok := parseUpgradeSemver(devVersion("0.2.20", devBuildFixtureCommit))
+	dev, ok := parseUpgradeSemver(devVersion("0.2.20", devBuildFixtureCommit, false))
 	if !ok {
 		t.Fatal("devVersion did not mint a parseable semver")
 	}
@@ -231,7 +258,7 @@ func TestDevVersionFallsBackWithoutAUsableCommit(t *testing.T) {
 		{name: "unresolvable_distribution", release: packageVersionUnknown, commit: devBuildFixtureCommit, want: packageVersionUnknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := devVersion(tc.release, tc.commit); got != tc.want {
+			if got := devVersion(tc.release, tc.commit, false); got != tc.want {
 				t.Fatalf("devVersion(%q, %q) = %q, want %q", tc.release, tc.commit, got, tc.want)
 			}
 		})
@@ -259,6 +286,27 @@ func TestRunnerVersionReportsTheDevCommitForDevBuilds(t *testing.T) {
 	}
 	if strings.Contains(output, "loaf\x1b[0m 9.8.7-test.1\n") {
 		t.Fatalf("version output = %q, want commit metadata on the dev version line", output)
+	}
+}
+
+func TestRunnerVersionReportsDirtyDevBuilds(t *testing.T) {
+	root := markSourceCheckout(t, writeVersionFixture(t))
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:           &stdout,
+		WorkingDir:       root,
+		Executable:       distributionFixtureExecutable(root),
+		DevBuildCommit:   devBuildFixtureCommit,
+		DevBuildModified: true,
+	}.Run([]string{"version"})
+	if err != nil {
+		t.Fatalf("version error = %v", err)
+	}
+
+	want := "loaf\x1b[0m " + devBuildFixtureVersion + ".dirty (dev build)\n"
+	if output := stdout.String(); !strings.Contains(output, want) {
+		t.Fatalf("version output = %q, want to contain %q", output, want)
 	}
 }
 

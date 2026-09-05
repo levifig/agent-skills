@@ -36,12 +36,15 @@ type Runner struct {
 	// and `go test`, and surface in `loaf --version` / `loaf version` when set.
 	BuildCommit string
 	BuildDate   string
-	// DevBuildCommit carries the source commit recorded by a local build (see
-	// cmd/loaf/main.go). Paired with a distribution that is the source checkout,
-	// `loaf --version` appends it as SemVer build metadata. It is empty for
-	// release builds, shipped distributions, and Runners constructed by tests
-	// unless the test is exercising dev identity.
-	DevBuildCommit string
+	// DevBuildCommit and DevBuildModified carry the VCS identity that
+	// `go build -buildvcs=true` stamps into a local build (see cmd/loaf/main.go).
+	// Paired with a distribution that is the source checkout, `loaf --version`
+	// appends them as SemVer build metadata: `+g<short-sha>`, then `.dirty` when
+	// the working tree had uncommitted changes at compile time. They are empty
+	// for release builds, shipped distributions, and Runners constructed by
+	// tests unless the test is exercising dev identity.
+	DevBuildCommit   string
+	DevBuildModified bool
 	// Executable optionally overrides os.Executable as the source of
 	// installed-distribution provenance (see distribution.go). Tests inject
 	// fixture layouts through it; nil means the real executable.
