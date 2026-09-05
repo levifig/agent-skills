@@ -132,35 +132,43 @@ test("activation failure does not fail a successful native build", (t) => {
 test("dev identity from git is linked into every compile", (t) => {
   const repo = gitRepo(t);
   const fixture = nativeFixture(t, { root: repo });
+  // Generated output is ignored, as in the real repository, so a build's own
+  // writes to bin/ never mark the next build dirty.
+  writeFileSync(join(repo, ".gitignore"), "bin/\n");
+  writeFileSync(join(repo, "tracked.txt"), "clean\n");
   git(repo, "add", "-A");
   git(repo, "commit", "-m", "fixture");
-  const head = git(repo, "rev-parse", "HEAD").stdout.trim();
-  const seen = [];
 
-  const clean = runNativeBuild({
-    rootDir: fixture.root,
-    env: fixture.env,
-    refreshLink: () => ({ status: "skipped" }),
-    buildTarget: capturingTargets(seen),
-  });
-  assert.equal(clean.status, 0);
-  assert.equal(seen.length, 2);
-  for (const env of seen) {
-    assert.equal(env.LOAF_DEV_COMMIT, head);
-    assert.equal(env.LOAF_DEV_MODIFIED, "0");
-  }
+  // Returns the LOAF_DEV_MODIFIED flag the compile saw, after checking that the
+  // commit it saw is the current HEAD (which moves when a phase commits).
+  const identity = (label) => {
+    const head = git(repo, "rev-parse", "HEAD").stdout.trim();
+    const seen = [];
+    const result = runNativeBuild({
+      rootDir: fixture.root,
+      env: fixture.env,
+      refreshLink: () => ({ status: "skipped" }),
+      buildTarget: capturingTargets(seen),
+    });
+    assert.equal(result.status, 0, label);
+    assert.equal(seen.length, 2, label);
+    for (const env of seen) {
+      assert.equal(env.LOAF_DEV_COMMIT, head, label);
+    }
+    return seen[0].LOAF_DEV_MODIFIED;
+  };
 
-  writeFileSync(join(repo, "tracked.txt"), "dirty\n");
-  seen.length = 0;
-  const dirty = runNativeBuild({
-    rootDir: fixture.root,
-    env: fixture.env,
-    refreshLink: () => ({ status: "skipped" }),
-    buildTarget: capturingTargets(seen),
-  });
-  assert.equal(dirty.status, 0);
-  assert.equal(seen[0].LOAF_DEV_COMMIT, head);
-  assert.equal(seen[0].LOAF_DEV_MODIFIED, "1");
+  assert.equal(identity("clean checkout"), "0");
+  assert.equal(identity("after a build wrote ignored bin/ output"), "0");
+
+  writeFileSync(join(repo, "untracked.txt"), "new\n");
+  assert.equal(identity("untracked file present"), "1");
+  git(repo, "add", "untracked.txt");
+  git(repo, "commit", "-m", "track it");
+  assert.equal(identity("untracked file committed"), "0");
+
+  writeFileSync(join(repo, "tracked.txt"), "modified\n");
+  assert.equal(identity("tracked file modified"), "1");
 });
 
 test("non-Git root compiles without a dev identity and warns", (t) => {

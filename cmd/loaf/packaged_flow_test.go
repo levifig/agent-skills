@@ -53,9 +53,12 @@ func TestPackagedRebuildPreservesTrackerNativeFlow(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for _, file := range []string{"package.json", "bin/package.json", "cli/scripts/package-release.mjs"} {
+			for _, file := range []string{"package.json", "cli/scripts/package-release.mjs"} {
 				writeFixtureFile(t, filepath.Join(source, file), readFixtureFile(t, filepath.Join(repo, file)))
 			}
+			// Root bin/ is an ignored build output, so the launcher and its
+			// package.json come from the tracked sources build-go.mjs copies.
+			writeFixtureFile(t, filepath.Join(source, "bin/package.json"), "{\n  \"type\": \"commonjs\"\n}\n")
 			// The fixture supplies an already-built binary. Some npm versions
 			// still run prepare during pack --ignore-scripts; omit lifecycle
 			// hooks here without changing the real package's file selection.
@@ -69,7 +72,7 @@ func TestPackagedRebuildPreservesTrackerNativeFlow(t *testing.T) {
 				t.Fatal(err)
 			}
 			writeFixtureFile(t, filepath.Join(source, "package.json"), string(manifestJSON))
-			copyFixtureBinary(t, filepath.Join(repo, "bin/loaf"), filepath.Join(source, "bin/loaf"))
+			copyFixtureBinary(t, filepath.Join(repo, "cli/runtime/loaf-launcher.cjs"), filepath.Join(source, "bin/loaf"))
 			copyFixtureBinary(t, binary, filepath.Join(source, "bin/native", target, nativeName))
 			writeFixtureFile(t, filepath.Join(source, "vnext/continuity/unshipped.go"), "package continuity\n")
 			env := isolatedInstallEnv(t)
