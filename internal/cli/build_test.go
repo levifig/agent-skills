@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -78,6 +79,7 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 		filepath.Join(root, "dist", "codex", ".codex", "hooks.json"),
 		filepath.Join(root, "dist", "codex", hookCatalogFile),
 		filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"),
+		filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf-modes.ts"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("Stat(%s) error = %v", path, err)
@@ -116,8 +118,17 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 		if target == "codex" {
 			wantArtifacts = 1
 		}
+		if target == "amp" {
+			wantArtifacts = 3
+		}
 		if !ok || len(artifacts) < wantArtifacts {
 			t.Fatalf("%s manifest artifacts = %#v, want at least %d", target, manifest["artifacts"], wantArtifacts)
+		}
+		if target == "amp" {
+			got := ampManifestPluginDestinations(t, artifacts)
+			if got["plugins/loaf.ts"] != "plugin:.amp/plugins/loaf.ts" || got["plugins/loaf-modes.ts"] != "plugin:.amp/plugins/loaf-modes.ts" {
+				t.Fatalf("amp plugin artifacts = %#v, want independent loaf.ts and loaf-modes.ts plugins", artifacts)
+			}
 		}
 		var instruction map[string]any
 		for _, rawArtifact := range artifacts {
@@ -344,6 +355,26 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "dist", "amp", ".codex", "hooks.json")); !os.IsNotExist(err) {
 		t.Fatalf("amp hooks stat = %v, want Amp plugin target without Codex hooks", err)
+	}
+	modesPlugin := readBuildFileString(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf-modes.ts"))
+	assertNativeAmpModesPluginContracts(t, modesPlugin)
+}
+
+func TestRunnerBuildTargetAmpCopiesAuthoredModesPlugin(t *testing.T) {
+	root := setupIsolatedRepositoryBuildRoot(t)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build", "--target", "amp"}); err != nil {
+		t.Fatalf("build --target amp error = %v\n%s", err, stdout.String())
+	}
+	source := readBuildFileString(t, filepath.Join(root, "content", "amp", "plugins", "loaf-modes.ts"))
+	built := readBuildFileString(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf-modes.ts"))
+	if built != source {
+		t.Fatalf("built loaf-modes.ts diverged from authored source")
+	}
+	assertNativeAmpModesPluginContracts(t, built)
+	hookPlugin := readBuildFileString(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"))
+	if strings.Contains(hookPlugin, "registerAgentMode") || strings.Contains(hookPlugin, "delegate_implementation") {
+		t.Fatalf("hook plugin = %q, want modes/delegation kept in loaf-modes.ts", hookPlugin)
 	}
 }
 
@@ -1289,6 +1320,151 @@ func TestNativeBuildValidationRejectsMalformedTypeScriptWhenEnabled(t *testing.T
 	}
 	if !strings.Contains(err.Error(), "TypeScript validation failed") || !strings.Contains(err.Error(), "TS1005") {
 		t.Fatalf("error = %v, want TypeScript diagnostic", err)
+	}
+}
+
+func TestNativeBuildTypeScriptAmbientTypesCoverAmpModesPluginSurface(t *testing.T) {
+	ambient := nativeBuildTypeScriptAmbientTypes()
+	for _, want := range []string{
+		"declare module 'node:fs'",
+		"realpathSync(path: string): string",
+		"statSync(path: string): Stats",
+		"isDirectory(): boolean",
+		"declare module 'node:path'",
+		"isAbsolute(path: string): boolean",
+		"createAgent(config: AgentConfig): Agent",
+		"registerAgentMode(definition: AgentModeDefinition): void",
+		"registerTool(definition: ToolDefinition): void",
+		"execute(input: Record<string, unknown>, ctx: ToolExecuteContext): string | Promise<string>",
+		"createThread(options: { parentThreadID: string; executor?: string }): Promise<AgentThread>",
+		"appendUserMessage(message: AgentThreadMessage): Promise<void>",
+		"waitForResponse(options: { timeoutMs: number }): Promise<AgentThreadResponse>",
+		"on(event: 'tool.call'",
+		"on(event: 'tool.result'",
+		"shellCommandFromToolCall(event: ToolCallEvent): ShellCommand | null",
+	} {
+		if !strings.Contains(ambient, want) {
+			t.Fatalf("ambient types missing %q", want)
+		}
+	}
+}
+
+func TestNativeBuildTypeScriptAmbientCreateThreadOverloadOrder(t *testing.T) {
+	ambient := nativeBuildTypeScriptAmbientTypes()
+	legacy := "createThread(options: { parentThreadID: string; executor?: string }): Promise<AgentThread>"
+	plugin := "createThread(options?: {\n      parentThreadID?: string;\n      executor?: 'local' | 'orb' | { type: 'runner'; id: string };\n      visibility?: 'private' | 'workspace';\n    }): Promise<PluginThread>"
+	legacyAt := strings.Index(ambient, legacy)
+	pluginAt := strings.Index(ambient, plugin)
+	if legacyAt < 0 || pluginAt < 0 {
+		t.Fatalf("ambient createThread overloads missing: AgentThread=%d PluginThread=%d", legacyAt, pluginAt)
+	}
+	if legacyAt > pluginAt {
+		t.Fatal("broad PluginThread createThread overload must follow the specific AgentThread overload")
+	}
+	if !strings.Contains(ambient, "content?: string | ThreadAssistantMessage['content']") {
+		t.Fatal("AgentThreadResponse content must include string and Amp block-array shapes")
+	}
+}
+
+func TestAuthoredAmpModesPluginExtractsPinnedAgentText(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skipf("node not found: %v", err)
+	}
+	root := testRepositoryRoot(t)
+	cmd := exec.Command(node, "--experimental-strip-types", "--test", "internal/cli/loaf-modes.extract.test.mjs")
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("loaf-modes extract test failed: %v\n%s", err, output)
+	}
+}
+
+func TestNativeBuildValidationAcceptsAuthoredAmpModesPlugin(t *testing.T) {
+	requireTypeScriptCompiler(t)
+	root := realpath(t, t.TempDir())
+	pluginDir := filepath.Join(root, "dist", "amp", ".amp", "plugins")
+	mkdirAll(t, pluginDir)
+	source := filepath.Join(testRepositoryRoot(t), "content", "amp", "plugins", "loaf-modes.ts")
+	body, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", source, err)
+	}
+	writeFile(t, filepath.Join(pluginDir, "loaf-modes.ts"), string(body))
+	t.Setenv("LOAF_VALIDATE_TYPESCRIPT", "1")
+
+	warnings, err := validateNativeBuildArtifacts(root, "amp")
+	if err != nil {
+		t.Fatalf("validateNativeBuildArtifacts(amp modes) error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none when authored loaf-modes.ts typechecks", warnings)
+	}
+}
+
+func TestNativeBuildValidationAcceptsSeededAmpModesPluginInCI(t *testing.T) {
+	requireTypeScriptCompiler(t)
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeCodexBuildFixture(t, root)
+	source := readBuildFileString(t, filepath.Join(root, "content", "amp", "plugins", "loaf-modes.ts"))
+	assertNativeAmpModesPluginContracts(t, source)
+	pluginDir := filepath.Join(root, "dist", "amp", ".amp", "plugins")
+	mkdirAll(t, pluginDir)
+	writeFile(t, filepath.Join(pluginDir, "loaf-modes.ts"), source)
+	t.Setenv("CI", "true")
+
+	warnings, err := validateNativeBuildArtifacts(root, "amp")
+	if err != nil {
+		t.Fatalf("validateNativeBuildArtifacts(amp seeded modes in CI) error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none when the synthetic loaf-modes.ts fixture typechecks under CI", warnings)
+	}
+}
+
+func TestNativeBuildValidationAcceptsAmpHookPluginSurface(t *testing.T) {
+	requireTypeScriptCompiler(t)
+	root := realpath(t, t.TempDir())
+	mkdirAll(t, filepath.Join(root, "dist", "amp", ".amp", "plugins"))
+	writeFile(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"), strings.Join([]string{
+		"import type { PluginAPI } from '@ampcode/plugin';",
+		"import { execFile } from 'child_process';",
+		"import { promisify } from 'util';",
+		"import { join, dirname } from 'path';",
+		"import { fileURLToPath } from 'url';",
+		"",
+		"const __dirname = dirname(fileURLToPath(import.meta.url));",
+		"const execFileAsync = promisify(execFile);",
+		"",
+		"export default function (amp: PluginAPI) {",
+		"  amp.on('tool.call', async (event) => {",
+		"    const command = amp.helpers.shellCommandFromToolCall(event);",
+		"    if (command) {",
+		"      await execFileAsync('true', [], { cwd: join(__dirname, command.dir || '.') });",
+		"    }",
+		"    return { action: 'allow' as const };",
+		"  });",
+		"  amp.on('tool.result', async (event) => {",
+		"    void event.output;",
+		"  });",
+		"}",
+		"",
+	}, "\n"))
+	t.Setenv("LOAF_VALIDATE_TYPESCRIPT", "1")
+
+	warnings, err := validateNativeBuildArtifacts(root, "amp")
+	if err != nil {
+		t.Fatalf("validateNativeBuildArtifacts(amp hook plugin) error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none when hook plugin surface typechecks", warnings)
+	}
+}
+
+func requireTypeScriptCompiler(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("tsc"); err != nil {
+		t.Skipf("tsc not found: %v", err)
 	}
 }
 
@@ -2395,7 +2571,35 @@ func seedNativeCodexBuildFixture(t *testing.T, root string) {
 	mkdirAll(t, filepath.Join(root, "content", "skills", "demo", "scripts"))
 	mkdirAll(t, filepath.Join(root, "content", "templates"))
 	mkdirAll(t, filepath.Join(root, "content", "codex", "rules"))
+	mkdirAll(t, filepath.Join(root, "content", "amp", "plugins"))
 	writeFile(t, filepath.Join(root, "content", "codex", "rules", "loaf.rules.tmpl"), "# Loaf Codex policy\n{{LOAF_BASIC_RULES}}\n")
+	writeFile(t, filepath.Join(root, "content", "amp", "plugins", "loaf-modes.ts"), strings.Join([]string{
+		`// @amp-agent-mode {"key":"loaf-medium","label":"Loaf Medium"}`,
+		`// @amp-agent-mode {"key":"loaf-ultra","label":"Loaf Ultra"}`,
+		"",
+		"const IMPLEMENTATION_MODEL = 'xai/grok-4.6';",
+		"const REVIEW_MODEL = 'openai/gpt-5.6-luna';",
+		"const ORCHESTRATOR_MODEL = 'openai/gpt-6-astra';",
+		"const ORACLE_MODEL = 'openai/gpt-6-astra';",
+		"const implementationAgent = {",
+		"  name: 'loaf-implementation-agent',",
+		"  model: 'xai/grok-4.6',",
+		"  features: ['fast'],",
+		"};",
+		"const review = { name: 'loaf-review-agent', model: 'openai/gpt-5.6-luna', reasoningEffort: 'max' };",
+		"const oracle = { name: 'loaf-oracle-agent', model: 'openai/gpt-6-astra', reasoningEffort: 'high' };",
+		"const medium = { name: 'loaf-medium', model: 'openai/gpt-6-astra', reasoningEffort: 'medium' };",
+		"const ultra = { name: 'loaf-ultra', model: 'openai/gpt-6-astra', reasoningEffort: 'xhigh' };",
+		"function registerPinnedTool(definition: { name: string }): void {",
+		"  void definition;",
+		"}",
+		"// Grok 4.6 with Fast",
+		"registerPinnedTool({ name: 'delegate_implementation' });",
+		"registerPinnedTool({ name: 'delegate_review' });",
+		"registerPinnedTool({ name: 'consult_oracle' });",
+		"throw new Error('There is no silent fallback and no local fallback.');",
+		"",
+	}, "\n"))
 	writeFile(t, filepath.Join(root, "config", "targets.yaml"), strings.Join([]string{
 		"shared-templates:",
 		"  session.md: [demo]",
@@ -2928,6 +3132,88 @@ func nativeBuildGenericBool(entry map[string]any, key string) bool {
 	return value
 }
 
+func ampManifestPluginDestinations(t *testing.T, artifacts []any) map[string]string {
+	t.Helper()
+	got := map[string]string{}
+	for _, rawArtifact := range artifacts {
+		artifact, ok := rawArtifact.(map[string]any)
+		if !ok {
+			t.Fatalf("amp artifact = %#v, want object", rawArtifact)
+		}
+		kind, _ := artifact["kind"].(string)
+		if kind != "plugin" {
+			continue
+		}
+		destination, _ := artifact["destination"].(string)
+		id, _ := artifact["id"].(string)
+		got[destination] = id
+	}
+	return got
+}
+
+func assertNativeAmpModesPluginContracts(t *testing.T, plugin string) {
+	t.Helper()
+	for _, want := range []string{
+		`// @amp-agent-mode {"key":"loaf-medium","label":"Loaf Medium"}`,
+		`// @amp-agent-mode {"key":"loaf-ultra","label":"Loaf Ultra"}`,
+		"const IMPLEMENTATION_MODEL = 'xai/grok-4.6'",
+		"const REVIEW_MODEL = 'openai/gpt-5.6-luna'",
+		"const ORCHESTRATOR_MODEL = 'openai/gpt-6-astra'",
+		"const ORACLE_MODEL = 'openai/gpt-6-astra'",
+		"name: 'loaf-medium'",
+		"reasoningEffort: 'medium'",
+		"name: 'loaf-ultra'",
+		"reasoningEffort: 'xhigh'",
+		"features: ['fast']",
+		"name: 'loaf-implementation-agent'",
+		"name: 'loaf-review-agent'",
+		"name: 'loaf-oracle-agent'",
+		"name: 'delegate_implementation'",
+		"name: 'delegate_review'",
+		"name: 'consult_oracle'",
+		"There is no silent fallback and no local fallback.",
+		"Grok 4.6 with Fast",
+	} {
+		if !strings.Contains(plugin, want) {
+			t.Fatalf("amp modes plugin missing %q", want)
+		}
+	}
+	if strings.Contains(plugin, "openai/gpt-5.6-sol") || strings.Contains(plugin, "GPT-5.6 Sol") {
+		t.Fatal("amp modes plugin still pins GPT-5.6 Sol as the main/oracle model")
+	}
+	implementationBlock := nativeAmpModesNamedBlock(t, plugin, "loaf-implementation-agent", "loaf-review-agent")
+	if strings.Contains(implementationBlock, "reasoningEffort") {
+		t.Fatalf("implementation agent block = %q, want no reasoningEffort", implementationBlock)
+	}
+	if !strings.Contains(implementationBlock, "model: 'xai/grok-4.6'") || !strings.Contains(implementationBlock, "features: ['fast']") {
+		t.Fatalf("implementation agent block = %q, want Grok 4.6 with Fast", implementationBlock)
+	}
+	reviewBlock := nativeAmpModesNamedBlock(t, plugin, "loaf-review-agent", "loaf-oracle-agent")
+	if !strings.Contains(reviewBlock, "model: 'openai/gpt-5.6-luna'") || !strings.Contains(reviewBlock, "reasoningEffort: 'max'") {
+		t.Fatalf("review agent block = %q, want Luna max", reviewBlock)
+	}
+	if strings.Contains(reviewBlock, "reasoningEffort: 'xhigh'") {
+		t.Fatalf("review agent block = %q, want max instead of xhigh", reviewBlock)
+	}
+	oracleBlock := nativeAmpModesNamedBlock(t, plugin, "loaf-oracle-agent", "loaf-medium")
+	if !strings.Contains(oracleBlock, "model: 'openai/gpt-6-astra'") || !strings.Contains(oracleBlock, "reasoningEffort: 'high'") {
+		t.Fatalf("oracle agent block = %q, want Astra high", oracleBlock)
+	}
+	mediumBlock := nativeAmpModesNamedBlock(t, plugin, "loaf-medium", "loaf-ultra")
+	if !strings.Contains(mediumBlock, "model: 'openai/gpt-6-astra'") || !strings.Contains(mediumBlock, "reasoningEffort: 'medium'") {
+		t.Fatalf("medium orchestrator block = %q, want Astra medium", mediumBlock)
+	}
+	ultraBlock := nativeAmpModesNamedBlock(t, plugin, "loaf-ultra", "delegate_implementation")
+	if !strings.Contains(ultraBlock, "model: 'openai/gpt-6-astra'") || !strings.Contains(ultraBlock, "reasoningEffort: 'xhigh'") {
+		t.Fatalf("ultra orchestrator block = %q, want Astra xhigh", ultraBlock)
+	}
+	for _, unwanted := range []string{"high+fast", "high reasoning with Fast", "Grok 4.6 (high reasoning"} {
+		if strings.Contains(plugin, unwanted) {
+			t.Fatalf("amp modes plugin contains obsolete Grok effort wording %q", unwanted)
+		}
+	}
+}
+
 func readBuildFileString(t *testing.T, path string) string {
 	t.Helper()
 	body, err := os.ReadFile(path)
@@ -2935,4 +3221,20 @@ func readBuildFileString(t *testing.T, path string) string {
 		t.Fatalf("ReadFile(%s) error = %v", path, err)
 	}
 	return string(body)
+}
+
+func nativeAmpModesNamedBlock(t *testing.T, plugin string, startName string, endName string) string {
+	t.Helper()
+	startMarker := "name: '" + startName + "'"
+	endMarker := "name: '" + endName + "'"
+	start := strings.Index(plugin, startMarker)
+	if start < 0 {
+		t.Fatalf("amp modes plugin missing %s", startName)
+	}
+	rest := plugin[start:]
+	end := strings.Index(rest, endMarker)
+	if end < 0 {
+		t.Fatalf("amp modes plugin %s block is unclosed before %s", startName, endName)
+	}
+	return rest[:end]
 }
