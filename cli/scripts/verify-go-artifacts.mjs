@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 /**
- * Verify generated Go command artifacts are present and synchronized.
+ * Verify generated Go command artifacts are present and synchronized between
+ * bin/ (build output) and plugins/loaf/bin/ (the committed marketplace copy).
+ *
+ * Binaries carry a -buildvcs stamp, so two builds of the same source from
+ * different commits or tree states differ by design; this script checks that
+ * the copies agree, not that a rebuild reproduces them byte for byte.
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { goBuildArgs } from "./go-build-flags.mjs";
 
 const rootDir = process.cwd();
 const packageJSON = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
@@ -60,7 +62,6 @@ assertSame("bin/loaf", "plugins/loaf/bin/loaf");
 assertSame("bin/package.json", "plugins/loaf/bin/package.json");
 for (const target of targets) {
   assertSame(nativeArtifact("bin", target), nativeArtifact("plugins/loaf/bin", target));
-  assertReproducibleGoBinary(target);
 }
 
 console.log("Go command artifacts are present and synchronized.");
@@ -87,32 +88,6 @@ function assertSame(left, right) {
   const rightBytes = readFileSync(join(rootDir, right));
   if (!leftBytes.equals(rightBytes)) {
     fail(`${right} is stale; run npm run build`);
-  }
-}
-
-function assertReproducibleGoBinary(target) {
-  const tempDir = mkdtempSync(join(tmpdir(), "loaf-go-verify-"));
-  const tempBinary = join(tempDir, nativeBinaryName(target));
-  try {
-    const result = spawnSync("go", goBuildArgs(tempBinary, baseEnv), {
-      cwd: rootDir,
-      env: {
-        ...baseEnv,
-        GOOS: target.goos,
-        GOARCH: target.goarch,
-      },
-      stdio: "inherit",
-    });
-    if (result.status !== 0) {
-      fail(`go rebuild failed with exit code ${result.status ?? 1}`);
-    }
-    const committed = readFileSync(join(rootDir, nativeArtifact("bin", target)));
-    const rebuilt = readFileSync(tempBinary);
-    if (!committed.equals(rebuilt)) {
-      fail(`${nativeArtifact("bin", target)} is stale; run npm run build:go`);
-    }
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true });
   }
 }
 

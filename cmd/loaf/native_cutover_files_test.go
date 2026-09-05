@@ -127,17 +127,14 @@ func TestNativeCutoverPackageAndSourceGuards(t *testing.T) {
 		}
 	}
 
-	for _, rel := range []string{
-		"bin/loaf",
-		"plugins/loaf/bin/loaf",
-	} {
-		assertExecutableFile(t, filepath.Join(root, filepath.FromSlash(rel)))
-	}
+	// Root bin/ is an ignored build output: a checkout carries no launcher or
+	// native binary there until `npm run build:go` runs, and a local build only
+	// produces the current platform. The committed marketplace copy under
+	// plugins/loaf/bin is the artifact set this guard can hold to; verify:go-
+	// artifacts checks that a build's bin/ agrees with it.
+	assertExecutableFile(t, filepath.Join(root, "plugins", "loaf", "bin", "loaf"))
 	for _, artifact := range releaseNativeArtifacts() {
-		for _, binRoot := range []string{"bin", filepath.ToSlash(filepath.Join("plugins", "loaf", "bin"))} {
-			rel := filepath.ToSlash(filepath.Join(binRoot, "native", artifact.runtimeID, artifact.binaryName))
-			assertExecutableFile(t, filepath.Join(root, filepath.FromSlash(rel)))
-		}
+		assertExecutableFile(t, filepath.Join(root, "plugins", "loaf", "bin", "native", artifact.runtimeID, artifact.binaryName))
 	}
 	for _, rel := range []string{"dist-cli", "bin/dist-cli", "plugins/loaf/dist-cli"} {
 		assertPathMissing(t, root, rel)
