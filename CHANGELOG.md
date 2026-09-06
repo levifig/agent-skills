@@ -29,6 +29,7 @@ One operator's durable memory — journal, wraps, handoffs, refs, verification �
 
 ### Added
 
+- `install.sh`, a `bash -c "$(curl -fsSL …/install.sh)"` installer for macOS and Linux: it downloads the platform archive from GitHub Releases, verifies it against `checksums.txt`, unpacks under `$LOAF_HOME/releases/<version>`, links `$LOAF_BIN_DIR/loaf` to the current release without ever replacing a link it did not create, and runs `loaf install` (or `loaf upgrade` on later runs). `LOAF_VERSION`, `LOAF_HOME`, `LOAF_BIN_DIR`, `--no-install`, `--uninstall`, and `--` passthrough are supported.
 - vNext Loaf baseline lands as a reviewed, non-activating integration: tracker-native Flow with modular provider skills, one-time tracker export and isolated continuity rehearsal, skill-owned reports, managed harness install and reconciliation, Amp native delegation, and isolated continuity, migration, credentials, crypto, sync, and relay libraries with contract tests. The normal executable keeps the legacy continuity runtime and the vNext command stays introspection-only; npm and release artifacts retain the authored `vnext/content` ([#225](https://github.com/levifig/loaf/pull/225)).
 - Self-hostable sync relay (`loaf serve`) stores opaque ciphertext blobs and auth tokens only — never keys or plaintext semantics ([#183](https://github.com/levifig/loaf/pull/183)).
 - Client sync engine queues local facts, pulls by arrival cursor, detects env-seq gaps with loud warnings, and refreshes projections after pull ([#184](https://github.com/levifig/loaf/pull/184)).

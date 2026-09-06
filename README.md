@@ -181,6 +181,14 @@ Build once, deploy everywhere. Skills are the universal layer; profiles and hook
 
 ## Getting Started
 
+### Quick install (macOS and Linux)
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh)"
+```
+
+The script downloads the release archive for your platform, verifies it against the release's `checksums.txt`, unpacks it under `~/.local/share/loaf/releases/<version>`, links `~/.local/bin/loaf` to it, and runs `loaf install`, which onboards every harness it detects. Re-run the same command to move to a newer release; it then runs `loaf upgrade`. `LOAF_VERSION=0.5.0` pins a version, `--no-install` skips the harness step, `-- --to cursor,codex` passes targets through, and `--uninstall` removes the releases and the link. An existing `~/.local/bin/loaf` that the script did not create is never replaced.
+
 ### Homebrew
 
 ```bash
