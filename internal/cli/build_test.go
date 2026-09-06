@@ -2512,17 +2512,11 @@ func setupIsolatedRepositoryBuildRoot(t *testing.T) string {
 		}
 	}
 	// Root bin/ is an ignored build output and may not exist in a fresh
-	// checkout, so the fixture assembles the launcher from its tracked source
-	// and supplies a stub native binary.
-	launcher, err := os.ReadFile(filepath.Join(repo, "cli", "runtime", "loaf-launcher.cjs"))
-	if err != nil {
-		t.Fatalf("ReadFile(loaf-launcher.cjs) error = %v", err)
-	}
+	// checkout, so the fixture supplies stub binaries.
 	mkdirAll(t, filepath.Join(root, "bin", "native", "test-target"))
-	if err := os.WriteFile(filepath.Join(root, "bin", "loaf"), launcher, 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "bin", "loaf"), []byte("#!/bin/sh\necho loaf\n"), 0o755); err != nil {
 		t.Fatalf("WriteFile(bin/loaf) error = %v", err)
 	}
-	writeFile(t, filepath.Join(root, "bin", "package.json"), "{\n  \"type\": \"commonjs\"\n}\n")
 	writeFile(t, filepath.Join(root, "bin", "native", "test-target", "loaf"), "native loaf\n")
 	packageJSON, err := os.ReadFile(filepath.Join(repo, "package.json"))
 	if err != nil {

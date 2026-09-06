@@ -58,7 +58,7 @@ type cursorCloudEnvironment struct {
 
 var requiredCloudBootstrapMarkers = map[string][]string{
 	cursorCloudInstallScript: {
-		"npm run build:go",
+		"go run ./cmd/loafdev build-go",
 		"bin/native/",
 		"bin/loaf",
 		projectEnvironmentEnv + "=1",
@@ -69,7 +69,7 @@ var requiredCloudBootstrapMarkers = map[string][]string{
 		"loaf attach",
 	},
 	ampOrbSetupScript: {
-		"npm run build:go",
+		"go run ./cmd/loafdev build-go",
 		"bin/native/",
 		"bin/loaf",
 		projectEnvironmentEnv + "=1",
@@ -135,7 +135,7 @@ func validateCloudBootstrapScript(root, rel string) error {
 	if rel == cursorCloudInstallScript || rel == ampOrbSetupScript {
 		executable := stripShellComments(body)
 		loafIdx := strings.Index(executable, "loaf ")
-		buildIdx := strings.Index(executable, "npm run build:go")
+		buildIdx := strings.Index(executable, "go run ./cmd/loafdev build-go")
 		if buildIdx < 0 {
 			return fmt.Errorf("%s must install the Loaf CLI before the first loaf command", rel)
 		}

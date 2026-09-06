@@ -2,51 +2,10 @@
   "name": "loaf",
   "version": "0.5.0",
   "description": "Loaf - An Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, Codex, and Amp",
-  "type": "module",
-  "bin": {
-    "loaf": "bin/loaf"
-  },
-  "files": [
-    "bin/",
-    "content/",
-    "vnext/content/",
-    "config/"
-  ],
-  "scripts": {
-    "build:go": "node cli/scripts/build-go.mjs",
-    "build:release": "node cli/scripts/build-release.mjs",
-    "package:release": "node cli/scripts/package-release.mjs",
-    "verify:go-artifacts": "node cli/scripts/verify-go-artifacts.mjs",
-    "build:cli-ref": "bin/loaf __generate-cli-ref",
-    "build:content": "bin/loaf build",
-    "build": "npm run build:go && npm run build:cli-ref && npm run build:content && npm run verify:go-artifacts",
-    "typecheck": "go test ./... -run=^$",
-    "test": "go test ./...",
-    "test:smoke": "node cli/scripts/smoke-test.js",
-    "test:capability-runners": "node --experimental-strip-types --test cli/scripts/smoke-claude-code-startup.test.mjs cli/scripts/smoke-codex-startup.test.mjs cli/scripts/smoke-opencode-request-context.test.mjs cli/scripts/preflight-cursor-agent-context.test.mjs internal/cli/amp_delegation.test.mjs",
-    "eval:routing": "node cli/scripts/eval-skill-routing.mjs",
-    "prepare": "npm run build:go",
-    "prepublishOnly": "npm run build:release"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/levifig/loaf.git"
   },
   "author": "Levi Figueira",
-  "license": "MIT",
-  "keywords": [
-    "ai",
-    "agent",
-    "skills",
-    "cli",
-    "claude",
-    "cursor",
-    "codex",
-    "amp"
-  ],
-  "engines": {
-    "node": ">=22"
-  },
-  "dependencies": {},
-  "devDependencies": {}
+  "license": "MIT"
 }

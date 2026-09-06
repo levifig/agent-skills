@@ -48,7 +48,8 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Package manager locks (using npm)
+# Package manager locks: Loaf has no JavaScript dependencies
+package-lock.json
 yarn.lock
 pnpm-lock.yaml
 bun.lockb

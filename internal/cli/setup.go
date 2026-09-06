@@ -127,7 +127,7 @@ func prepareSetupTarget(baseRoot string, pathArg string) (string, error) {
 }
 
 func runSetupBuild(loafRoot string, out io.Writer) error {
-	cmd := exec.Command("npm", "run", "build")
+	cmd := exec.Command("go", "run", "./cmd/loafdev", "build")
 	cmd.Dir = loafRoot
 	cmd.Stdout = out
 	cmd.Stderr = out

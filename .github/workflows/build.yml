@@ -28,31 +28,29 @@ jobs:
           # (provenance, retention replay, the grandfathered dogfood conversion).
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      - name: Install dependencies
-        run: npm ci
+      # Node and Bun serve only the harness capability runners and the emitted
+      # TypeScript plugin checks. Loaf itself has no JavaScript dependencies.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Build all targets
-        run: npm run build
+        run: make build
 
       - name: Verify Go tests
         run: go test ./...
 
       - name: Verify capability runner tests
-        run: npm run test:capability-runners
+        run: make capability-tests
 
       - name: Verify CGO-free build
         run: CGO_ENABLED=0 go build ./...
@@ -65,18 +63,18 @@ jobs:
 
       - name: Verify build artifacts are in sync
         run: |
-          npm run verify:go-artifacts
-          if ! git diff --quiet -- bin/ dist/ plugins/ .claude-plugin/ ':(exclude)bin/native/**'; then
+          go run ./cmd/loafdev verify-artifacts
+          if ! git diff --quiet -- dist/ plugins/ .claude-plugin/; then
             echo "ERROR: Build artifacts are out of sync with source."
             echo ""
             echo "Files affected:"
-            git diff --stat -- bin/ dist/ plugins/ .claude-plugin/ ':(exclude)bin/native/**'
+            git diff --stat -- dist/ plugins/ .claude-plugin/
             echo ""
             echo "Diff (first 200 lines):"
-            git diff -- bin/ dist/ plugins/ .claude-plugin/ ':(exclude)bin/native/**' | head -200
+            git diff -- dist/ plugins/ .claude-plugin/ | head -200
             echo ""
-            echo "Run 'npm run build' locally and commit the resulting changes alongside"
-            echo "the source changes that produced them (per CLAUDE.md convention)."
+            echo "Run 'make build' locally and commit the resulting changes alongside"
+            echo "the source changes that produced them (per AGENTS.md convention)."
             exit 1
           fi
           echo "Build artifacts are in sync with source."

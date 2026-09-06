@@ -28,7 +28,7 @@ func TestRunnerSetupHelpIsNative(t *testing.T) {
 func TestRunnerSetupRunsInitBuildAndInstallNatively(t *testing.T) {
 	root := setupCommandLoafRoot(t)
 	stateHome := t.TempDir()
-	npmLog := setupFakeNPM(t, 0)
+	npmLog := setupFakeGo(t, 0)
 	target := filepath.Join(root, "fixture-project")
 	var stdout bytes.Buffer
 
@@ -49,8 +49,8 @@ func TestRunnerSetupRunsInitBuildAndInstallNatively(t *testing.T) {
 		t.Fatalf("ARCHITECTURE.md stat error = %v", err)
 	}
 	log := readSetupLog(t, npmLog)
-	if !strings.Contains(log, "cwd="+root) || !strings.Contains(log, "args=run build") {
-		t.Fatalf("npm log = %q, want build run at loaf package root", log)
+	if !strings.Contains(log, "cwd="+root) || !strings.Contains(log, "args=run ./cmd/loafdev build") {
+		t.Fatalf("go log = %q, want loafdev build run at loaf package root", log)
 	}
 	output := stdout.String()
 	for _, want := range []string{"loaf setup", "loaf init", "loaf install", "Setup complete"} {
@@ -69,7 +69,7 @@ func TestRunnerSetupRunsInitBuildAndInstallNatively(t *testing.T) {
 func TestRunnerSetupDeploysProjectSurfacesItJustScaffolded(t *testing.T) {
 	root := setupCommandLoafRoot(t)
 	stateHome := t.TempDir()
-	setupFakeNPM(t, 0)
+	setupFakeGo(t, 0)
 	home := filepath.Join(root, "home")
 	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(.cursor) error = %v", err)
@@ -119,7 +119,7 @@ func TestRunnerSetupRejectsExistingFilePath(t *testing.T) {
 
 func TestRunnerSetupReportsBuildFailure(t *testing.T) {
 	root := setupCommandLoafRoot(t)
-	setupFakeNPM(t, 42)
+	setupFakeGo(t, 42)
 	target := filepath.Join(root, "fixture-project")
 
 	err := Runner{
@@ -156,20 +156,20 @@ func setupCommandLoafRoot(t *testing.T) string {
 	return root
 }
 
-func setupFakeNPM(t *testing.T, exitCode int) string {
+func setupFakeGo(t *testing.T, exitCode int) string {
 	t.Helper()
 	bin := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))[0]
-	log := filepath.Join(t.TempDir(), "npm.log")
-	t.Setenv("LOAF_TEST_NPM_LOG", log)
+	log := filepath.Join(t.TempDir(), "go.log")
+	t.Setenv("LOAF_TEST_GO_LOG", log)
 	script := strings.Join([]string{
 		"#!/bin/sh",
-		`printf 'cwd=%s\n' "$PWD" >> "$LOAF_TEST_NPM_LOG"`,
-		`printf 'args=%s\n' "$*" >> "$LOAF_TEST_NPM_LOG"`,
+		`printf 'cwd=%s\n' "$PWD" >> "$LOAF_TEST_GO_LOG"`,
+		`printf 'args=%s\n' "$*" >> "$LOAF_TEST_GO_LOG"`,
 		"exit " + fmt.Sprint(exitCode),
 		"",
 	}, "\n")
-	if err := os.WriteFile(filepath.Join(bin, "npm"), []byte(script), 0o755); err != nil {
-		t.Fatalf("WriteFile(npm) error = %v", err)
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(script), 0o755); err != nil {
+		t.Fatalf("WriteFile(go) error = %v", err)
 	}
 	return log
 }

@@ -523,12 +523,12 @@ func installLoafBinary(out io.Writer, loafRoot string) bool {
 
 	if !fileExistsForInstall(sourceBinary) {
 		fmt.Fprintf(out, "  %s CLI binary not found at %s\n", ansiRed("✗"), sourceBinary)
-		fmt.Fprintf(out, "  %s\n", ansiGray("Run 'npm run build' first."))
+		fmt.Fprintf(out, "  %s\n", ansiGray("Run 'make build' first."))
 		return false
 	}
 	if !dirExistsForInstall(sourceNative) {
 		fmt.Fprintf(out, "  %s Native runtime artifacts not found at %s\n", ansiRed("✗"), sourceNative)
-		fmt.Fprintf(out, "  %s\n", ansiGray("Run 'npm run build' first."))
+		fmt.Fprintf(out, "  %s\n", ansiGray("Run 'make build' first."))
 		return false
 	}
 	if err := os.MkdirAll(localBinDir, 0o755); err != nil {
