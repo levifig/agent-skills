@@ -503,3 +503,130 @@ func TestTargetCapabilityEvidenceJSONRoundTripKeepsStrictShape(t *testing.T) {
 		t.Fatalf("round-trip validation error = %v", err)
 	}
 }
+
+// TestValidateInstalledSmokeEvidencePinsHooksShimAndCandidateBinary pins the
+// version-3 Claude receipt: the plugin ships a shim instead of a native
+// binary, so the receipt must name the shim beside the hooks and pin the
+// candidate binary the shim resolved through LOAF_BIN, and every digest must
+// match the current candidate tree.
+func TestValidateInstalledSmokeEvidencePinsHooksShimAndCandidateBinary(t *testing.T) {
+	record := capabilityTestRecord(t, "claude-code", "cli")
+	var mode ModeEvidence
+	for _, candidate := range record.Context.Modes {
+		if candidate.Name == "startup" {
+			mode = candidate
+		}
+	}
+	if mode.Name != "startup" {
+		t.Fatal("claude-code startup mode is missing from the capability record")
+	}
+	mode.Evidence.Source = "receipt.json"
+
+	root := t.TempDir()
+	hooks, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), "plugins", "loaf", "hooks", "hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeRel := "bin/native/" + record.Platform + "/loaf"
+	writeReceiptArtifact(t, root, "plugins/loaf/hooks/hooks.json", hooks)
+	writeReceiptArtifact(t, root, "plugins/loaf/bin/loaf", []byte(claudePluginShim))
+	writeReceiptArtifact(t, root, nativeRel, []byte("candidate binary\n"))
+
+	receipt := func() map[string]any {
+		return map[string]any{
+			"evidence_version": 3,
+			"timestamp":        "2026-09-06T00:00:00Z",
+			"target":           record.Target,
+			"surface":          record.Surface,
+			"version":          record.Version,
+			"platform":         record.Platform,
+			"installed_mode":   record.InstalledMode,
+			"context_mode":     mode.Name,
+			"adapter":          record.Context.Adapter,
+			"mode":             "explicit-plugin-dir",
+			"invocation": map[string]any{
+				"command": "claude",
+				"args": []string{
+					"--plugin-dir", "<repo>/plugins/loaf",
+					"--strict-mcp-config", "--mcp-config", `{"mcpServers":{}}`,
+					"--no-session-persistence", "--setting-sources", "", "--tools", "",
+					"--include-hook-events", "--output-format", "stream-json", "-p",
+					"Reply with exactly the unique marker present in Loaf continuity context, and nothing else.",
+				},
+				"cwd": "<disposable-repo>",
+			},
+			"setup":                         []string{"build candidate", "point LOAF_BIN at the candidate binary for the plugin shim"},
+			"candidate_plugin_path":         "plugins/loaf",
+			"exit_code":                     0,
+			"stderr_empty":                  true,
+			"model_visible_marker_observed": true,
+			"assistant_marker_match":        true,
+			"marker":                        "LOAF_CLAUDE_STARTUP_SMOKE_ABCDEF123456",
+			"hook_observation": map[string]any{
+				"event_name":                "SessionStart:startup",
+				"native_json":               true,
+				"hook_event_name":           "SessionStart",
+				"additional_context_marker": true,
+			},
+			"candidate_artifacts": map[string]any{
+				"hooks_path":           "plugins/loaf/hooks/hooks.json",
+				"hooks_sha256":         sha256Hex(string(hooks)),
+				"shim_path":            "plugins/loaf/bin/loaf",
+				"shim_sha256":          sha256Hex(claudePluginShim),
+				"native_binary_path":   nativeRel,
+				"native_binary_sha256": sha256Hex("candidate binary\n"),
+			},
+		}
+	}
+	validate := func(t *testing.T, raw map[string]any) error {
+		t.Helper()
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "receipt.json"), encoded, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return validateInstalledSmokeEvidence(root, record, mode)
+	}
+
+	if err := validate(t, receipt()); err != nil {
+		t.Fatalf("valid version-3 receipt rejected: %v", err)
+	}
+
+	stale := receipt()
+	stale["evidence_version"] = 2
+	if err := validate(t, stale); err == nil || !strings.Contains(err.Error(), "version 2") {
+		t.Fatalf("version-2 receipt error = %v, want an unsupported-version refusal", err)
+	}
+
+	wrongShim := receipt()
+	wrongShim["candidate_artifacts"].(map[string]any)["shim_path"] = "plugins/loaf/bin/native/" + record.Platform + "/loaf"
+	if err := validate(t, wrongShim); err == nil || !strings.Contains(err.Error(), "shim path") {
+		t.Fatalf("wrong shim path error = %v, want a shim path refusal", err)
+	}
+
+	oldNativePath := receipt()
+	oldNativePath["candidate_artifacts"].(map[string]any)["native_binary_path"] = "plugins/loaf/bin/native/" + record.Platform + "/loaf"
+	if err := validate(t, oldNativePath); err == nil || !strings.Contains(err.Error(), "native binary path") {
+		t.Fatalf("plugin-native path error = %v, want the candidate bin/native path to be required", err)
+	}
+
+	// The shim on disk changes after the receipt was recorded: the digest no
+	// longer matches the candidate and the receipt is stale.
+	writeReceiptArtifact(t, root, "plugins/loaf/bin/loaf", []byte(claudePluginShim+"# edited\n"))
+	if err := validate(t, receipt()); err == nil || !strings.Contains(err.Error(), "shim SHA-256") {
+		t.Fatalf("edited shim error = %v, want a shim digest mismatch", err)
+	}
+}
+
+func writeReceiptArtifact(t *testing.T, root string, rel string, body []byte) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, body, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 /**
- * Verify generated Go command artifacts are present and synchronized between
- * bin/ (build output) and plugins/loaf/bin/ (the committed marketplace copy).
- *
- * Binaries carry a -buildvcs stamp, so two builds of the same source from
- * different commits or tree states differ by design; this script checks that
- * the copies agree, not that a rebuild reproduces them byte for byte.
+ * Verify generated Go command artifacts are present and synchronized: the
+ * launcher and native binaries under bin/ (an ignored build output) and the
+ * committed Claude Code plugin shim at plugins/loaf/bin/loaf, which must equal
+ * its embedded source. The plugin ships no native binary; it resolves an
+ * installed loaf at run time.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -32,13 +31,13 @@ const dryRun = baseEnv.LOAF_NATIVE_ARTIFACT_DRY_RUN === "1";
 
 const requiredFiles = [
   "cli/runtime/loaf-launcher.cjs",
+  "internal/cli/claude_plugin_shim.sh",
   "bin/loaf",
   "bin/package.json",
   "plugins/loaf/bin/loaf",
-  "plugins/loaf/bin/package.json",
 ];
 for (const target of targets) {
-  requiredFiles.push(nativeArtifact("bin", target), nativeArtifact("plugins/loaf/bin", target));
+  requiredFiles.push(nativeArtifact("bin", target));
 }
 
 if (dryRun) {
@@ -57,12 +56,9 @@ for (const file of requiredFiles) {
 assertSinglePublicCommand(packageJSON);
 assertPortablePackage(packageJSON);
 assertSame("cli/runtime/loaf-launcher.cjs", "bin/loaf");
-assertSame("cli/runtime/loaf-launcher.cjs", "plugins/loaf/bin/loaf");
-assertSame("bin/loaf", "plugins/loaf/bin/loaf");
-assertSame("bin/package.json", "plugins/loaf/bin/package.json");
-for (const target of targets) {
-  assertSame(nativeArtifact("bin", target), nativeArtifact("plugins/loaf/bin", target));
-}
+assertSame("internal/cli/claude_plugin_shim.sh", "plugins/loaf/bin/loaf");
+assertAbsent("plugins/loaf/bin/native");
+assertAbsent("plugins/loaf/bin/package.json");
 
 console.log("Go command artifacts are present and synchronized.");
 
@@ -80,6 +76,12 @@ function assertSinglePublicCommand(manifest) {
 function assertPortablePackage(manifest) {
   if ("os" in manifest || "cpu" in manifest) {
     fail("package.json must not restrict os/cpu while bin/loaf is a portable launcher");
+  }
+}
+
+function assertAbsent(path) {
+  if (existsSync(join(rootDir, path))) {
+    fail(`${path} must not exist; the plugin ships no native runtime. Run npm run build`);
   }
 }
 
