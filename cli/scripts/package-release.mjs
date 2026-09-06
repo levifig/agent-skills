@@ -70,7 +70,7 @@ for (const target of requestedTargets) {
   for (const entry of ["package.json", "README.md", "CHANGELOG.md"]) {
     copyIfPresent(join(rootDir, entry), join(packageRoot, entry));
   }
-  for (const dir of ["config", "content", "vnext/content", "dist", "plugins"]) {
+  for (const dir of ["config", "content", "vnext/content", "dist", "plugins", ".claude-plugin"]) {
     copyIfPresent(join(rootDir, dir), join(packageRoot, dir), { recursive: true });
   }
   rmSync(join(packageRoot, "dist", "release"), { recursive: true, force: true });

@@ -49,6 +49,9 @@ type Runner struct {
 	// installed-distribution provenance (see distribution.go). Tests inject
 	// fixture layouts through it; nil means the real executable.
 	Executable func() (string, error)
+	// ClaudePluginCLI overrides how install and upgrade talk to Claude Code's
+	// plugin system (see install_claude_code.go). Nil execs `claude` on PATH.
+	ClaudePluginCLI claudePluginCLI
 }
 
 type housekeepingOptions struct {
