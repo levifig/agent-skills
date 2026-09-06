@@ -24,7 +24,12 @@ const (
 	installChannelHomebrew
 	installChannelNpm
 	installChannelDev
+	installChannelScript
 )
+
+// installScriptCommand is the one-liner README documents; re-running it moves
+// a script install to the newest release and runs `loaf upgrade`.
+const installScriptCommand = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh)"`
 
 func (kind installChannelKind) String() string {
 	switch kind {
@@ -34,6 +39,8 @@ func (kind installChannelKind) String() string {
 		return "npm"
 	case installChannelDev:
 		return "dev"
+	case installChannelScript:
+		return "script"
 	default:
 		return "unknown"
 	}
@@ -60,7 +67,28 @@ func resolveInstallChannel(distributionRoot string) installChannel {
 	if insideGitWorktree(distributionRoot) {
 		return installChannel{Kind: installChannelDev, UpgradeCommand: "git pull && npm run build"}
 	}
+	if installedByScript(distributionRoot) {
+		return installChannel{Kind: installChannelScript, UpgradeCommand: installScriptCommand}
+	}
 	return installChannel{}
+}
+
+// installedByScript recognizes install.sh's layout: the distribution sits at
+// <LOAF_HOME>/releases/<version> and <LOAF_HOME>/current is a symlink to it.
+// Both halves are required so an unpacked archive somewhere else stays unknown.
+func installedByScript(distributionRoot string) bool {
+	releases := filepath.Dir(distributionRoot)
+	if filepath.Base(releases) != "releases" {
+		return false
+	}
+	current, err := os.Readlink(filepath.Join(filepath.Dir(releases), "current"))
+	if err != nil {
+		return false
+	}
+	if !filepath.IsAbs(current) {
+		current = filepath.Join(filepath.Dir(releases), current)
+	}
+	return filepath.Clean(current) == filepath.Clean(distributionRoot)
 }
 
 // homebrewKegFormula requires both halves of the keg signature: the

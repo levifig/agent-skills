@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -134,5 +136,36 @@ func TestResolveInstallChannelIsUnknownWithoutASignature(t *testing.T) {
 	}
 	if channel.Kind.String() != "unknown" {
 		t.Fatalf("kind.String() = %q, want unknown", channel.Kind.String())
+	}
+}
+
+func TestResolveInstallChannelRecognizesTheInstallScriptLayout(t *testing.T) {
+	home := t.TempDir()
+	release := filepath.Join(home, "loaf", "releases", "1.2.3")
+	if err := os.MkdirAll(filepath.Join(release, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(release, "package.json"), []byte(`{"name":"loaf","version":"1.2.3"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A release directory without the current link is just an unpacked archive.
+	if got := resolveInstallChannel(release); got.Kind != installChannelUnknown {
+		t.Fatalf("channel without current link = %v, want unknown", got.Kind)
+	}
+	if err := os.Symlink(release, filepath.Join(home, "loaf", "current")); err != nil {
+		t.Fatal(err)
+	}
+	got := resolveInstallChannel(release)
+	if got.Kind != installChannelScript || !strings.Contains(got.UpgradeCommand, "install.sh") {
+		t.Fatalf("channel = %#v, want the script channel with the installer one-liner", got)
+	}
+	// A sibling release the link does not point at is not current, so it gets no
+	// upgrade advice that would silently re-run the installer over it.
+	stale := filepath.Join(home, "loaf", "releases", "1.0.0")
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveInstallChannel(stale); got.Kind != installChannelUnknown {
+		t.Fatalf("channel for a non-current release = %v, want unknown", got.Kind)
 	}
 }

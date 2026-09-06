@@ -28,11 +28,14 @@ const upgradeCommandName = "upgrade"
 const upgradeAllTargets = "all"
 
 type upgradeOptions struct {
-	target string
-	yes    *bool
-	help   bool
-	dryRun bool
-	json   bool
+	// target is the raw --to value; targets is the same value split on commas.
+	target      string
+	targets     []string
+	interactive bool
+	yes         *bool
+	help        bool
+	dryRun      bool
+	json        bool
 }
 
 func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) error {
@@ -61,7 +64,7 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	assumeYes := installAssumeYes(planOptions)
 	detection := detectLoafRepo(projectRoot, r.StateHome)
 
-	targets, err := selectUpgradeTargets(options, tools)
+	targets, refreshClaudeCode, err := r.selectUpgradeTargets(options, tools, hasClaudeCode, out)
 	if err != nil {
 		return err
 	}
@@ -81,7 +84,7 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	}
 	// Claude Code holds the plugin in its own cache, so its refresh goes through
 	// the claude CLI rather than a content sync; `--to` narrows it like the rest.
-	if hasClaudeCode && (options.target == "" || options.target == "all" || options.target == claudeCodeInstallTarget) {
+	if refreshClaudeCode {
 		if err := r.upgradeClaudeCodePlugin(out, loafRoot); err != nil {
 			failedTargets = append(failedTargets, claudeCodeInstallTarget)
 		}
@@ -145,6 +148,9 @@ func parseUpgradeArgs(args []string) (upgradeOptions, error) {
 			}
 			i++
 			options.target = args[i]
+			options.targets = splitInstallTargets(args[i])
+		case "-i", "--interactive":
+			options.interactive = true
 		case "--dry-run":
 			options.dryRun = true
 		case "--json":
@@ -177,6 +183,7 @@ func (o upgradeOptions) installPlanOptions() installOptions {
 	}
 	return installOptions{
 		target:  target,
+		targets: withoutString(o.targets, upgradeAllTargets),
 		upgrade: true,
 		yes:     o.yes,
 		dryRun:  o.dryRun,
@@ -187,24 +194,51 @@ func (o upgradeOptions) installPlanOptions() installOptions {
 
 // selectUpgradeTargets narrows the sync to already-installed targets. `--to`
 // filters; it never onboards. Naming a target that is not installed is an
-// error that points at install, which owns onboarding.
-func selectUpgradeTargets(options upgradeOptions, tools []detectedInstallTool) ([]string, error) {
+// error that points at install, which owns onboarding. The second result says
+// whether the Claude Code plugin refresh runs: by default and under "all" it
+// does whenever the claude CLI is present, otherwise only when named.
+func (r Runner) selectUpgradeTargets(options upgradeOptions, tools []detectedInstallTool, hasClaudeCode bool, out io.Writer) ([]string, bool, error) {
 	installed := installedUpgradeTargets(tools)
+	if options.interactive {
+		var entries []installChecklistEntry
+		for _, tool := range tools {
+			if tool.installed {
+				entries = append(entries, installChecklistEntry{Key: tool.key, Name: tool.name, Status: "installed"})
+			}
+		}
+		if hasClaudeCode {
+			entries = append(entries, installChecklistEntry{Key: claudeCodeInstallTarget, Name: installDisplayName(claudeCodeInstallTarget), Status: "plugin"})
+		}
+		selected, err := promptInstallChecklist(r.installPromptReader(), out, "Upgrade", entries)
+		if err != nil {
+			return nil, false, err
+		}
+		return withoutString(selected, claudeCodeInstallTarget), containsString(selected, claudeCodeInstallTarget), nil
+	}
 	if options.target == "" || options.target == upgradeAllTargets {
-		return installed, nil
+		return installed, hasClaudeCode, nil
 	}
-	if options.target == claudeCodeInstallTarget {
-		// The plugin lives in Claude Code's own cache and is refreshed through
-		// the claude CLI by runUpgrade; there is no content target to sync.
-		return nil, nil
+	var targets []string
+	refreshClaudeCode := false
+	for _, target := range options.targets {
+		if target == upgradeAllTargets {
+			return nil, false, fmt.Errorf("--to all cannot be combined with other targets")
+		}
+		if target == claudeCodeInstallTarget {
+			// The plugin lives in Claude Code's own cache and is refreshed through
+			// the claude CLI by runUpgrade; there is no content target to sync.
+			refreshClaudeCode = hasClaudeCode
+			continue
+		}
+		if !isValidInstallTarget(target) {
+			return nil, false, fmt.Errorf("unknown upgrade target %q (valid targets: %s, %s)", target, installTargetNamesForHelp(), upgradeAllTargets)
+		}
+		if !containsString(installed, target) {
+			return nil, false, fmt.Errorf("%s is not installed here, so there is nothing to upgrade; run `loaf install --to %s` to add it", installDisplayName(target), target)
+		}
+		targets = append(targets, target)
 	}
-	if !isValidInstallTarget(options.target) {
-		return nil, fmt.Errorf("unknown upgrade target %q (valid targets: %s, %s)", options.target, installTargetNamesForHelp(), upgradeAllTargets)
-	}
-	if !containsString(installed, options.target) {
-		return nil, fmt.Errorf("%s is not installed here, so there is nothing to upgrade; run `loaf install --to %s` to add it", installDisplayName(options.target), options.target)
-	}
-	return []string{options.target}, nil
+	return targets, refreshClaudeCode, nil
 }
 
 // installedUpgradeTargets is the unfiltered set the project part always works
@@ -456,7 +490,8 @@ func writeUpgradeHelp(out io.Writer) {
 		"names what failed, and exits non-zero.",
 		"",
 		"Options:",
-		"  --to <target>  Filter the global part to one already-installed target (or \"all\")",
+		"  --to <targets>  Filter the global part to already-installed targets, comma-separated (or \"all\", the default)",
+		"  -i, --interactive  Pick targets from a checklist",
 		"  --dry-run      Report the plan without writing anything",
 		"  --json         Emit the dry-run plan as a single JSON document (requires --dry-run)",
 		"  -y, --yes      Assume yes to safe project-file symlink migrations and destructive deprecation cleanup",

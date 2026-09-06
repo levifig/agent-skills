@@ -35,7 +35,7 @@ func TestParseUpgradeArgs(t *testing.T) {
 func TestRunnerUpgradeHelpNamesBothParts(t *testing.T) {
 	root, _ := setupUpgradeFixture(t)
 	output := runInstallCapture(t, root, "upgrade", "--help")
-	for _, want := range []string{"loaf upgrade", "Global", "Project", "--to <target>", "--dry-run"} {
+	for _, want := range []string{"loaf upgrade", "Global", "Project", "--to <targets>", "--interactive", "--dry-run"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("upgrade --help = %q, want it to contain %q", output, want)
 		}

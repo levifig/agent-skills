@@ -28,7 +28,11 @@ import (
 // tool from inside a Loaf repo.
 
 type installOptions struct {
+	// target is the raw --to value; targets is the same value split on commas.
+	// "all" stays a single value meaning every detected harness.
 	target             string
+	targets            []string
+	interactive        bool
 	codexBasicCommands bool
 	yes                *bool
 	help               bool
@@ -321,6 +325,9 @@ func parseInstallArgs(args []string) (installOptions, error) {
 			}
 			i++
 			options.target = args[i]
+			options.targets = splitInstallTargets(args[i])
+		case "-i", "--interactive":
+			options.interactive = true
 		case "--upgrade":
 			return installOptions{}, installFlagRemovedError("--upgrade", "loaf upgrade")
 		case "--dry-run":
@@ -341,7 +348,10 @@ func parseInstallArgs(args []string) (installOptions, error) {
 			return installOptions{}, fmt.Errorf("unknown install option %q", arg)
 		}
 	}
-	if options.codexBasicCommands && options.target != "codex" && options.target != "all" {
+	if options.interactive && options.target != "" {
+		return installOptions{}, fmt.Errorf("--interactive picks the targets itself; drop --to or drop -i")
+	}
+	if options.codexBasicCommands && options.target != "all" && !containsString(options.targets, "codex") {
 		return installOptions{}, fmt.Errorf("--codex-basic-commands requires --to codex or --to all")
 	}
 	return options, nil
@@ -371,8 +381,13 @@ func writeInstallHelp(out io.Writer) {
 		"           record in .agents/loaf.json. Outside a Loaf repo install asks",
 		"           before writing anything; inside one it leaves the project alone.",
 		"",
+		"With no options install onboards every harness detected on this machine",
+		"(and Claude Code's plugin when the claude CLI is present). Use -i to pick",
+		"from a checklist, or --to to name targets.",
+		"",
 		"Options:",
-		"  --to <target>  Target to install to (or \"all\")",
+		"  --to <targets>  Comma-separated targets, or \"all\" (default)",
+		"  -i, --interactive  Pick targets from a checklist",
 		"  --codex-basic-commands  Explicitly install the least-privilege Codex basic command policy (requires --to codex or --to all)",
 		"  -y, --yes      Assume yes: grants project deploy consent and safe project-file symlink migrations",
 		"  --no-yes       Force prompt-style declines in non-interactive mode",
@@ -384,28 +399,8 @@ func writeInstallHelp(out io.Writer) {
 
 func (r Runner) selectedInstallTargets(options installOptions, tools []detectedInstallTool, hasClaudeCode bool, out io.Writer) ([]string, error) {
 	switch {
-	case options.target == "all":
-		targets := make([]string, 0, len(tools)+1)
-		for _, tool := range tools {
-			targets = append(targets, tool.key)
-		}
-		if hasClaudeCode {
-			targets = append(targets, claudeCodeInstallTarget)
-		}
-		return targets, nil
-	case options.target == claudeCodeInstallTarget:
-		if !hasClaudeCode {
-			return nil, fmt.Errorf("Claude Code CLI (claude) is not on PATH; install Claude Code before onboarding its plugin")
-		}
-		return []string{claudeCodeInstallTarget}, nil
-	case options.target != "":
-		if !isValidInstallTarget(options.target) {
-			return nil, fmt.Errorf("unknown install target %q (valid targets: %s, all)", options.target, installTargetNamesForHelp())
-		}
-		if !containsInstallTool(tools, options.target) {
-			fmt.Fprintf(out, "  %s %s was not auto-detected; installing to %s\n", ansiYellow("⚡"), options.target, installLayoutConfigDirs("")[options.target])
-		}
-		return []string{options.target}, nil
+	case options.interactive:
+		return r.promptInstallTargets(tools, hasClaudeCode, out)
 	case options.upgrade:
 		var targets []string
 		for _, tool := range tools {
@@ -414,54 +409,47 @@ func (r Runner) selectedInstallTargets(options installOptions, tools []detectedI
 			}
 		}
 		return targets, nil
+	case options.target == "" || options.target == "all":
+		// The default is every harness this machine has: onboarding should not
+		// interrogate; `-i` is there for narrowing.
+		targets := make([]string, 0, len(tools)+1)
+		for _, tool := range tools {
+			targets = append(targets, tool.key)
+		}
+		if hasClaudeCode {
+			targets = append(targets, claudeCodeInstallTarget)
+		}
+		return targets, nil
 	default:
-		return r.promptInstallTargets(tools, hasClaudeCode, out)
-	}
-}
-
-// withoutString returns values without every occurrence of unwanted.
-func withoutString(values []string, unwanted string) []string {
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		if value != unwanted {
-			result = append(result, value)
+		// Callers that build installOptions directly set target without targets.
+		requested := options.targets
+		if len(requested) == 0 {
+			requested = splitInstallTargets(options.target)
 		}
+		var targets []string
+		for _, target := range requested {
+			if target == "all" {
+				return nil, fmt.Errorf("--to all cannot be combined with other targets")
+			}
+			if !isValidInstallTarget(target) {
+				return nil, fmt.Errorf("unknown install target %q (valid targets: %s, all)", target, installTargetNamesForHelp())
+			}
+			if target == claudeCodeInstallTarget {
+				if !hasClaudeCode {
+					return nil, fmt.Errorf("Claude Code CLI (claude) is not on PATH; install Claude Code before onboarding its plugin")
+				}
+			} else if !containsInstallTool(tools, target) {
+				fmt.Fprintf(out, "  %s %s was not auto-detected; installing to %s\n", ansiYellow("⚡"), target, installLayoutConfigDirs("")[target])
+			}
+			targets = append(targets, target)
+		}
+		return targets, nil
 	}
-	return result
 }
 
+// promptInstallTargets is the `-i` picker over detected tools and Claude Code.
 func (r Runner) promptInstallTargets(tools []detectedInstallTool, hasClaudeCode bool, out io.Writer) ([]string, error) {
-	input := r.Stdin
-	if input == nil {
-		input = os.Stdin
-	}
-	reader := bufio.NewReader(input)
-	var selected []string
-	for _, tool := range tools {
-		status := ""
-		if tool.installed {
-			status = " " + ansiYellow("(installed)")
-		}
-		yes, err := askInstallYesNo(reader, out, fmt.Sprintf("  Install to %s%s? [Y/n] ", ansiBold(tool.name), status), true)
-		if err != nil {
-			return nil, err
-		}
-		if yes {
-			selected = append(selected, tool.key)
-		}
-	}
-	// Claude Code is asked through the same reader: a second bufio.Reader over
-	// one stdin would find the buffered answers already consumed.
-	if hasClaudeCode {
-		yes, err := askInstallYesNo(reader, out, fmt.Sprintf("  Install the Loaf plugin into %s? [Y/n] ", ansiBold(installDisplayName(claudeCodeInstallTarget))), true)
-		if err != nil {
-			return nil, err
-		}
-		if yes {
-			selected = append(selected, claudeCodeInstallTarget)
-		}
-	}
-	return selected, nil
+	return promptInstallChecklist(r.installPromptReader(), out, "Install", installChecklistEntries(tools, hasClaudeCode))
 }
 
 func askInstallYesNo(reader *bufio.Reader, out io.Writer, question string, defaultYes bool) (bool, error) {
