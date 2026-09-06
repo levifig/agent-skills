@@ -140,7 +140,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 		Mcp:             []mcpPlanEntry{},
 	}
 
-	selectedTargets, err := r.selectedInstallTargets(options, tools, io.Discard)
+	selectedTargets, err := r.selectedInstallTargets(options, tools, hasClaudeCode, io.Discard)
 	if err != nil {
 		return installDryRunPlan{}, err
 	}
@@ -166,7 +166,19 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	defer releaseHookState()
 	buildNeeded := false
 	var plannedOptions []targetInstallOptions
+	if options.upgrade && hasClaudeCode && !containsString(selectedTargets, claudeCodeInstallTarget) {
+		// Upgrade refreshes the plugin only when this distribution installed it;
+		// the planner decides that from Claude Code's own state.
+		if entry, include := r.planClaudeCodeTarget(loafRoot, true, hasClaudeCode); include {
+			plan.Targets = append(plan.Targets, entry)
+		}
+	}
 	for _, target := range selectedTargets {
+		if target == claudeCodeInstallTarget {
+			entry, _ := r.planClaudeCodeTarget(loafRoot, options.upgrade, hasClaudeCode)
+			plan.Targets = append(plan.Targets, entry)
+			continue
+		}
 		distDir := filepath.Join(distRoot, target)
 		configDir := defaults[target]
 		if tool, ok := toolByKey[target]; ok && tool.configDir != "" {
@@ -234,7 +246,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	// of it, exactly as the apply path does. Upgrade (the caller that supplies a
 	// project part) refreshes the surfaces of every installed target regardless
 	// of --to, so the plan reports that same unfiltered set.
-	targetsInScope := append([]string{}, selectedTargets...)
+	targetsInScope := withoutString(selectedTargets, claudeCodeInstallTarget)
 	if projectPart != nil {
 		targetsInScope = installedUpgradeTargets(tools)
 	}
@@ -250,7 +262,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	// upgrade applies no MCP changes.
 	mcpTargets := append([]string{}, targetsInScope...)
 	if hasClaudeCode {
-		mcpTargets = append(mcpTargets, "claude-code")
+		mcpTargets = append(mcpTargets, claudeCodeInstallTarget)
 	}
 	plan.Mcp = planInstallMcp(projectRoot, mcpTargets)
 

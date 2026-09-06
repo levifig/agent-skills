@@ -65,7 +65,16 @@ var installDisplayNames = map[string]string{
 	"amp":         "Amp",
 }
 
+// installValidTargets are the harnesses that receive Loaf content into a config
+// directory and share the canonical skills store. Claude Code is onboarded too,
+// but through its plugin system (see install_claude_code.go), so it is accepted
+// by isValidInstallTarget without joining this list.
 var installValidTargets = []string{"opencode", "cursor", "codex", "amp"}
+
+// installTargetNamesForHelp lists every value --to accepts.
+func installTargetNamesForHelp() string {
+	return strings.Join(append(append([]string{}, installValidTargets...), claudeCodeInstallTarget), ", ")
+}
 
 func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) error {
 	options, err := parseInstallArgs(args)
@@ -103,7 +112,7 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 	fmt.Fprintln(out)
 	writeInstallDetection(out, tools, hasClaudeCode, loafRoot)
 
-	selectedTargets, err := r.selectedInstallTargets(options, tools, out)
+	selectedTargets, err := r.selectedInstallTargets(options, tools, hasClaudeCode, out)
 	if err != nil {
 		return err
 	}
@@ -137,6 +146,11 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 	defer releaseHookState()
 	var installOptions []targetInstallOptions
 	for _, target := range selectedTargets {
+		if target == claudeCodeInstallTarget {
+			// Claude Code takes no dist directory and no skills sync: its half
+			// runs after the harness loop, through the claude CLI.
+			continue
+		}
 		distDir := filepath.Join(distRoot, target)
 		if !dirExistsForInstall(distDir) {
 			fmt.Fprintf(out, "  %s %s - no build output found. Run %s first.\n", ansiRed("✗"), installDisplayName(target), ansiBold("loaf build"))
@@ -210,10 +224,17 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 		}
 		installedTargets = append(installedTargets, opts.Target)
 	}
+	if containsString(selectedTargets, claudeCodeInstallTarget) {
+		if installed, _ := r.installClaudeCodePlugin(out, loafRoot); installed {
+			installedTargets = append(installedTargets, claudeCodeInstallTarget)
+		}
+	}
 	fmt.Fprintln(out)
 
-	targetsInScope := append([]string{}, selectedTargets...)
-	targetsInScope = append(targetsInScope, installedTargets...)
+	// The project half already accounts for Claude Code through hasClaudeCode;
+	// the plugin target must not appear a second time in its target list.
+	targetsInScope := withoutString(selectedTargets, claudeCodeInstallTarget)
+	targetsInScope = append(targetsInScope, withoutString(installedTargets, claudeCodeInstallTarget)...)
 	if err := r.deployInstallProjectSurfaces(out, options, projectRoot.Path(), detection, targetsInScope, hasClaudeCode, assumeYes, version); err != nil {
 		return err
 	}
@@ -246,9 +267,9 @@ func (r Runner) deployInstallProjectSurfaces(out io.Writer, options installOptio
 		fmt.Fprintf(out, "  %s\n\n", ansiGray("Managed project file could not be written — skipping the remaining project surfaces. Resolve the reported conflict and rerun loaf install."))
 		return nil
 	}
-	mcpTargets := append([]string{}, targets...)
+	mcpTargets := withoutString(targets, claudeCodeInstallTarget)
 	if hasClaudeCode {
-		mcpTargets = append(mcpTargets, "claude-code")
+		mcpTargets = append(mcpTargets, claudeCodeInstallTarget)
 	}
 	return r.runInstallMcpRecommendations(out, projectRoot, false, mcpTargets)
 }
@@ -342,7 +363,9 @@ func writeInstallHelp(out io.Writer) {
 		"",
 		"  Harness  Installs the Loaf distribution into an agent tool's global config",
 		"           directory. Use --to <target> to onboard a tool that does not have",
-		"           it yet, from anywhere.",
+		"           it yet, from anywhere. For Claude Code the distribution registers",
+		"           itself as a plugin marketplace and installs the loaf plugin through",
+		"           the claude CLI; the plugin's hooks then run this installed loaf.",
 		"  Project  Deploys Loaf's project surfaces here: AGENTS.md and its managed",
 		"           section, the instruction symlinks, and the MCP recommendation",
 		"           record in .agents/loaf.json. Outside a Loaf repo install asks",
@@ -359,17 +382,25 @@ func writeInstallHelp(out io.Writer) {
 	}, "\n"))
 }
 
-func (r Runner) selectedInstallTargets(options installOptions, tools []detectedInstallTool, out io.Writer) ([]string, error) {
+func (r Runner) selectedInstallTargets(options installOptions, tools []detectedInstallTool, hasClaudeCode bool, out io.Writer) ([]string, error) {
 	switch {
 	case options.target == "all":
-		targets := make([]string, 0, len(tools))
+		targets := make([]string, 0, len(tools)+1)
 		for _, tool := range tools {
 			targets = append(targets, tool.key)
 		}
+		if hasClaudeCode {
+			targets = append(targets, claudeCodeInstallTarget)
+		}
 		return targets, nil
+	case options.target == claudeCodeInstallTarget:
+		if !hasClaudeCode {
+			return nil, fmt.Errorf("Claude Code CLI (claude) is not on PATH; install Claude Code before onboarding its plugin")
+		}
+		return []string{claudeCodeInstallTarget}, nil
 	case options.target != "":
 		if !isValidInstallTarget(options.target) {
-			return nil, fmt.Errorf("unknown install target %q (valid targets: %s, all)", options.target, strings.Join(installValidTargets, ", "))
+			return nil, fmt.Errorf("unknown install target %q (valid targets: %s, all)", options.target, installTargetNamesForHelp())
 		}
 		if !containsInstallTool(tools, options.target) {
 			fmt.Fprintf(out, "  %s %s was not auto-detected; installing to %s\n", ansiYellow("⚡"), options.target, installLayoutConfigDirs("")[options.target])
@@ -384,11 +415,22 @@ func (r Runner) selectedInstallTargets(options installOptions, tools []detectedI
 		}
 		return targets, nil
 	default:
-		return r.promptInstallTargets(tools, out)
+		return r.promptInstallTargets(tools, hasClaudeCode, out)
 	}
 }
 
-func (r Runner) promptInstallTargets(tools []detectedInstallTool, out io.Writer) ([]string, error) {
+// withoutString returns values without every occurrence of unwanted.
+func withoutString(values []string, unwanted string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != unwanted {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func (r Runner) promptInstallTargets(tools []detectedInstallTool, hasClaudeCode bool, out io.Writer) ([]string, error) {
 	input := r.Stdin
 	if input == nil {
 		input = os.Stdin
@@ -406,6 +448,17 @@ func (r Runner) promptInstallTargets(tools []detectedInstallTool, out io.Writer)
 		}
 		if yes {
 			selected = append(selected, tool.key)
+		}
+	}
+	// Claude Code is asked through the same reader: a second bufio.Reader over
+	// one stdin would find the buffered answers already consumed.
+	if hasClaudeCode {
+		yes, err := askInstallYesNo(reader, out, fmt.Sprintf("  Install the Loaf plugin into %s? [Y/n] ", ansiBold(installDisplayName(claudeCodeInstallTarget))), true)
+		if err != nil {
+			return nil, err
+		}
+		if yes {
+			selected = append(selected, claudeCodeInstallTarget)
 		}
 	}
 	return selected, nil
@@ -576,11 +629,7 @@ func anyInstallSymlinkRefusal(results map[string]installSymlinkResult) bool {
 func writeInstallDetection(out io.Writer, tools []detectedInstallTool, hasClaudeCode bool, loafRoot string) {
 	if hasClaudeCode {
 		fmt.Fprintf(out, "  %s Claude Code detected\n", ansiGreen("✓"))
-		if isInstallDevMode(loafRoot) {
-			fmt.Fprintf(out, "    %s %s\n", ansiGray("Test locally:"), ansiWhite("/plugin marketplace add "+loafRoot))
-		} else {
-			fmt.Fprintf(out, "    %s %s\n", ansiGray("Install via:"), ansiWhite("/plugin marketplace add levifig/loaf"))
-		}
+		fmt.Fprintf(out, "    %s %s %s\n", ansiGray("Plugin via:"), ansiWhite("loaf install --to claude-code"), ansiGray("(registers "+loafRoot+" as its marketplace)"))
 		fmt.Fprintln(out)
 	}
 	for _, tool := range tools {
@@ -796,6 +845,9 @@ func containsInstallTool(tools []detectedInstallTool, target string) bool {
 }
 
 func isValidInstallTarget(target string) bool {
+	if target == claudeCodeInstallTarget {
+		return true
+	}
 	for _, valid := range installValidTargets {
 		if target == valid {
 			return true
