@@ -277,7 +277,7 @@ loaf install --to all  # Install to detected tools
 **Testing locally:**
 
 - Claude Code: `/plugin marketplace add /path/to/loaf`
-- Others: `loaf install --to all` (after `npm run build`)
+- Others: `loaf install` (after `npm run build`) onboards every detected harness; `loaf install -i` picks from a checklist and `--to cursor,codex` names targets
 
 ## License
 
