@@ -34,6 +34,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
       - name: Resolve release ref
         id: resolve
         shell: bash
@@ -43,7 +48,7 @@ jobs:
           else
             tag="${GITHUB_REF_NAME}"
           fi
-          output="$(node cli/scripts/classify-release-tag.mjs "$tag")" || exit 1
+          output="$(go run ./cmd/loafdev classify-tag "$tag")" || exit 1
           echo "$output" >> "$GITHUB_OUTPUT"
 
   release:
@@ -57,28 +62,22 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.ref }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      - name: Install dependencies
-        run: npm ci
+      # Node validates the emitted TypeScript plugins during the content build.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
 
       - name: Verify release version
         id: version
         shell: bash
         run: |
-          version="$(node -p "require('./package.json').version")"
+          version="$(jq -r .version package.json)"
           expected_tag="v$version"
           if [[ "${{ needs.resolve.outputs.tag }}" != "$expected_tag" ]]; then
             echo "Tag ${{ needs.resolve.outputs.tag }} does not match package version $version." >&2
@@ -94,10 +93,10 @@ jobs:
         run: |
           export LOAF_BUILD_COMMIT="$(git rev-parse --short=7 HEAD)"
           export LOAF_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          npm run build:release
+          go run ./cmd/loafdev release
 
       - name: Package release archives
-        run: npm run package:release
+        run: go run ./cmd/loafdev package
 
       - name: Upload release assets
         env:
@@ -122,7 +121,7 @@ jobs:
       - name: Update Homebrew formula
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_tap == 'true' }}
         run: |
-          node cli/scripts/update-homebrew-formula.mjs \
+          go run ./cmd/loafdev homebrew-formula \
             --formula homebrew-tap/Formula/loaf.rb \
             --checksums dist/release/checksums.txt \
             --version "${{ steps.version.outputs.version }}" \

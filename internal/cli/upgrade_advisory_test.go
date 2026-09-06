@@ -62,7 +62,7 @@ func TestUpgradeCurrencyAdvisoryPerChannel(t *testing.T) {
 		{
 			name:    "dev",
 			channel: resolveInstallChannel(devCheckoutFixture(t)),
-			want:    "Update available: loaf 2.0.0-alpha.17 → 2.0.0-alpha.18. Run: git pull && npm run build",
+			want:    "Update available: loaf 2.0.0-alpha.17 → 2.0.0-alpha.18. Run: git pull && make build",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

@@ -9,9 +9,9 @@ See [README.md](README.md) for what Loaf is and how to install it.
 ## Quick Start
 
 ```bash
-npm install && npm run build   # Build CLI + all targets
-loaf build                     # After initial build, use the CLI directly
-loaf install --to all          # Install to detected tools
+make build                     # Build the native CLI + all targets (Go only; no npm)
+loaf build                     # After the initial build, use the CLI directly
+loaf install                   # Onboard every detected harness
 ```
 
 ## Project Structure
@@ -451,12 +451,14 @@ loaf journal context           # Emit the layered continuity digest
 ### Development
 
 ```bash
-npm install                    # Install dependencies
-npm run build:go               # Build native Go; claim ~/.local/bin/loaf via Loaf's launcher pointer when that name is absent
-npm run build                  # Build binary + CLI reference + all content targets, then verify
-npm run typecheck              # Compile check (go test ./... -run=^$)
-npm run test                   # Run Go tests (go test ./...)
+make build-go                  # Build the native binary; claim ~/.local/bin/loaf via Loaf's launcher pointer when that name is absent
+make build                     # Binary + CLI reference + all content targets, then verify
+make typecheck                 # Compile check (go test ./... -run=^$)
+make test                      # Run Go tests (go test ./...)
+go run ./cmd/loafdev --help    # The build, release, packaging, and tag tooling behind the Makefile
 ```
+
+There is no npm. `package.json` remains only as the distribution manifest (name, version, license); Node is needed solely for the harness capability runners under `cli/scripts/` and the emitted TypeScript plugin checks.
 
 ### Dev Isolation (avoid polluting the global DB)
 
@@ -489,8 +491,8 @@ touched during `go test`.
 ### Before Committing
 
 - [ ] `loaf build` succeeds
-- [ ] `npm run typecheck` passes
-- [ ] `npm run test` passes
+- [ ] `make typecheck` passes
+- [ ] `make test` passes
 - [ ] If tracked build artifacts in `dist/` or `plugins/` changed, commit them with the source changes that produced them
 - [ ] Frontmatter has required fields
 - [ ] New skills live under `content/skills/` (auto-discovered at build); only hook instances are registered in `hooks.yaml`

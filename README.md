@@ -269,8 +269,7 @@ Activating a verified copy is a manual, quiesced operator procedure, not an auto
 ```bash
 git clone https://github.com/levifig/loaf.git
 cd loaf
-npm install
-npm run build
+make build
 ```
 
 A development build carries its source commit inside the binary (`loaf --version` reports `<version>+g<short-sha>`, plus `.dirty` when the tree had uncommitted changes) and updates Loaf's user-local launcher pointer (`$XDG_DATA_HOME/loaf/current-dev-launcher`). `~/.local/bin/loaf` is created only when that name is absent, as a symlink to the pointer, so the last worktree built becomes the active CLI when the PATH name is free. Set `LOAF_DEV_LINK=0` to opt out; an existing real file, directory, or any other symlink is never overwritten. Activation is best-effort and never fails a successful native build. A failed multi-target rebuild leaves the previous successful `bin/native` binaries in place. Root `bin/` is a build output and is not tracked.
@@ -278,13 +277,15 @@ A development build carries its source commit inside the binary (`loaf --version
 See [AGENTS.md](AGENTS.md) for development guidelines.
 
 ```bash
-npm run typecheck    # Type check
-npm run test         # Run tests
-loaf build           # Build all targets (after initial npm run build)
+make typecheck       # Compile check
+make test            # Run tests
+loaf build           # Build all targets (after the initial make build)
 loaf install         # Onboard detected harnesses from this checkout
 ```
 
-**Testing locally:** run `loaf install` from the checkout after `npm run build`. It registers the checkout as the Claude Code marketplace and installs the other harnesses from `dist/`; `loaf install -i` picks a subset.
+Everything runs through Go and `make`; there is no npm. Node is needed only for the harness capability runners under `cli/scripts/`.
+
+**Testing locally:** run `loaf install` from the checkout after `make build`. It registers the checkout as the Claude Code marketplace and installs the other harnesses from `dist/`; `loaf install -i` picks a subset.
 
 ## License
 

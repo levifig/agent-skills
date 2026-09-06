@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,57 +13,28 @@ func TestNativeCutoverPackageAndSourceGuards(t *testing.T) {
 	root := repoRoot(t)
 	manifest := readPackageManifest(t, root)
 
-	if got := manifest.Scripts["build:cli-ref"]; got != "bin/loaf __generate-cli-ref" {
-		t.Fatalf("build:cli-ref = %q, want native generator", got)
+	// package.json is the distribution manifest and nothing more: no npm
+	// scripts, bin, files, engines, or dependencies. The build, release, and
+	// packaging tooling is Go under internal/devtool, driven by the Makefile.
+	if manifest.Name != "loaf" || manifest.Version == "" {
+		t.Fatalf("package.json = %#v, want name loaf with a version", manifest)
 	}
-	if got := manifest.Scripts["build:content"]; got != "bin/loaf build" {
-		t.Fatalf("build:content = %q, want native launcher", got)
-	}
-	if got := manifest.Scripts["build:release"]; got != "node cli/scripts/build-release.mjs" {
-		t.Fatalf("build:release = %q, want native release artifact builder", got)
-	}
-	if got := manifest.Scripts["prepublishOnly"]; got != "npm run build:release" {
-		t.Fatalf("prepublishOnly = %q, want release artifact builder", got)
-	}
-	wantFiles := []string{"bin/", "config/", "content/", "vnext/content/"}
-	if got := append([]string(nil), manifest.Files...); !sameSortedStrings(got, wantFiles) {
-		t.Fatalf("package.json files = %#v, want exactly %#v", manifest.Files, wantFiles)
-	}
-	if containsString(splitScriptSteps(manifest.Scripts["build"]), "npm run build:cli") {
-		t.Fatalf("build script = %q, want no TypeScript CLI build step", manifest.Scripts["build"])
-	}
-	if containsString(splitScriptSteps(manifest.Scripts["prepare"]), "npm run build:cli") {
-		t.Fatalf("prepare script = %q, want no TypeScript CLI build step", manifest.Scripts["prepare"])
-	}
-	if _, ok := manifest.Scripts["build:cli"]; ok {
-		t.Fatalf("package.json still defines build:cli")
-	}
-	if _, ok := manifest.Scripts["pretest"]; ok {
-		t.Fatalf("package.json still defines pretest")
-	}
-	if _, ok := manifest.Exports["."]; ok {
-		t.Fatalf("package.json still exports TypeScript runtime bundle")
-	}
-	if containsString(manifest.Files, "dist-cli/") {
-		t.Fatalf("package.json files includes dist-cli/: %#v", manifest.Files)
-	}
-	if _, ok := manifest.Dependencies["commander"]; ok {
-		t.Fatalf("package.json still depends on commander")
-	}
-	if _, ok := manifest.Dependencies["gray-matter"]; ok {
-		t.Fatalf("package.json still depends on gray-matter")
-	}
-	if _, ok := manifest.DevDependencies["tsup"]; ok {
-		t.Fatalf("package.json still depends on tsup")
-	}
-	for _, dep := range []string{"picomatch", "yaml"} {
-		if _, ok := manifest.Dependencies[dep]; ok {
-			t.Fatalf("package.json still depends on obsolete TypeScript build dependency %s", dep)
+	for field, present := range map[string]bool{
+		"scripts":         len(manifest.Scripts) > 0,
+		"bin":             manifest.Bin != nil,
+		"files":           len(manifest.Files) > 0,
+		"engines":         manifest.Engines != nil,
+		"dependencies":    len(manifest.Dependencies) > 0,
+		"devDependencies": len(manifest.DevDependencies) > 0,
+		"exports":         len(manifest.Exports) > 0,
+	} {
+		if present {
+			t.Fatalf("package.json still carries the npm field %q; Loaf has no npm surface", field)
 		}
 	}
-	for _, dep := range []string{"@types/node", "@types/picomatch", "typescript", "vitest"} {
-		if _, ok := manifest.DevDependencies[dep]; ok {
-			t.Fatalf("package.json still depends on obsolete TypeScript test dependency %s", dep)
+	for _, rel := range []string{"Makefile", "cmd/loafdev/main.go", "internal/devtool/buildgo.go", "internal/devtool/pack.go"} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Fatalf("%s missing: the Go build tooling replaced the npm scripts", rel)
 		}
 	}
 	if tsFiles := findTypeScriptFiles(t, filepath.Join(root, "cli")); len(tsFiles) > 0 {
@@ -72,6 +42,16 @@ func TestNativeCutoverPackageAndSourceGuards(t *testing.T) {
 	}
 
 	missing := []string{
+		"cli/runtime/loaf-launcher.cjs",
+		"cli/scripts/build-go.mjs",
+		"cli/scripts/build-release.mjs",
+		"cli/scripts/package-release.mjs",
+		"cli/scripts/verify-go-artifacts.mjs",
+		"cli/scripts/classify-release-tag.mjs",
+		"cli/scripts/dev-build-link.mjs",
+		"cli/scripts/go-build-flags.mjs",
+		"cli/scripts/update-homebrew-formula.mjs",
+		"package-lock.json",
 		"tsconfig.json",
 		"tsup.config.ts",
 		"vitest.config.ts",
@@ -140,122 +120,6 @@ func TestNativeCutoverPackageAndSourceGuards(t *testing.T) {
 	}
 }
 
-func TestNativeGoArtifactScriptsSupportExplicitReleaseTargets(t *testing.T) {
-	node := requireNode(t)
-	root := repoRoot(t)
-
-	buildOutput, err := runNodeScript(t, node, root, []string{
-		"LOAF_NATIVE_ARTIFACT_DRY_RUN=1",
-		"LOAF_BUILD_TARGETS=linux-x64,win32-x64,linux-x64",
-	}, "cli/scripts/build-go.mjs")
-	if err != nil {
-		t.Fatalf("build-go dry run error = %v\n%s", err, buildOutput)
-	}
-	for _, want := range []string{
-		"DRY RUN: would build linux-x64",
-		filepath.ToSlash(filepath.Join("bin", "native", "linux-x64", "loaf")),
-		"DRY RUN: would build win32-x64",
-		filepath.ToSlash(filepath.Join("bin", "native", "win32-x64", "loaf.exe")),
-	} {
-		if !strings.Contains(filepath.ToSlash(buildOutput), want) {
-			t.Fatalf("build-go dry run output = %q, want %q", buildOutput, want)
-		}
-	}
-	if got := strings.Count(buildOutput, "DRY RUN: would build linux-x64"); got != 1 {
-		t.Fatalf("build-go dry run built linux-x64 %d times, want deduped once\n%s", got, buildOutput)
-	}
-
-	verifyOutput, err := runNodeScript(t, node, root, []string{
-		"LOAF_NATIVE_ARTIFACT_DRY_RUN=1",
-		"LOAF_BUILD_TARGETS=darwin-arm64,win32-x64",
-	}, "cli/scripts/verify-go-artifacts.mjs")
-	if err != nil {
-		t.Fatalf("verify-go-artifacts dry run error = %v\n%s", err, verifyOutput)
-	}
-	for _, want := range []string{
-		filepath.ToSlash(filepath.Join("bin", "native", "darwin-arm64", "loaf")),
-		filepath.ToSlash(filepath.Join("bin", "native", "win32-x64", "loaf.exe")),
-		filepath.ToSlash(filepath.Join("plugins", "loaf", "bin", "loaf")),
-	} {
-		if !strings.Contains(filepath.ToSlash(verifyOutput), want) {
-			t.Fatalf("verify-go-artifacts dry run output = %q, want %q", verifyOutput, want)
-		}
-	}
-	if strings.Contains(filepath.ToSlash(verifyOutput), "plugins/loaf/bin/native") {
-		t.Fatalf("verify-go-artifacts dry run output = %q, must not expect a plugin native runtime", verifyOutput)
-	}
-	for _, want := range []string{} {
-		if !strings.Contains(filepath.ToSlash(verifyOutput), want) {
-			t.Fatalf("verify-go-artifacts dry run output = %q, want %q", verifyOutput, want)
-		}
-	}
-
-	failOutput, err := runNodeScript(t, node, root, []string{
-		"LOAF_NATIVE_ARTIFACT_DRY_RUN=1",
-		"LOAF_BUILD_TARGETS=solaris-x64",
-	}, "cli/scripts/build-go.mjs")
-	if err == nil {
-		t.Fatalf("build-go dry run accepted unsupported target\n%s", failOutput)
-	}
-	if !strings.Contains(failOutput, "unsupported LOAF_BUILD_TARGETS entry") || !strings.Contains(failOutput, "linux-x64") {
-		t.Fatalf("unsupported target output = %q, want helpful supported-target error", failOutput)
-	}
-}
-
-func TestDevBuildLinkProtectsOperatorOwnedPaths(t *testing.T) {
-	runNodeTestFile(t, "cli/scripts/dev-build-link.test.mjs")
-}
-
-func TestDevBuildProvenancePublication(t *testing.T) {
-	runNodeTestFile(t, "cli/scripts/build-go.test.mjs")
-}
-
-func TestReleaseTagClassification(t *testing.T) {
-	runNodeTestFile(t, "cli/scripts/classify-release-tag.test.mjs")
-}
-
-func TestNativeGoReleaseBuildUsesPublishTargetPolicy(t *testing.T) {
-	node := requireNode(t)
-	root := repoRoot(t)
-
-	defaultOutput, err := runNodeScript(t, node, root, []string{
-		"LOAF_RELEASE_DRY_RUN=1",
-	}, "cli/scripts/build-release.mjs")
-	if err != nil {
-		t.Fatalf("build-release dry run error = %v\n%s", err, defaultOutput)
-	}
-	for _, want := range []string{
-		"DRY RUN: would run npm run build for native release targets:",
-		"darwin-arm64",
-		"darwin-x64",
-		"linux-arm64",
-		"linux-x64",
-		"win32-arm64",
-		"win32-x64",
-		"DRY RUN: LOAF_VERIFY_TARGETS=darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-arm64,win32-x64",
-	} {
-		if !strings.Contains(defaultOutput, want) {
-			t.Fatalf("build-release default dry run output = %q, want %q", defaultOutput, want)
-		}
-	}
-
-	overrideOutput, err := runNodeScript(t, node, root, []string{
-		"LOAF_RELEASE_DRY_RUN=1",
-		"LOAF_RELEASE_TARGETS=linux-x64,win32-x64",
-	}, "cli/scripts/build-release.mjs")
-	if err != nil {
-		t.Fatalf("build-release override dry run error = %v\n%s", err, overrideOutput)
-	}
-	for _, want := range []string{
-		"DRY RUN: would run npm run build for native release targets: linux-x64,win32-x64",
-		"DRY RUN: LOAF_VERIFY_TARGETS=linux-x64,win32-x64",
-	} {
-		if !strings.Contains(overrideOutput, want) {
-			t.Fatalf("build-release override dry run output = %q, want %q", overrideOutput, want)
-		}
-	}
-}
-
 func TestReleaseWorkflowVerifiesEvidenceBeforeStampedBuild(t *testing.T) {
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
@@ -268,7 +132,7 @@ func TestReleaseWorkflowVerifiesEvidenceBeforeStampedBuild(t *testing.T) {
 	testCommand := strings.Index(workflow, "        run: go test ./...\n")
 	buildRelease := strings.Index(workflow, "      - name: Build release targets\n")
 	stampCommit := strings.Index(workflow, "          export LOAF_BUILD_COMMIT=\"$(git rev-parse --short=7 HEAD)\"\n")
-	buildCommand := strings.Index(workflow, "          npm run build:release\n")
+	buildCommand := strings.Index(workflow, "          go run ./cmd/loafdev release\n")
 	packageRelease := strings.Index(workflow, "      - name: Package release archives\n")
 	if verifyTests < 0 || testCommand < 0 || buildRelease < 0 || stampCommit < 0 || buildCommand < 0 || packageRelease < 0 {
 		t.Fatalf("release workflow is missing its evidence verification or checked-out-tree release build contract")
@@ -279,93 +143,23 @@ func TestReleaseWorkflowVerifiesEvidenceBeforeStampedBuild(t *testing.T) {
 	if strings.Count(workflow, "LOAF_BUILD_COMMIT") != 1 || strings.Count(workflow, "LOAF_BUILD_DATE") != 1 {
 		t.Fatalf("release workflow must confine build metadata to the release build step")
 	}
-	if !strings.Contains(workflow, "cli/scripts/classify-release-tag.mjs") {
-		t.Fatalf("release workflow must classify tags with the tested SemVer-first script")
+	if !strings.Contains(workflow, "go run ./cmd/loafdev classify-tag") {
+		t.Fatalf("release workflow must classify tags with the tested SemVer-first devtool command")
+	}
+	if strings.Contains(workflow, "npm ") || strings.Contains(workflow, "npm\n") {
+		t.Fatalf("release workflow must not use npm")
 	}
 	if strings.Contains(workflow, `g[0-9a-f]{7,40}`) || strings.Contains(workflow, ">= 1000000000") {
 		t.Fatalf("release workflow must not inline tag classification")
 	}
 }
 
-func runNodeTestFile(t *testing.T, rel string) {
-	t.Helper()
-	node := requireNode(t)
-	root := repoRoot(t)
-	cmd := exec.Command(node, "--test", rel)
-	cmd.Dir = root
-	cmd.Env = envWith("LOAF_DEV_LINK=")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s failed: %v\n%s", rel, err, output)
-	}
-}
-
-func TestHomebrewFormulaUpdaterGeneratesAuditSafeURLs(t *testing.T) {
-	node := requireNode(t)
-	root := repoRoot(t)
-	tempDir := t.TempDir()
-	formulaPath := filepath.Join(tempDir, "loaf.rb")
-	checksumsPath := filepath.Join(tempDir, "checksums.txt")
-	version := "0.2.4"
-	checksums := map[string]string{
-		"darwin-arm64": strings.Repeat("a", 64),
-		"darwin-x64":   strings.Repeat("b", 64),
-		"linux-arm64":  strings.Repeat("c", 64),
-		"linux-x64":    strings.Repeat("d", 64),
-	}
-	checksumLines := []string{
-		checksums["darwin-arm64"] + "  loaf_" + version + "_darwin-arm64.tar.gz",
-		checksums["darwin-x64"] + "  loaf_" + version + "_darwin-x64.tar.gz",
-		checksums["linux-arm64"] + "  loaf_" + version + "_linux-arm64.tar.gz",
-		checksums["linux-x64"] + "  loaf_" + version + "_linux-x64.tar.gz",
-	}
-	if err := os.WriteFile(checksumsPath, []byte(strings.Join(checksumLines, "\n")+"\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(checksums.txt) error = %v", err)
-	}
-
-	output, err := runNodeScriptArgs(t, node, root, nil, "cli/scripts/update-homebrew-formula.mjs",
-		"--formula", formulaPath,
-		"--checksums", checksumsPath,
-		"--version", version,
-	)
-	if err != nil {
-		t.Fatalf("update-homebrew-formula error = %v\n%s", err, output)
-	}
-	if !strings.Contains(output, "Updated "+formulaPath) || !strings.Contains(output, "Loaf "+version) {
-		t.Fatalf("update-homebrew-formula output = %q, want successful update message", output)
-	}
-
-	data, err := os.ReadFile(formulaPath)
-	if err != nil {
-		t.Fatalf("ReadFile(generated formula) error = %v", err)
-	}
-	formula := string(data)
-	if !strings.Contains(formula, `version "0.2.4"`) {
-		t.Fatalf("generated formula missing explicit version:\n%s", formula)
-	}
-	if strings.Contains(formula, "#{version}") {
-		t.Fatalf("generated formula contains interpolated #{version}:\n%s", formula)
-	}
-	for _, want := range []string{
-		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_darwin-arm64.tar.gz"`,
-		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_darwin-x64.tar.gz"`,
-		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_linux-arm64.tar.gz"`,
-		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_linux-x64.tar.gz"`,
-	} {
-		if !strings.Contains(formula, want) {
-			t.Fatalf("generated formula missing %q:\n%s", want, formula)
-		}
-	}
-	for target, checksum := range checksums {
-		want := `sha256 "` + checksum + `"`
-		if !strings.Contains(formula, want) {
-			t.Fatalf("generated formula missing checksum for %s: %q\n%s", target, want, formula)
-		}
-	}
-}
-
 type packageManifest struct {
+	Name            string                 `json:"name"`
+	Version         string                 `json:"version"`
 	Scripts         map[string]string      `json:"scripts"`
+	Bin             interface{}            `json:"bin"`
+	Engines         interface{}            `json:"engines"`
 	Exports         map[string]interface{} `json:"exports"`
 	Files           []string               `json:"files"`
 	Dependencies    map[string]string      `json:"dependencies"`
@@ -383,21 +177,6 @@ func readPackageManifest(t *testing.T, root string) packageManifest {
 		t.Fatalf("Unmarshal(package.json) error = %v", err)
 	}
 	return manifest
-}
-
-func runNodeScript(t *testing.T, node string, root string, env []string, script string) (string, error) {
-	t.Helper()
-	return runNodeScriptArgs(t, node, root, env, script)
-}
-
-func runNodeScriptArgs(t *testing.T, node string, root string, env []string, script string, args ...string) (string, error) {
-	t.Helper()
-	cmdArgs := append([]string{script}, args...)
-	cmd := exec.Command(node, cmdArgs...)
-	cmd.Dir = root
-	cmd.Env = envWith(env...)
-	output, err := cmd.CombinedOutput()
-	return string(output), err
 }
 
 func assertPathMissing(t *testing.T, root string, rel string) {

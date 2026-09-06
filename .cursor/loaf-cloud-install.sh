@@ -17,11 +17,11 @@ case "$arch" in
 esac
 NATIVE="$ROOT/bin/native/${os}-${arch}/loaf"
 
-# bin/loaf is only the Node launcher; require the native binary for this host
-# before skipping the build (cloud agents are typically linux-*, not darwin).
+# bin/loaf is the host platform's binary; require both it and the native
+# binary for this host before skipping the build (cloud agents are typically
+# linux-*, not darwin). The build is Go only; there is no npm.
 if [[ ! -x "$ROOT/bin/loaf" || ! -x "$NATIVE" ]]; then
-  npm ci
-  npm run build:go
+  go run ./cmd/loafdev build-go
 fi
 
 export PATH="$ROOT/bin:$PATH"

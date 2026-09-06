@@ -23,9 +23,9 @@ func TestCloudEnvironmentBootstrapArtifactsInstallCLI(t *testing.T) {
 		}
 		executable := stripShellComments(body)
 		loafIdx := strings.Index(executable, "loaf ")
-		buildIdx := strings.Index(executable, "npm run build:go")
+		buildIdx := strings.Index(executable, "go run ./cmd/loafdev build-go")
 		if buildIdx < 0 {
-			t.Fatalf("%s missing npm run build:go", rel)
+			t.Fatalf("%s missing go run ./cmd/loafdev build-go", rel)
 		}
 		if loafIdx >= 0 && buildIdx > loafIdx {
 			t.Fatalf("%s runs loaf before CLI install", rel)

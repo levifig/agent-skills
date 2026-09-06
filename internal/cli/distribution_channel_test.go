@@ -110,8 +110,8 @@ func TestResolveInstallChannelIgnoresAProjectLocalNodeModules(t *testing.T) {
 
 func TestResolveInstallChannelRecognizesADevCheckout(t *testing.T) {
 	channel := resolveInstallChannel(devCheckoutFixture(t))
-	if channel.Kind != installChannelDev || channel.UpgradeCommand != "git pull && npm run build" {
-		t.Fatalf("channel = %v/%q, want dev/git pull && npm run build", channel.Kind, channel.UpgradeCommand)
+	if channel.Kind != installChannelDev || channel.UpgradeCommand != "git pull && make build" {
+		t.Fatalf("channel = %v/%q, want dev/git pull && make build", channel.Kind, channel.UpgradeCommand)
 	}
 
 	// A linked worktree carries .git as a file, and the checkout may sit below

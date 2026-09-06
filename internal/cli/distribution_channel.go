@@ -65,7 +65,7 @@ func resolveInstallChannel(distributionRoot string) installChannel {
 		return installChannel{Kind: installChannelNpm, UpgradeCommand: "npm update -g " + pkg}
 	}
 	if insideGitWorktree(distributionRoot) {
-		return installChannel{Kind: installChannelDev, UpgradeCommand: "git pull && npm run build"}
+		return installChannel{Kind: installChannelDev, UpgradeCommand: "git pull && make build"}
 	}
 	if installedByScript(distributionRoot) {
 		return installChannel{Kind: installChannelScript, UpgradeCommand: installScriptCommand}
