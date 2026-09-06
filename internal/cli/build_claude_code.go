@@ -1,6 +1,7 @@
 package cli
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -159,11 +160,6 @@ func buildNativeClaudeCodeTarget(root string) error {
 	}
 	pluginsDir := filepath.Join(root, "plugins")
 	marketplaceDir := filepath.Join(root, ".claude-plugin")
-	preservedNative, releasePreserved, err := preserveMarketplaceNativeBinaries(filepath.Join(pluginsDir, nativeClaudePluginName))
-	if err != nil {
-		return err
-	}
-	defer releasePreserved()
 	if err := os.RemoveAll(pluginsDir); err != nil {
 		return err
 	}
@@ -217,10 +213,7 @@ func buildNativeClaudeCodeTarget(root string) error {
 			return err
 		}
 	}
-	if err := copyNativeClaudeRuntimeFiles(root, pluginDir, version); err != nil {
-		return err
-	}
-	if err := restoreMissingMarketplaceNativeBinaries(preservedNative, filepath.Join(pluginDir, "bin", "native")); err != nil {
+	if err := writeNativeClaudePluginRuntime(pluginDir, version); err != nil {
 		return err
 	}
 	return nil
@@ -519,76 +512,22 @@ func copyNativeClaudeHooks(hooks []nativeBuildHook, srcDir string, pluginDir str
 	return copyNativeBuildDir(filepath.Join(srcDir, "hooks", "instructions"), filepath.Join(hooksDir, "instructions"), nil, false)
 }
 
-// preserveMarketplaceNativeBinaries snapshots the committed plugins/loaf/bin/native
-// tree before the plugin directory is recreated. Root bin/ is an ignored build
-// output holding only the platforms this machine built, while the marketplace
-// copy must keep every release platform, so platforms the build did not produce
-// are restored from this snapshot instead of being dropped. The returned func
-// removes the snapshot; it is safe to call when nothing was preserved.
-func preserveMarketplaceNativeBinaries(pluginDir string) (string, func(), error) {
-	src := filepath.Join(pluginDir, "bin", "native")
-	if !pathExistsNative(src) {
-		return "", func() {}, nil
-	}
-	snapshot, err := os.MkdirTemp("", "loaf-marketplace-native-")
-	if err != nil {
-		return "", nil, err
-	}
-	release := func() { os.RemoveAll(snapshot) }
-	if err := copyNativeBuildDir(src, snapshot, nil, false); err != nil {
-		release()
-		return "", nil, err
-	}
-	return snapshot, release, nil
-}
+// claudePluginShim is the plugin's bin/loaf. The marketplace plugin ships
+// content and hooks only and resolves an installed loaf CLI at run time, so
+// no native binary is committed or copied into plugins/.
+//
+//go:embed claude_plugin_shim.sh
+var claudePluginShim string
 
-// restoreMissingMarketplaceNativeBinaries copies each platform directory from
-// the snapshot that the fresh build did not produce. Platforms the build did
-// produce keep the new binary.
-func restoreMissingMarketplaceNativeBinaries(snapshot string, dest string) error {
-	if snapshot == "" {
-		return nil
-	}
-	entries, err := os.ReadDir(snapshot)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		target := filepath.Join(dest, entry.Name())
-		if pathExistsNative(target) {
-			continue
-		}
-		if err := copyNativeBuildDir(filepath.Join(snapshot, entry.Name()), target, nil, false); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func copyNativeClaudeRuntimeFiles(root string, pluginDir string, version string) error {
+// writeNativeClaudePluginRuntime writes the plugin's runtime surface: bin/loaf,
+// the shim every generated hook command invokes as
+// "${CLAUDE_PLUGIN_ROOT}/bin/loaf", and the plugin package manifest.
+func writeNativeClaudePluginRuntime(pluginDir string, version string) error {
 	binDir := filepath.Join(pluginDir, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
-	if !pathExistsNative(filepath.Join(root, "bin", "loaf")) {
-		return fmt.Errorf("Loaf launcher not found at bin/loaf. Run npm run build:go first.")
-	}
-	if err := copyNativeBuildFile(filepath.Join(root, "bin", "loaf"), filepath.Join(binDir, "loaf")); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(binDir, "loaf"), 0o755); err != nil {
-		return err
-	}
-	if err := copyNativeBuildFile(filepath.Join(root, "bin", "package.json"), filepath.Join(binDir, "package.json")); err != nil {
-		return err
-	}
-	if !pathExistsNative(filepath.Join(root, "bin", "native")) {
-		return fmt.Errorf("Native Loaf runtime not found at bin/native/. Run npm run build:go first.")
-	}
-	if err := copyNativeBuildDir(filepath.Join(root, "bin", "native"), filepath.Join(binDir, "native"), nil, false); err != nil {
+	if err := os.WriteFile(filepath.Join(binDir, "loaf"), []byte(claudePluginShim), 0o755); err != nil {
 		return err
 	}
 	body, err := json.MarshalIndent(struct {

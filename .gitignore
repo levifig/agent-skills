@@ -7,7 +7,8 @@ node_modules/
 # .claude-plugin/ - tracked (for Claude Code marketplace)
 
 # CLI build output. The launcher and native binaries under bin/ are generated
-# by `npm run build:go`; plugins/loaf/bin/ stays tracked for the marketplace.
+# by `npm run build:go`. No native binary is tracked; the Claude Code plugin
+# ships a shell shim that resolves an installed loaf.
 dist-cli/
 /bin/
 !plugins/loaf/dist-cli/
