@@ -138,10 +138,10 @@ func TestRunnerInstallWithoutATerminalReportsRequiredDeployConsent(t *testing.T)
 func TestRunnerInstallWithNothingToDeployNeitherAsksNorWrites(t *testing.T) {
 	root, _ := setupInstallCommandFixture(t)
 
-	// Decline every harness the host happens to expose, then leave a yes on
-	// stdin: if a deploy prompt is asked anyway, it is answered in the affirmative
-	// and the project assertions below catch whatever it writes.
-	output := runInstallWithStdin(t, root, strings.Repeat("n\n", len(detectInstallTools()))+"y\n", "install")
+	// Pick no harness in the checklist, then leave a yes on stdin: if a deploy
+	// prompt is asked anyway, it is answered in the affirmative and the project
+	// assertions below catch whatever it writes.
+	output := runInstallWithStdin(t, root, "none\ny\n", "install", "-i")
 
 	if strings.Contains(output, "Deploy Loaf to this folder?") {
 		t.Fatalf("install output = %q, want no consent prompt when there is nothing to deploy", output)

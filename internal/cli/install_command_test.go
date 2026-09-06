@@ -202,12 +202,13 @@ func TestRunnerInstallInteractiveSelectionRunsNatively(t *testing.T) {
 	mkdirAll(t, filepath.Join(home, ".cursor"))
 
 	var stdout bytes.Buffer
+	// A bare Enter keeps every harness in the checklist.
 	err := Runner{
 		Stdout:     &stdout,
-		Stdin:      strings.NewReader("y\n"),
+		Stdin:      strings.NewReader("\n"),
 		WorkingDir: root,
 		Executable: distributionFixtureExecutable(root),
-	}.Run([]string{"install"})
+	}.Run([]string{"install", "-i"})
 	if err != nil {
 		t.Fatalf("interactive install error = %v\n%s", err, stdout.String())
 	}
@@ -231,13 +232,13 @@ func TestRunnerInstallInteractiveNoTargetsStillUpdatesClaudeProjectFile(t *testi
 	}
 
 	var stdout bytes.Buffer
-	// One answer per prompt: no to Cursor, no to the Claude Code plugin.
+	// "none" in the checklist selects no harness at all.
 	err := Runner{
 		Stdout:     &stdout,
-		Stdin:      strings.NewReader("n\nn\n"),
+		Stdin:      strings.NewReader("none\n"),
 		WorkingDir: root,
 		Executable: distributionFixtureExecutable(root),
-	}.Run([]string{"install", "--yes"})
+	}.Run([]string{"install", "-i", "--yes"})
 	if err != nil {
 		t.Fatalf("interactive no-target install error = %v\n%s", err, stdout.String())
 	}

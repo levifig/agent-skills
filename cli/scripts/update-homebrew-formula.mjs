@@ -53,7 +53,7 @@ function formula(versionValue, repoValue, values) {
   end
 
   def install
-    libexec.install "bin", "package.json", "config", "content", "dist", "plugins"
+    libexec.install "bin", "package.json", "config", "content", "vnext", "dist", "plugins", ".claude-plugin"
     bin.write_exec_script libexec/"bin/loaf"
   end
 

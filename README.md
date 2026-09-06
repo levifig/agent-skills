@@ -181,34 +181,44 @@ Build once, deploy everywhere. Skills are the universal layer; profiles and hook
 
 ## Getting Started
 
-### Homebrew
+Install the `loaf` CLI, then let it onboard your harnesses.
+
+### Install the CLI
+
+macOS and Linux, one line:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh)"
+```
+
+It downloads the release archive for your platform, verifies it against the release's `checksums.txt`, unpacks it under `~/.local/share/loaf/releases/<version>`, links `~/.local/bin/loaf`, and runs `loaf install`. Re-run the same line to move to a newer release. `LOAF_VERSION=0.5.0` pins a version, `--no-install` skips the harness step, `--uninstall` removes what it installed, and a `~/.local/bin/loaf` it did not create is never replaced.
+
+Or with Homebrew:
 
 ```bash
 brew tap levifig/tap
 brew install loaf
+loaf install
 ```
 
-Homebrew installs the native `loaf` binary plus Loaf's packaged content under the tap-managed prefix. Use `brew upgrade loaf` after releases.
+### Onboard your harnesses
 
-### Claude Code
-
-Install the `loaf` CLI first (Homebrew above, or a release archive), then let it register its own plugin:
+`loaf install` onboards every harness it detects: OpenCode, Cursor, Codex, Amp, and Claude Code when the `claude` CLI is present. Narrow it when you want to:
 
 ```bash
-loaf install --to claude-code
+loaf install -i                       # pick from a checklist
+loaf install --to cursor,claude-code  # name targets
 ```
 
-This adds the installed distribution as the `levifig-loaf` marketplace and installs `loaf@levifig-loaf` through the `claude` CLI, so the plugin content always matches the binary you run. `loaf upgrade` refreshes it after `brew upgrade loaf`. Commands are scoped under `loaf:` (e.g., `/loaf:implement`). The plugin ships content and hooks only; hooks run the installed CLI through the plugin's `bin/loaf` shim and report a non-blocking error with an install hint if no CLI is found.
+For Claude Code, the installed distribution registers itself as the `levifig-loaf` marketplace and installs `loaf@levifig-loaf` through the `claude` CLI, so the plugin content always matches the binary that runs its hooks. Commands are scoped under `loaf:` (for example `/loaf:implement`). The plugin ships content and hooks only; its `bin/loaf` shim runs the installed CLI and reports a non-blocking error with an install hint if none is found. Adding `levifig/loaf` from GitHub with `/plugin marketplace add` still works and tracks `main`, but the content then comes from GitHub rather than from your installed version.
 
-Adding `levifig/loaf` from GitHub with `/plugin marketplace add` still works and tracks `main`, but the plugin content then comes from GitHub rather than from your installed version.
-
-### OpenCode, Cursor, Codex, Amp
+### Keep it current
 
 ```bash
-npx github:levifig/loaf install
+loaf upgrade
 ```
 
-Detects installed tools, lets you select targets, and installs pre-built distributions. To bring an existing installation current afterwards, run `loaf upgrade` — it syncs every installed harness from anywhere, and refreshes project files only inside a Loaf repo. Codex's optional outside-sandbox policy is explicit: `loaf install --to codex --codex-basic-commands` installs only centrally classified basic command leaves with absolute executable prefixes; unclassified and operator commands remain gated. Other harness adapters are not implied by this policy.
+This refreshes every installed harness and the Claude Code plugin from the installed distribution. To update the binary itself, re-run the install one-liner or `brew upgrade loaf`; `loaf upgrade` tells you which one applies.
 
 ### Upgrading Existing Projects
 
@@ -271,13 +281,10 @@ See [AGENTS.md](AGENTS.md) for development guidelines.
 npm run typecheck    # Type check
 npm run test         # Run tests
 loaf build           # Build all targets (after initial npm run build)
-loaf install --to all  # Install to detected tools
+loaf install         # Onboard detected harnesses from this checkout
 ```
 
-**Testing locally:**
-
-- Claude Code: `/plugin marketplace add /path/to/loaf`
-- Others: `loaf install --to all` (after `npm run build`)
+**Testing locally:** run `loaf install` from the checkout after `npm run build`. It registers the checkout as the Claude Code marketplace and installs the other harnesses from `dist/`; `loaf install -i` picks a subset.
 
 ## License
 
