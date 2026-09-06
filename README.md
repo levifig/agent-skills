@@ -192,13 +192,15 @@ Homebrew installs the native `loaf` binary plus Loaf's packaged content under th
 
 ### Claude Code
 
-The plugin ships Loaf's content and hooks; the `loaf` CLI is installed separately, so install it first (Homebrew above, or a release archive) and make sure `loaf` is on your `PATH` or `LOAF_BIN` points at the binary.
+Install the `loaf` CLI first (Homebrew above, or a release archive), then let it register its own plugin:
 
 ```bash
-/plugin marketplace add levifig/loaf
+loaf install --to claude-code
 ```
 
-Updates happen automatically via plugin marketplace. Commands are scoped under `loaf:` (e.g., `/loaf:implement`). Hooks run the installed CLI through the plugin's `bin/loaf` shim; when no CLI is found they report a non-blocking error with the install hint instead of blocking tools.
+This adds the installed distribution as the `levifig-loaf` marketplace and installs `loaf@levifig-loaf` through the `claude` CLI, so the plugin content always matches the binary you run. `loaf upgrade` refreshes it after `brew upgrade loaf`. Commands are scoped under `loaf:` (e.g., `/loaf:implement`). The plugin ships content and hooks only; hooks run the installed CLI through the plugin's `bin/loaf` shim and report a non-blocking error with an install hint if no CLI is found.
+
+Adding `levifig/loaf` from GitHub with `/plugin marketplace add` still works and tracks `main`, but the plugin content then comes from GitHub rather than from your installed version.
 
 ### OpenCode, Cursor, Codex, Amp
 

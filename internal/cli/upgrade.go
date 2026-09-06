@@ -79,6 +79,14 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	if err != nil && !errors.As(err, &skillConflicts) {
 		return err
 	}
+	// Claude Code holds the plugin in its own cache, so its refresh goes through
+	// the claude CLI rather than a content sync; `--to` narrows it like the rest.
+	if hasClaudeCode && (options.target == "" || options.target == "all" || options.target == claudeCodeInstallTarget) {
+		if err := r.upgradeClaudeCodePlugin(out, loafRoot); err != nil {
+			failedTargets = append(failedTargets, claudeCodeInstallTarget)
+		}
+		fmt.Fprintln(out)
+	}
 	// `--to` filters the global sync only. The project surfaces describe every
 	// harness this repo is set up for, so narrowing them to the synced target
 	// would silently retire the others' fenced sections and symlinks.
@@ -185,8 +193,13 @@ func selectUpgradeTargets(options upgradeOptions, tools []detectedInstallTool) (
 	if options.target == "" || options.target == upgradeAllTargets {
 		return installed, nil
 	}
+	if options.target == claudeCodeInstallTarget {
+		// The plugin lives in Claude Code's own cache and is refreshed through
+		// the claude CLI by runUpgrade; there is no content target to sync.
+		return nil, nil
+	}
 	if !isValidInstallTarget(options.target) {
-		return nil, fmt.Errorf("unknown upgrade target %q (valid targets: %s, %s)", options.target, strings.Join(installValidTargets, ", "), upgradeAllTargets)
+		return nil, fmt.Errorf("unknown upgrade target %q (valid targets: %s, %s)", options.target, installTargetNamesForHelp(), upgradeAllTargets)
 	}
 	if !containsString(installed, options.target) {
 		return nil, fmt.Errorf("%s is not installed here, so there is nothing to upgrade; run `loaf install --to %s` to add it", installDisplayName(options.target), options.target)

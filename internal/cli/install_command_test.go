@@ -231,9 +231,10 @@ func TestRunnerInstallInteractiveNoTargetsStillUpdatesClaudeProjectFile(t *testi
 	}
 
 	var stdout bytes.Buffer
+	// One answer per prompt: no to Cursor, no to the Claude Code plugin.
 	err := Runner{
 		Stdout:     &stdout,
-		Stdin:      strings.NewReader("n\n"),
+		Stdin:      strings.NewReader("n\nn\n"),
 		WorkingDir: root,
 		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install", "--yes"})
